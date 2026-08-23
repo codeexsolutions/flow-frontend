@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ImagePlus } from "lucide-react";
+import { Check, ImagePlus, Loader2, Upload } from "lucide-react";
 
+import sysgrafix from "@/shared/api/sysgrafix";
 import type { Coluna } from "@/features/planilhas/services/planilha.service";
 import { formatCurrency } from "@/shared/utils/currency";
 import useClienteStore from "@/features/clientes/store/cliente.store";
@@ -50,6 +51,46 @@ const Celula = ({ coluna, valor, onSalvar, editavel = true }: Props) => {
       original.current = novo;
     }
   }, [valor, coluna.id]);
+
+  /* Envio da imagem da célula.
+     Fica aqui em cima, e não junto do editor de imagem, porque abaixo há um
+     `return` para célula sem permissão: hook depois dele só rodaria em parte
+     das células, e o React conta hooks por posição. */
+  const arquivoRef = useRef<HTMLInputElement>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [erroEnvio, setErroEnvio] = useState("");
+
+  const enviarImagem = async (arquivo: File) => {
+    setErroEnvio("");
+    setEnviando(true);
+
+    try {
+      const corpo = new FormData();
+      corpo.append("imagem", arquivo);
+
+      /* Sem `Content-Type` à mão: o browser precisa montar o `boundary` do
+         multipart sozinho, senão o multer não acha o arquivo. */
+      const { data } = await sysgrafix.post("/upload/planilha", corpo);
+      const url = data?.data?.[0]?.url;
+
+      if (!url) throw new Error(data?.message || "Falha ao enviar.");
+
+      /* Grava direto, sem esperar o blur: aqui não houve digitação, houve uma
+         escolha de arquivo — e a pessoa já saiu para olhar a miniatura. */
+      setRascunho(url);
+      original.current = url;
+      onSalvar(url);
+
+    } catch (e) {
+      const err = e as { response?: { data?: { message?: string } }; message?: string };
+
+      setErroEnvio(err?.response?.data?.message ?? err?.message ?? "Não foi possível enviar.");
+    } finally {
+      setEnviando(false);
+      if (arquivoRef.current) arquivoRef.current.value = "";
+    }
+  };
+
 
   /* Célula sem permissão mostra o valor e recusa o foco: apagar da tela
      esconderia informação que a pessoa pode ver, só não pode mudar. */
@@ -161,25 +202,63 @@ const Celula = ({ coluna, valor, onSalvar, editavel = true }: Props) => {
   }
 
   if (coluna.tipo === "IMAGEM") {
+    /*
+     * A guia do pedido: a arte, o mockup, a prova impressa.
+     *
+     * Era só um campo de link, porque não havia onde guardar arquivo. Havia
+     * agora: o mesmo `/upload` da logo e do wallpaper. E a diferença importa
+     * mais aqui do que na logo — quem tem a arte tem um ARQUIVO na máquina,
+     * não uma URL; para colar um link teria de subir a imagem em algum lugar
+     * antes, e o "algum lugar" que as pessoas usam é o WhatsApp Web, cujo link
+     * EXPIRA. A guia sumiria da tela do cliente sozinha, dias depois.
+     *
+     * O campo de texto continua: quem já tem a imagem hospedada cola e segue.
+     */
     return (
       <div className="flex h-full items-center gap-2 px-2 py-1">
-        {rascunho ? (
-          <img src={rascunho} alt="" className="h-8 w-8 shrink-0 rounded object-cover ring-1 ring-fg/10" />
-        ) : (
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-fg/[0.05] text-muted">
+        <button
+          type="button"
+          onClick={() => arquivoRef.current?.click()}
+          disabled={enviando}
+          title={rascunho ? "Trocar a imagem" : "Enviar uma imagem"}
+          className="focus-ring group relative grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded bg-fg/[0.05] text-muted ring-1 ring-fg/10 transition-colors hover:text-accent"
+        >
+          {enviando ? (
+            <Loader2 size={13} className="animate-spin text-accent" />
+          ) : rascunho ? (
+            <>
+              <img src={rascunho} alt="" className="h-full w-full object-cover" />
+              {/* O sinal de troca só no hover: a miniatura existe para
+                  CONFERIR a arte, e um ícone permanente por cima a tampa. */}
+              <span className="absolute inset-0 hidden place-items-center bg-canvas/70 group-hover:grid">
+                <Upload size={12} className="text-accent" />
+              </span>
+            </>
+          ) : (
             <ImagePlus size={13} />
-          </span>
-        )}
+          )}
+        </button>
 
-        {/* Endereço da imagem, não upload: o sistema ainda não tem onde
-            guardar arquivo, e prometer envio que não funciona é pior. */}
+        <input
+          ref={arquivoRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const arquivo = e.target.files?.[0];
+
+            if (arquivo) void enviarImagem(arquivo);
+          }}
+        />
+
         <input
           data-celula={coluna.id}
           value={rascunho}
           onChange={(e) => setRascunho(e.target.value)}
           onBlur={(e) => confirmar(e.target.value)}
-          placeholder="Link da imagem"
-          className="min-w-0 flex-1 bg-transparent text-[11.5px] text-ink outline-none placeholder:text-faint"
+          placeholder={erroEnvio || "Enviar ou colar link"}
+          title={erroEnvio || undefined}
+          className={`min-w-0 flex-1 bg-transparent text-[11.5px] text-ink outline-none ${erroEnvio ? "placeholder:text-danger" : "placeholder:text-faint"}`}
         />
       </div>
     );

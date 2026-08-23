@@ -15,7 +15,7 @@ import sysgrafix from "@/shared/api/sysgrafix";
  * upload é o caminho fácil, não uma parede.
  */
 
-export type TipoImagem = "logo" | "wallpaper" | "produto" | "usuario";
+export type TipoImagem = "logo" | "wallpaper" | "produto" | "usuario" | "planilha";
 
 type Props = {
   tipo: TipoImagem;

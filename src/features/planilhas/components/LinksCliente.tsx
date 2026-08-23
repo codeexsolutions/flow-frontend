@@ -152,7 +152,17 @@ const LinksCliente = ({ planilhaId, colunas, registros }: Props) => {
     return [...[...naPlanilha].sort(), ...doCadastro.sort()];
   }, [naPlanilha, clientesCadastro]);
 
-  const enderecoDe = (token: string) => `${window.location.origin}/p/${token}`;
+  /**
+   * O endereço do link entregue ao cliente.
+   *
+   * Usa o domínio próprio da empresa quando ela tem um. `window.location.origin`
+   * seria o endereço por onde o DONO entrou no sistema — ele acessa pelo nosso
+   * domínio, e o link copiado sairia com o nome do sistema mesmo depois de a
+   * empresa ter configurado o dela. O que decide não é por onde se administra,
+   * é por onde a empresa quer ser vista.
+   */
+  const enderecoDe = (token: string) =>
+    `${marca?.dominio ? `https://${marca.dominio}` : window.location.origin}/p/${token}`;
 
   const copiar = async (token: string) => {
     const url = enderecoDe(token);

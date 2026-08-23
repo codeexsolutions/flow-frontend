@@ -33,6 +33,8 @@ import AjudaPage from "@/features/ajuda/pages/AjudaPage";
 import PlanilhasPage from "@/features/planilhas/pages/PlanilhasPage";
 import AcompanharProducaoPage from "@/features/acompanhamento/pages/AcompanharProducaoPage";
 import BaterPontoPage from "@/features/ponto/pages/BaterPontoPage";
+import AbrirPontoPage from "@/features/ponto/pages/AbrirPontoPage";
+import { usarManifestDoPonto } from "@/features/ponto/instalacao";
 import { ehGestor } from "@/features/vendas/components/TabsVendas";
 
 import CheckoutPage from "@/features/checkout/pages/CheckoutPage";
@@ -76,7 +78,13 @@ const ehAcompanhamento = (path: string) => path.startsWith("/p/");
  * senha. Mandá-lo para o login transformaria o link num beco — e o `/ponto/`
  * precisa vir ANTES da checagem de sessão pelo mesmo motivo do `/p/`.
  */
-const ehPonto = (path: string) => path.startsWith("/ponto/");
+/*
+ * `/ponto` sozinho entra junto: é o `start_url` do app instalado, e é ele que
+ * descobre o token guardado neste aparelho. Sem incluí-lo aqui, abrir o ícone
+ * instalado cairia na tela de login — o beco que esta checagem existe para
+ * evitar, só que agora para quem instalou o atalho.
+ */
+const ehPonto = (path: string) => path === "/ponto" || path.startsWith("/ponto/");
 
 /**
  * No celular a tela de carregamento não aparece: ela competia com a animação
@@ -108,6 +116,25 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
   }, [carregarCatalogo]);
 
   /*
+   * Nas telas de ponto o navegador oferece instalar o APP DE PONTO.
+   *
+   * O manifest do `index.html` é o do Flow — um sistema de gestão que o
+   * funcionário não usa e nem consegue abrir. Deixá-lo valendo aqui faria o
+   * celular dele ganhar o ícone errado, com um atalho que cai no login.
+   *
+   * A troca é desfeita ao sair: sem isso, quem abrisse o ponto e navegasse
+   * para o sistema levaria junto o manifest do ponto — e o Flow passaria a ser
+   * oferecido para instalação com o nome e o ícone errados.
+   */
+  const noPonto = ehPonto(path);
+
+  useEffect(() => {
+    if (!noPonto) return;
+
+    return usarManifestDoPonto();
+  }, [noPonto]);
+
+  /*
    * O plano é buscado uma vez, quando a empresa ativa entra.
    *
    * Não é controle de acesso — é o que decide menu visível e módulo aberto,
@@ -127,6 +154,7 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
     return (
       <Routes>
         <Route path="/p/:token" element={<AcompanharProducaoPage />} />
+        <Route path="/ponto" element={<AbrirPontoPage />} />
         <Route path="/ponto/:token" element={<BaterPontoPage />} />
       </Routes>
     );

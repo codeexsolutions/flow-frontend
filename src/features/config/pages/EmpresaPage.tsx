@@ -17,6 +17,7 @@ import EmpresaContato from "@/features/config/components/EmpresaContato";
 import EmpresaEndereco from "@/features/config/components/EmpresaEndereco";
 import CorporateBadge from "@/features/config/components/CorporateBadge";
 import PixEmpresa from "@/features/config/components/PixEmpresa";
+import DominioProprio from "@/features/config/components/DominioProprio";
 
 type EnterpriseLike = {
   id?: string;
@@ -301,6 +302,10 @@ const EmpresaPage = () => {
         <CorporateBadge />
         {/* Chave Pix mora aqui: é cadastro da empresa, não assunto de nota. */}
         <PixEmpresa />
+        {/* O endereço próprio também: é a identidade da empresa vista de fora,
+            como o nome e a logo — e não configuração de planilha, apesar de
+            quem o usa ser o link do cliente. */}
+        <DominioProprio />
       </aside>
     </div>
   );

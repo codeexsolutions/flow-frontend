@@ -192,7 +192,28 @@ const BaterPontoPage = () => {
     canvas.width = 640;
     canvas.height = Math.round((v.videoHeight || 480) * escala);
 
-    canvas.getContext("2d")?.drawImage(v, 0, 0, canvas.width, canvas.height);
+    const ctx = canvas.getContext("2d");
+
+    if (ctx) {
+      /*
+       * A foto sai ESPELHADA, igual à prévia.
+       *
+       * A prévia tem `-scale-x-100` — sem isso, mover a mão para a direita a
+       * faz ir para a esquerda na tela, e ninguém consegue se enquadrar. Só
+       * que o `drawImage` copiava o quadro CRU do vídeo, sem o espelho.
+       * Resultado: a pessoa se via de um jeito, apertava o botão e a foto
+       * aparecia invertida — o rosto trocando de lado entre um toque e o
+       * outro, o que se lê como defeito mesmo sem saber o motivo.
+       *
+       * Espelhar aqui faz a foto ser o que estava na tela. É o que a pessoa
+       * pode conferir: ela viu aquilo antes de apertar. A alternativa — tirar
+       * o espelho da prévia — deixaria a foto "certa" e o enquadramento
+       * impossível, trocando um incômodo por um obstáculo.
+       */
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+    }
 
     setFoto(canvas.toDataURL("image/jpeg", 0.8));
     fecharCamera();

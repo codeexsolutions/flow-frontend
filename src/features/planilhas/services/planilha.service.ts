@@ -103,7 +103,22 @@ export type MarcaEmpresa = {
   cor: string | null;
   tema: TemaMarca;
   capa: string | null;
+  /**
+   * O wallpaper do cadastro da empresa — o mesmo da nota e do orçamento.
+   *
+   * Só de leitura por aqui: quem o troca é Configurações › Empresa. Ele vem
+   * junto para a prévia poder mostrar a página como ela realmente fica.
+   */
+  wallpaper: string | null;
   whatsapp: string | null;
+  /**
+   * O endereço próprio da empresa, quando ela tem um — `joseanfardamentos.com`.
+   *
+   * Só de leitura por aqui; quem grava é Configurações › Empresa. Vem junto da
+   * marca porque quem precisa dele é a tela que MONTA o link para copiar, e ela
+   * já busca a marca.
+   */
+  dominio: string | null;
 };
 
 const lista = <T>(r: { data?: { data?: T[] } }): T[] => r.data?.data ?? [];

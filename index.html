@@ -16,6 +16,19 @@
 
     <meta name="description" content="Sistema de gestão para o seu negócio: PDV, estoque, clientes e financeiro." />
 
+    <!--
+      Marcador de que é ESTE app que está atendendo neste endereço.
+
+      Quem o lê é a API, ao conferir o domínio próprio de uma empresa
+      (`DominioService.Verificar`): domínio recém-comprado quase sempre já
+      responde 200 servindo a página de "estacionado" do registrador, e sem
+      procurar por algo nosso o teste diria "está tudo certo" para um endereço
+      onde o link do cliente abriria a propaganda do registrador.
+
+      O valor está pareado com `MARCADOR_APP`, em `api/http/origens.ts`.
+    -->
+    <meta name="app" content="codex-flow-app" />
+
     <!-- iOS: sem estas quatro linhas o app instalado na tela de início abre
          com a barra do Safari e um ícone genérico. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />

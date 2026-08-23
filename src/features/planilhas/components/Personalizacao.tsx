@@ -67,9 +67,25 @@ const Personalizacao = ({ marca, onMudar, onSalvar }: Props) => {
           >
             <div className="flex flex-col gap-4 border-t border-fg/[0.06] p-3">
               {/* Prévia */}
-              <div className="overflow-hidden rounded-xl ring-1 ring-fg/[0.1]" style={{ backgroundColor: p.fundo }}>
+              <div className="relative overflow-hidden rounded-xl ring-1 ring-fg/[0.1]" style={{ backgroundColor: p.fundo }}>
+                {/* O wallpaper da empresa entra na prévia porque entra na
+                    página: sem ele aqui, a prévia mostraria um fundo chapado e
+                    o dono só descobriria a imagem abrindo o próprio link — que
+                    é exatamente o passo que a prévia existe para poupar. */}
+                {marca.wallpaper && (
+                  <>
+                    <span
+                      className="absolute inset-0 bg-cover bg-center"
+                      style={{ backgroundImage: `url("${marca.wallpaper}")`, opacity: p.escuro ? 0.18 : 0.14 }}
+                    />
+                    <span
+                      className="absolute inset-0"
+                      style={{ background: `linear-gradient(to bottom, ${rgba(p.fundo, 0.2)}, ${p.fundo})` }}
+                    />
+                  </>
+                )}
                 <div
-                  className="relative flex items-center gap-2 px-3 py-2.5"
+                  className="relative z-10 flex items-center gap-2 px-3 py-2.5"
                   style={{ background: p.capa, color: p.sobreCapa }}
                 >
                   {marca.capa && (
@@ -85,7 +101,7 @@ const Personalizacao = ({ marca, onMudar, onSalvar }: Props) => {
                   <span className="relative truncate text-[11px] font-semibold">{marca.nome || "Sua empresa"}</span>
                 </div>
 
-                <div className="p-3">
+                <div className="relative z-10 p-3">
                   <div className="rounded-lg p-2.5" style={{ backgroundColor: p.cartao, border: `1px solid ${p.linha}` }}>
                     <div className="mb-1.5 flex items-baseline justify-between">
                       <span className="text-[9px]" style={{ color: p.apagado }}>
@@ -183,6 +199,14 @@ const Personalizacao = ({ marca, onMudar, onSalvar }: Props) => {
                   Sem logo — defina em Configurações › Empresa para ele aparecer no topo da página.
                 </p>
               )}
+
+              {/* Dito aqui, e não só lá: o wallpaper aparece NESTA página, então
+                  é aqui que a pessoa pergunta de onde ele vem. */}
+              <p className="text-[11px] text-faint">
+                {marca.wallpaper
+                  ? "O fundo da página é o wallpaper da sua empresa — o mesmo da nota. Troque-o em Configurações › Empresa."
+                  : "Sem wallpaper — o fundo da nota, em Configurações › Empresa, também veste esta página."}
+              </p>
             </div>
           </motion.div>
         )}

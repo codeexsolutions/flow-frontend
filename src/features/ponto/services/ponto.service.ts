@@ -35,6 +35,28 @@ export type PontoBatido = {
   total: number;
 };
 
+/** Uma batida no extrato do próprio funcionário. Sem foto, sem coordenada. */
+export type PontoDoDia = {
+  tipo: "ENTRADA" | "SAIDA" | "INTERVALO_INICIO" | "INTERVALO_FIM";
+  momento: string;
+};
+
+export type DiaDePonto = {
+  /** `YYYY-MM-DD` no fuso da loja. */
+  dia: string;
+  batidas: PontoDoDia[];
+  /** Minutos trabalhados, já descontado o intervalo. Contados no servidor. */
+  minutos: number;
+  /** Entrou e não saiu: o dia tem par em aberto e o total não fecha. */
+  aberto: boolean;
+};
+
+export type ExtratoPonto = {
+  nome: string;
+  dias: DiaDePonto[];
+  minutosTotal: number;
+};
+
 /** Um dia em que a LOJA abre. Dia sem linha = fechado. */
 export type HorarioDia = {
   /** 0 = domingo … 6 = sábado. */
@@ -95,6 +117,24 @@ const PontoService = {
   identificar: async (token: string, cpf: string): Promise<QuemBate | null> => {
     try {
       const res = await sysgrafix.post<RetornoPadrao<QuemBate>>(`/publico/ponto/${token}/quem`, { cpf });
+      return res.data?.data?.[0] ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * O extrato do próprio funcionário — todos os horários dele.
+   *
+   * Sem foto e sem coordenada: a foto existe como prova para o gestor, e
+   * devolvê-la aqui poria as selfies da equipe atrás de um número que qualquer
+   * colega sabe de cor. Ver a nota no serviço do servidor.
+   *
+   * POST com o CPF no corpo, como o `identificar`, e pelo mesmo motivo.
+   */
+  meusPontos: async (token: string, cpf: string): Promise<ExtratoPonto | null> => {
+    try {
+      const res = await sysgrafix.post<RetornoPadrao<ExtratoPonto>>(`/publico/ponto/${token}/meus`, { cpf });
       return res.data?.data?.[0] ?? null;
     } catch {
       return null;

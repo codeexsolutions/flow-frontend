@@ -28,6 +28,14 @@ export type MarcaEmpresa = {
   tema: "claro" | "escuro" | "degrade";
   /** URL da imagem de fundo do cabeçalho, já validada pelo servidor. */
   capa: string | null;
+  /**
+   * O wallpaper do cadastro da empresa — o mesmo da nota e do orçamento.
+   *
+   * Serve de fundo da PÁGINA, enquanto a capa é a faixa do cabeçalho. Quem já
+   * subiu o wallpaper para a nota vê a página do cliente vestida sem ter
+   * configurado nada aqui.
+   */
+  wallpaper: string | null;
   whatsapp: string | null;
 };
 
@@ -35,7 +43,8 @@ export type ProducaoPublica = {
   empresa: MarcaEmpresa;
   planilha: string;
   cliente: string;
-  colunas: { nome: string; tipo: string; opcoes: { valor: string; cor?: string }[] }[];
+  /** `prazo` é a coluna marcada como "é o prazo" na planilha. No máximo uma. */
+  colunas: { nome: string; tipo: string; opcoes: { valor: string; cor?: string }[]; prazo?: boolean }[];
   /** Uma entrada por coluna, na mesma ordem de `colunas`. */
   linhas: { valores: (string | null)[]; atualizadoEm: string }[];
   atualizadoEm: string | null;

@@ -84,9 +84,21 @@ export const arquivoParaBase64 = async (arquivo: File, largura = 640): Promise<s
 const criarBitmap = async (arquivo: File): Promise<ImageBitmap | HTMLImageElement> => {
   if ("createImageBitmap" in window) {
     try {
-      return await createImageBitmap(arquivo);
+      /*
+       * `imageOrientation: "from-image"` aplica a rotação gravada no EXIF.
+       *
+       * Sem isto a foto sai DEITADA ou de cabeça para baixo, e só nesse
+       * caminho — o do app de câmera do aparelho. O celular quase nunca gira
+       * os pixels ao salvar: ele grava a imagem como o sensor leu e anota "está
+       * de lado" no EXIF. Todo visualizador respeita a anotação; o
+       * `createImageBitmap` sem esta opção, não. O `drawImage` seguinte copia
+       * os pixels crus e o resultado é a foto tombada, com a anotação perdida
+       * na conversão para JPEG — sem como consertar depois.
+       */
+      return await createImageBitmap(arquivo, { imageOrientation: "from-image" });
     } catch {
-      /* HEIC sem suporte cai no `<img>`, que o Safari lê nativamente. */
+      /* HEIC sem suporte cai no `<img>`, que o Safari lê nativamente — e que
+         aplica a orientação do EXIF por conta própria. */
     }
   }
 
