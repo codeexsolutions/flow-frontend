@@ -1,4 +1,4 @@
-const PRODUCAO = "https://codex-flow-api-production.up.railway.app/v1";
+const PRODUCAO = "https://api.codeexsolutions.com.br/v1";
 const LOCAL = "http://26.242.6.51:3000/v1";
 
 const doAmbiente = import.meta.env.PROD ? import.meta.env.VITE_API_PRODUCTION : import.meta.env.VITE_API_LOCAL;
