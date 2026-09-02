@@ -10,9 +10,19 @@ type AuthFormProps = {
   onSubmit: (data: AuthFormInputs) => Promise<void>;
   isLoading: boolean;
   loginError: boolean;
+  /**
+   * O documento da empresa dona do endereço, já preenchido.
+   *
+   * Quem abre o sistema pelo domínio da própria loja não deveria ter de saber
+   * o CNPJ do patrão de cabeça — o endereço já diz de quem é. O campo continua
+   * na tela e continua editável: recolhê-lo pouparia uma linha e cobraria caro
+   * no dia em que a pessoa precisar entrar em outra empresa pelo mesmo
+   * endereço, que acontece com contador e com quem tem duas lojas.
+   */
+  documentoEmpresa?: string | null;
 };
 
-const AuthForm = ({ onSubmit, isLoading, loginError }: AuthFormProps) => {
+const AuthForm = ({ onSubmit, isLoading, loginError, documentoEmpresa }: AuthFormProps) => {
   const [showPassword, setShowPassword] = useState(false);
 
   const {
@@ -22,6 +32,10 @@ const AuthForm = ({ onSubmit, isLoading, loginError }: AuthFormProps) => {
     setValue,
   } = useForm<AuthFormInputs>({
     resolver: zodResolver(authSchema),
+    /* Entra como valor PADRÃO do formulário, e não por `setValue` num efeito:
+       assim ele já nasce preenchido e válido, sem o campo piscar vazio no
+       primeiro quadro nem marcar erro antes de a marca chegar. */
+    defaultValues: documentoEmpresa ? { cpfCnpjEmpresa: formatDocument(documentoEmpresa) } : undefined,
   });
 
   const regCpfCnpj = register("cpfCnpjEmpresa");
