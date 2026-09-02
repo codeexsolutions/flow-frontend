@@ -40,6 +40,20 @@ const AuthForm = ({ onSubmit, isLoading, loginError, documentoEmpresa }: AuthFor
 
   const regCpfCnpj = register("cpfCnpjEmpresa");
 
+  /**
+   * O documento veio do ENDEREÇO, então não se digita nele.
+   *
+   * Num domínio próprio a empresa já está decidida antes de a tela abrir — é o
+   * que o endereço significa. Um campo editável ali convida a um erro sem
+   * conserto visível: trocar o número faz o login tentar entrar em OUTRA
+   * empresa, e o que volta é "dados de acesso incorretos", que manda a pessoa
+   * conferir a senha. Ela nunca vai desconfiar do campo que já veio preenchido.
+   *
+   * Fica visível, e não escondido: quem opera precisa ver em qual empresa está
+   * entrando, ainda mais quem atende mais de uma.
+   */
+  const travado = Boolean(documentoEmpresa);
+
   // Classe base dos inputs — maiores e mais legíveis
   const inputBase = "w-full rounded-xl border bg-fg/[0.04] py-3 pl-11 text-[15px] text-ink outline-none transition-colors placeholder:text-faint focus:bg-fg/[0.06]";
   const borderOk = "border-fg/[0.1] focus:border-accent";
@@ -68,22 +82,44 @@ const AuthForm = ({ onSubmit, isLoading, loginError, documentoEmpresa }: AuthFor
           CPF ou CNPJ da empresa
         </label>
         <div className="relative">
-          <FileText className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-mist" />
+          {travado ? (
+            <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-[16px] w-[16px] -translate-y-1/2 text-faint" />
+          ) : (
+            <FileText className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-mist" />
+          )}
           <input
             id="cpfCnpjEmpresa"
             inputMode="numeric"
             placeholder="00.000.000/0000-00"
+            readOnly={travado}
+            aria-readonly={travado || undefined}
             aria-invalid={!!errors.cpfCnpjEmpresa}
-            aria-describedby={errors.cpfCnpjEmpresa ? "erro-cpfCnpjEmpresa" : undefined}
-            className={`${inputBase} pr-4 ${errors.cpfCnpjEmpresa ? borderErr : borderOk}`}
+            aria-describedby={errors.cpfCnpjEmpresa ? "erro-cpfCnpjEmpresa" : travado ? "nota-cpfCnpjEmpresa" : undefined}
+            className={`${inputBase} pr-4 ${
+              travado
+                ? "cursor-default border-fg/[0.07] bg-fg/[0.02] text-mist focus:bg-fg/[0.02]"
+                : errors.cpfCnpjEmpresa
+                  ? borderErr
+                  : borderOk
+            }`}
             {...regCpfCnpj}
             onChange={(e) => {
+              if (travado) return;
+
               const formatted = formatDocument(e.target.value);
               e.target.value = formatted;
               setValue("cpfCnpjEmpresa", formatted, { shouldValidate: true });
             }}
           />
         </div>
+
+        {/* Diz POR QUE está travado. Um campo cinza sem explicação parece
+            defeito; com a frase, é o sistema confirmando onde a pessoa está. */}
+        {travado && (
+          <p id="nota-cpfCnpjEmpresa" className="text-[11.5px] leading-relaxed text-faint">
+            Definido por este endereço.
+          </p>
+        )}
         {errors.cpfCnpjEmpresa?.message && (
           <p id="erro-cpfCnpjEmpresa" role="alert" className="text-[12.5px] text-danger">
             {errors.cpfCnpjEmpresa.message}
@@ -133,12 +169,26 @@ const AuthForm = ({ onSubmit, isLoading, loginError, documentoEmpresa }: AuthFor
         )}
       </div>
 
+      {/*
+       * No endereço do cliente o botão é de UMA COR, sem degradê e sem o
+       * brilho que atravessa.
+       *
+       * O degradê vai de `accent-soft` a `accent-strong` — três tons pensados
+       * para a nossa paleta. A marca da empresa é UM hex: espalhá-lo num
+       * degradê ou inventa dois tons que ela não escolheu, ou desbota para o
+       * roxo do tema no meio do caminho. Um retângulo da cor dela é o que ela
+       * pediu ao gravar aquele hex.
+       */}
       <button
         type="submit"
         disabled={isLoading}
-        className="group relative mt-1 w-full overflow-hidden rounded-xl bg-gradient-to-r from-accent-soft via-accent to-accent-strong py-3 text-[15px] text-white shadow-glow transition-all duration-200 hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+        className={
+          travado
+            ? "mt-1 w-full rounded-xl bg-accent py-3 text-[15px] text-white transition-all duration-200 hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+            : "group relative mt-1 w-full overflow-hidden rounded-xl bg-gradient-to-r from-accent-soft via-accent to-accent-strong py-3 text-[15px] text-white shadow-glow transition-all duration-200 hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+        }
       >
-        <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-fg/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+        {!travado && <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-fg/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />}
         <span className="relative">{isLoading ? "Entrando..." : "Entrar"}</span>
       </button>
     </form>

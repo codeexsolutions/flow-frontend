@@ -519,7 +519,10 @@ const BaterPontoPage = () => {
           disabled={!podeBater || enviando}
           /* Alvo de 56px: a tela é usada de pé, com uma mão, muitas vezes com
              o aparelho na altura do peito. */
-          className="focus-ring flex min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-accent-soft to-accent text-[16px] text-white shadow-glow transition-all hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
+          /* Uma cor só, como na tela de entrada do domínio próprio: esta
+             página é da EMPRESA — quem a abre é funcionário dela, pelo link
+             que ela mandou —, e degradê de dois tons é desenho nosso. */
+          className="focus-ring flex min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-accent text-[16px] text-white transition-all hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
         >
           {enviando ? <Loader2 size={19} className="animate-spin" /> : <Clock size={19} />}
           {enviando ? "Registrando…" : quem ? `Bater ${ROTULO[quem.proxima].toLowerCase()}` : "Bater ponto"}

@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2023"],
+    /* `DOM` entra por causa do `middleware.ts`: ele roda no Edge da Vercel, que
+       fala `Request`/`Response`/`fetch` — tipos que vivem na lib do DOM, e não
+       na do Node. */
+    "lib": ["ES2023", "DOM"],
     "module": "ESNext",
     "skipLibCheck": true,
 
@@ -18,5 +21,14 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts"]
+  /*
+   * `middleware.ts` entra aqui, e a inclusão não é arrumação.
+   *
+   * Ele fica na raiz, fora de `src`, então o `tsconfig.app.json` não o enxerga
+   * — e um arquivo que nenhum `tsconfig` inclui não é verificado por
+   * `npm run build`. Ele iria para produção sem ninguém conferir os tipos,
+   * interceptando o pedido do documento. Foi exatamente assim que um erro de
+   * tipo passou batido e quebrou o build da Vercel hoje.
+   */
+  "include": ["vite.config.ts", "middleware.ts"]
 }

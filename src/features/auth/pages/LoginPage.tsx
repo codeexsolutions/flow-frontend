@@ -101,7 +101,20 @@ const AuthPage = () => {
        pessoa escolheu. Quem já é cliente reconhece o próprio sistema antes de
        entrar; a identidade fixa fica só na página pública de vendas. */
     <div
-      className="relative h-[100dvh] w-full overflow-hidden bg-canvas lg:grid lg:grid-cols-[1.05fr_1fr]"
+      /*
+       * No endereço do cliente a tela é UMA COLUNA, centralizada.
+       *
+       * As duas colunas existem para a nossa vitrine: painel de marca à
+       * esquerda, formulário à direita. Tirada a vitrine — ela não vai para o
+       * domínio do cliente —, o que sobrava à esquerda era a logo e o nome
+       * repetindo o que o cartão ao lado já mostra, e o formulário empurrado
+       * para o canto direito de um monitor inteiro.
+       *
+       * Centralizado, a marca da empresa fica no eixo do olhar e a tela vira o
+       * que ela tem de ser: a porta de entrada daquela loja, e não a nossa com
+       * a logo trocada.
+       */
+      className={`relative h-[100dvh] w-full overflow-hidden bg-canvas ${marca ? "" : "lg:grid lg:grid-cols-[1.05fr_1fr]"}`}
       /*
        * A cor da empresa entra como TOKEN, na raiz desta tela.
        *
@@ -110,7 +123,10 @@ const AuthPage = () => {
        * deles. E fica preso a esta tela: o resto do sistema continua com o tema
        * que a pessoa escolheu, que é escolha dela e não da marca.
        */
-      style={corDaMarca ? ({ "--accent": corDaMarca, "--accent-soft": corDaMarca } as CSSProperties) : undefined}
+      /* Os TRÊS tons, e não só dois: `--accent-strong` ficava com o roxo do
+         tema, e qualquer degradê que fosse até ele desbotava do azul da
+         empresa para o nosso roxo no meio do caminho. */
+      style={corDaMarca ? ({ "--accent": corDaMarca, "--accent-soft": corDaMarca, "--accent-strong": corDaMarca } as CSSProperties) : undefined}
     >
       {/* O wallpaper da empresa, atrás de tudo e por baixo de um véu — a tela
           precisa continuar legível sobre qualquer imagem que tenham subido. */}
@@ -120,65 +136,55 @@ const AuthPage = () => {
           <div aria-hidden className="pointer-events-none absolute inset-0 z-0 bg-canvas/60" />
         </>
       )}
+      {!marca && (
       <aside className="relative hidden overflow-hidden border-r border-fg/[0.07] lg:flex lg:flex-col lg:justify-between lg:p-12">
         <RedeAnimada className="absolute inset-0" />
 
         <div className="relative flex items-center gap-3">
-          <img
-            src={marca?.logo || "/logo.png"}
-            alt=""
-            width={40}
-            height={40}
-            className="h-10 w-10 rounded-xl object-cover shadow-glow"
-          />
+          <img src="/logo.png" alt="" width={40} height={40} className="h-10 w-10 rounded-xl shadow-glow" />
           <span className="font-display text-[19px] tracking-tight text-ink">
-            {marca ? marca.nome : <>CodeEx <span className="text-accent-soft">Flow</span></>}
+            CodeEx <span className="text-accent-soft">Flow</span>
           </span>
         </div>
 
+        {/*
+         * A vitrine é NOSSA e só existe no nosso endereço.
+         *
+         * "Sua loja inteira num lugar só" e a lista de recursos são propaganda
+         * do Flow para quem ainda não é cliente. No domínio da empresa quem
+         * chega já é da casa — é o funcionário abrindo o sistema para
+         * trabalhar. Por isso o painel inteiro fica dentro do `!marca`: lá a
+         * tela é uma coluna só, centralizada.
+         */}
         <div className="relative max-w-md">
-          {/*
-           * A vitrine é NOSSA e só aparece no nosso endereço.
-           *
-           * "Sua loja inteira num lugar só" e a lista de recursos são propaganda
-           * do Flow para quem ainda não é cliente. No domínio da empresa quem
-           * chega já é da casa — é o funcionário abrindo o sistema para
-           * trabalhar —, e vender o produto para ele seria ocupar a tela com um
-           * argumento dirigido a outra pessoa.
-           */}
-          {marca ? (
-            <h2 className="text-[34px] leading-[1.1] tracking-tight text-ink">{marca.nome}</h2>
-          ) : (
-            <>
-              <h2 className="text-[34px] leading-[1.1] tracking-tight text-ink">
-                Sua loja inteira
-                <br />
-                <span className="text-accent-soft">num lugar só.</span>
-              </h2>
+          <h2 className="text-[34px] leading-[1.1] tracking-tight text-ink">
+            Sua loja inteira
+            <br />
+            <span className="text-accent-soft">num lugar só.</span>
+          </h2>
 
-              <ul className="mt-8 flex flex-col gap-4">
-                {DESTAQUES.map(({ icone: Icone, titulo, texto }) => (
-                  <li key={titulo} className="flex items-start gap-3">
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/[0.12] text-accent-soft ring-1 ring-inset ring-accent/20">
-                      <Icone size={16} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[13.5px] text-ink">{titulo}</span>
-                      <span className="block text-[12.5px] leading-relaxed text-mist">{texto}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
+          <ul className="mt-8 flex flex-col gap-4">
+            {DESTAQUES.map(({ icone: Icone, titulo, texto }) => (
+              <li key={titulo} className="flex items-start gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/[0.12] text-accent-soft ring-1 ring-inset ring-accent/20">
+                  <Icone size={16} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13.5px] text-ink">{titulo}</span>
+                  <span className="block text-[12.5px] leading-relaxed text-mist">{texto}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
 
         {/* O rodapé continua nos nomeando mesmo na marca do cliente — em letra
             miúda, porque é honestidade sobre quem faz o sistema, e não vitrine. */}
         <p className="relative text-[11.5px] text-faint">
-          © {new Date().getFullYear()} {marca ? `${marca.nome} · movido por CodeEx Flow` : "CodeEx Flow · CodEx Solutions"}
+          © {new Date().getFullYear()} CodeEx Flow · CodEx Solutions
         </p>
       </aside>
+      )}
 
     <div className="relative flex h-full w-full items-center justify-center overflow-hidden px-3 py-3 sm:px-4 sm:py-5">
       {/* Glows de fundo — seguem o accent e somem no modo leve */}
