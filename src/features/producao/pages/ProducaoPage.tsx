@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 import useSincronizacao from "@/shared/realtime/useSincronizacao";
 import { Factory, Plus, Clock, User, AlertTriangle, Trash2, X, Loader2 } from "lucide-react";
 
 import ProducaoService, { type Etapa, type ItemProducao } from "@/features/producao/services/producao.service";
 import { PageScreen } from "@/shared/ui/PageShell";
+import { BarraFiltros } from "@/shared/ui/DataTable";
 import { Modal } from "@/shared/ui/Modal";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
@@ -52,18 +54,42 @@ function diasAtePrazo(prazo: string | null): number | null {
 }
 
 /**
- * Controle de produção.
+ * O CONTROLE DE PRODUÇÃO ANTIGO — fora da navegação.
  *
- * Quadro de colunas porque a pergunta que a tela responde é espacial: "onde
- * está cada coisa". Uma lista com uma coluna "etapa" responderia a mesma
- * pergunta com muito mais esforço de leitura — o dono varre o quadro e vê o
- * gargalo pela altura da pilha.
+ * ---------------------------------------------------------------------------
+ * Por que ele saiu
+ * ---------------------------------------------------------------------------
+ * Esta tela tem tabelas próprias (`producao_itens`, `producao_etapas`), que são
+ * OUTRA produção: o que se digitava na planilha não aparecia aqui, e o que se
+ * arrastava aqui não chegava lá. A pergunta "onde está o pedido da dona
+ * Marlene?" tinha duas respostas conforme a tela aberta.
  *
- * O arrastar usa a API nativa do navegador, sem biblioteca. Para mover cartão
- * entre colunas ela basta, e uma dependência a mais custaria mais no bundle do
- * que entrega numa loja com internet ruim.
+ * A produção passou a ser uma só, a da planilha: o backlog em cartões virou uma
+ * VISÃO dela — as mesmas linhas agrupadas por uma coluna de seleção, arrastar
+ * grava na célula da etapa. Ver `QuadroPlanilha` e `PlanilhasPage`.
+ *
+ * ---------------------------------------------------------------------------
+ * Por que o arquivo continua aqui
+ * ---------------------------------------------------------------------------
+ * Nenhuma rota o alcança, mas ele é a única interface que existe para os dados
+ * já gravados em `producao_itens`. Apagá-lo tornaria esse conteúdo inalcançável
+ * sem passar pelo banco — e quem decide migrar ou descartar esses registros é
+ * o dono do sistema, não este refactor. Ele fica de pé, e sem porta.
  */
-const ProducaoPage = () => {
+/**
+ * As props sobraram do arranjo anterior, em que esta tela era a visão
+ * "backlog" da aba Kanban. Ninguém as passa hoje.
+ */
+type Props = {
+  /** Abas que TROCAM a tela — ponta esquerda da barra. */
+  abasSecao?: ReactNode;
+  /** Controles da seção — ponta direita, junto dos filtros da tela. */
+  controlesSecao?: ReactNode;
+  /** Trava a visão e esconde o seletor interno. */
+  visaoFixa?: "planilha" | "quadro";
+};
+
+const ProducaoPage = ({ abasSecao, controlesSecao, visaoFixa }: Props = {}) => {
   const alert = useAlert();
   const { user } = useAuth();
   const gestor = ehGestor(user);
@@ -74,9 +100,13 @@ const ProducaoPage = () => {
   const [periodo, setPeriodo] = useState<Periodo>("SEMANAL");
   /* Duas visões porque são duas perguntas: o quadro responde "em que etapa
      está o pedido"; a planilha, "o que cada um faz na quinta". */
-  const [visao, setVisao] = useState<"planilha" | "quadro">("planilha");
+  const [visao, setVisao] = useState<"planilha" | "quadro">(visaoFixa ?? "planilha");
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (visaoFixa) setVisao(visaoFixa);
+  }, [visaoFixa]);
 
   const equipe = useEquipeStore((s) => s.equipe);
   const buscarEquipe = useEquipeStore((s) => s.buscar);
@@ -225,6 +255,14 @@ const ProducaoPage = () => {
 
   return (
     <PageScreen icon={<Factory className="h-5 w-5" />} title="Produção" subtitle="Onde está cada pedido, e com quem">
+      {/* A barra da seção acima da fileira de filtros do quadro: as abas
+          trocam a tela, os filtros logo abaixo restringem o que ela mostra. */}
+      {(abasSecao || controlesSecao) && (
+        <div className="card glass-sheen shrink-0 overflow-hidden rounded-lg">
+          <BarraFiltros navegacao={abasSecao}>{controlesSecao}</BarraFiltros>
+        </div>
+      )}
+
       {/* Filtros e ações */}
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         <div className="glass-subtle flex items-center gap-1 rounded-xl p-1">
@@ -244,7 +282,9 @@ const ProducaoPage = () => {
           {itens.length} {itens.length === 1 ? "item" : "itens"} no período
         </span>
 
-        <div className="glass-subtle ml-auto flex items-center gap-1 rounded-xl p-1">
+        {/* Seletor interno some quando a seção já tem o dela: dois controles
+            para a mesma decisão é um deles sempre errado. */}
+        <div className={`glass-subtle ml-auto items-center gap-1 rounded-xl p-1 ${visaoFixa ? "hidden" : "flex"}`}>
           {(["planilha", "quadro"] as const).map((v) => (
             <button
               key={v}

@@ -11,19 +11,6 @@ export type PixPayload = {
   description?: string;
 };
 
-/*
- * As funções de `localStorage` foram REMOVIDAS.
- *
- * A chave Pix é da empresa e vive no banco — ver `features/config/services/
- * pix.service.ts`. No navegador ela era por máquina, editável pelo DevTools
- * (trocar a chave desvia o pagamento do cliente) e sumia ao limpar o cache.
- *
- * O que sobrou aqui é só a geração do payload EMV, que é cálculo puro.
- */
-
-
-/* ─── CRC16-CCITT ─── */
-
 function computeCRC16(payload: string): string {
   const polynomial = 0x1021;
   let result = 0xffff;
@@ -40,14 +27,10 @@ function computeCRC16(payload: string): string {
   return (result & 0xffff).toString(16).toUpperCase().padStart(4, "0");
 }
 
-/* ─── EMV field ─── */
-
 function formatEMV(id: string, value: string): string {
   const length = value.length.toString().padStart(2, "0");
   return `${id}${length}${value}`;
 }
-
-/* ─── Normalização ─── */
 
 function normalizeText(text: string): string {
   return text
@@ -56,8 +39,6 @@ function normalizeText(text: string): string {
     .toUpperCase()
     .substring(0, 25);
 }
-
-/* ─── Formata chave PIX conforme tipo ─── */
 
 function formatPixKey(key: string, type: PixKeyType): string {
   if (type === "phone") {
@@ -73,14 +54,11 @@ function formatPixKey(key: string, type: PixKeyType): string {
   return key;
 }
 
-/* ─── Gera payload BR Code ─── */
-
 export function generatePixPayload(data: PixPayload): string {
   const formattedKey = formatPixKey(data.pixKey, data.pixKeyType);
   const merchantName = normalizeText(data.merchantName);
   const merchantCity = normalizeText(data.merchantCity);
 
-  // Merchant Account Information (ID 26)
   let merchantAccountInfo = formatEMV("00", "br.gov.bcb.pix");
   merchantAccountInfo += formatEMV("01", formattedKey);
 
@@ -136,19 +114,6 @@ export function generatePixPayload(data: PixPayload): string {
   return payload;
 }
 
-/* ─── QR Code gerado localmente ─── */
-
-/**
- * Gera o QR como data URI, no próprio navegador.
- *
- * Antes vinha de `api.qrserver.com`. Duas consequências ruins: sem internet a
- * nota saía sem QR, e — pior — a imagem de outro domínio "contamina" o canvas,
- * o que fazia o download da nota falhar. Foi por isso que alguém acabou
- * escondendo TODAS as imagens antes de gerar o PNG, e a nota passou a ser
- * salva sem QR e sem logo.
- *
- * Sendo data URI, ela é do próprio documento: entra no download normalmente.
- */
 export async function getQrCodeDataUrl(pixPayload: string, escuro = "#000000", claro = "#FFFFFF"): Promise<string> {
   if (!pixPayload) return "";
 

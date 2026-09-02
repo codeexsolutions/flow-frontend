@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, ShoppingCart, DollarSign, Package, Users, Wallet, BarChart3, MoreHorizontal, Settings, LogOut, UserCircle, Truck, Lock, Table2 } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, DollarSign, Package, Users, Wallet, BarChart3, MoreHorizontal, Settings, LogOut, UserCircle, Truck, Lock, Factory } from "lucide-react";
 
 import useAuth from "@/features/auth/store/auth.store";
 import { ehGestor } from "@/features/vendas/components/TabsVendas";
@@ -119,9 +119,10 @@ const TabBar = () => {
    * separam o suficiente.
    */
   const secundarios: Item[] = [
-    /* Planilhas abre a folha, como na sidebar: subiu para "Meu dia" porque é
-       ferramenta do trabalho do dia, não de administração. */
-    { rota: "/planilhas", label: "Planilhas", icon: <Table2 size={18} />, familia: "Meu dia" },
+    /* Produção abre a folha, como na sidebar. Ela absorveu as planilhas: o
+       destino "/planilhas" virou uma das duas leituras de Produção › Kanban,
+       e manter os dois aqui ofereceria duas portas para a mesma sala. */
+    { rota: "/producao", label: "Produção", icon: <Factory size={18} />, recurso: "producao", familia: "Meu dia" },
 
     { rota: "/estoque", label: "Estoque/Serviços", icon: <Package size={18} />, familia: "Gestão da empresa" },
     // Financeiro voltou a ser destino próprio: caixa, a pagar e a receber numa tela só.

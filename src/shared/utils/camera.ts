@@ -1,30 +1,3 @@
-/**
- * Tirar uma foto no navegador — pela câmera ao vivo ou pelo app do aparelho.
- *
- * ---------------------------------------------------------------------------
- * Por que existem DOIS caminhos (a mesma história da geolocalização)
- * ---------------------------------------------------------------------------
- * `getUserMedia` — a câmera ao vivo dentro da página — só existe em contexto
- * seguro: `https://` ou `localhost`. Fora disso o navegador não recusa com um
- * erro claro: ele nem define `navigator.mediaDevices`. A chamada estoura um
- * `TypeError` ("undefined is not an object"), que um `catch` genérico traduz
- * como "não foi possível abrir a câmera, autorize o acesso" — mandando a
- * pessoa liberar uma permissão que não é o problema. Foi exatamente o que
- * aconteceu no iPhone abrindo o sistema pelo IP da rede.
- *
- * O segundo caminho é o `<input type="file" capture>`: ele abre o app de
- * câmera do próprio aparelho, funciona em `http://` e não pede permissão de
- * site nenhuma. Perde a prévia ao vivo e ganha o que importa mais — funcionar.
- *
- * ---------------------------------------------------------------------------
- * O que o iOS exige quando o caminho bom está disponível
- * ---------------------------------------------------------------------------
- * O Safari só toca um `<video>` inline se ele tiver `playsinline` E `muted`, e
- * o `play()` precisa acontecer perto do gesto que o originou. Por isso quem
- * chama estas funções deve ter o `<video>` já montado no DOM antes do clique —
- * atribuir `srcObject` num `requestAnimationFrame` posterior quebra a cadeia.
- */
-
 export type EstadoCamera = { ok: boolean; motivo?: string };
 
 /**

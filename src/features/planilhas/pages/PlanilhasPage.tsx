@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import useSincronizacao from "@/shared/realtime/useSincronizacao";
-import { Table2, Plus, ChevronLeft, ChevronRight, ChevronDown, Settings2, Trash2, X, Loader2, ArrowLeft, Copy, History, LayoutTemplate, Link2, EyeOff, Lock, Eraser, Rows3 } from "lucide-react";
+import { Table2, Plus, ChevronLeft, ChevronRight, ChevronDown, Settings2, Trash2, X, Loader2, ArrowLeft, Copy, History, LayoutTemplate, EyeOff, Lock, Eraser, Rows3, KanbanSquare, Columns3 } from "lucide-react";
 
 import PlanilhaService, { type Alteracao, type Coluna, type Modelo, type ModeloCatalogo, type Pagina, type Periodicidade, type Periodo, type TipoColuna } from "@/features/planilhas/services/planilha.service";
 import { PageScreen } from "@/shared/ui/PageShell";
+import { BarraFiltros, ListaAcao, ListaCabecalho, ListaLinha } from "@/shared/ui/DataTable";
+import { ROW_HEIGHT } from "@/shared/hooks/useAutoPageSize";
 import { Modal } from "@/shared/ui/Modal";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
@@ -15,9 +18,9 @@ import Celula from "@/features/planilhas/components/Celula";
 import useEquipeStore from "@/features/funcionarios/store/equipe.store";
 import { podemReceberTarefa } from "@/shared/domain/funcionario";
 import Presenca from "@/features/planilhas/components/Presenca";
-import LinksCliente from "@/features/planilhas/components/LinksCliente";
 import MenuColuna from "@/features/planilhas/components/MenuColuna";
 import MenuContexto from "@/features/planilhas/components/MenuContexto";
+import QuadroPlanilha from "@/features/planilhas/components/QuadroPlanilha";
 
 const TIPOS: { id: TipoColuna; label: string }[] = [
   { id: "TEXTO", label: "Texto" },
@@ -41,6 +44,25 @@ const PERIODICIDADES: { id: Periodicidade; label: string }[] = [
 ];
 
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+/* -------------------------------------------------------------------------- */
+/* A lista de planilhas — a mesma tabela de Clientes e Estoque                 */
+/* -------------------------------------------------------------------------- */
+
+/** As colunas e a largura de cada uma. Mesma forma do `COLS` de Clientes. */
+const LISTA_COLS = "grid-cols-[minmax(0,1fr)_128px_96px_96px_112px_88px]";
+
+/** Soma das fixas + folga para a flexível: abaixo disso a tabela rola. */
+const LISTA_MIN_WIDTH = 792;
+
+/**
+ * Os rótulos das colunas, em UMA lista.
+ *
+ * Servem ao cabeçalho do desktop e ao cartão do celular (ver `ListaLinha`). A
+ * última posição é vazia de propósito: aquela coluna só reserva a largura das
+ * ações, e no cartão ela não tem o que rotular.
+ */
+const LISTA_ROTULOS = ["Planilha", "Período", "Colunas", "Linhas", "Preenchidas", undefined];
 
 /**
  * Como cada evento do histórico se lê.
@@ -134,8 +156,76 @@ function rotuloPeriodo(p: Pagina | null): string {
  * que periodicidade. O que a equipe preenche é o período: a planilha de hoje,
  * desta semana ou deste mês, conforme o modelo diz.
  */
-const PlanilhasPage = () => {
+/**
+ * O que a tela recebe de quem a hospeda.
+ *
+ * A planilha deixou de ser um destino do menu e passou a ser uma das duas
+ * leituras da aba Kanban, dentro de Produção (ver `KanbanPage`). Ela continua
+ * dona da própria casca — o título é o nome da planilha aberta, e os controles
+ * de período, histórico, colunas e link são dela —, mas quem a hospeda injeta
+ * as abas da SEÇÃO (Produções · Kanban), que entram na ponta esquerda da
+ * `BarraFiltros` colada na tabela. É o mesmo arranjo de Vendas, do PDV e do
+ * caixa; no cabeçalho da página elas ficariam a meia tela do que trocam, com
+ * uma peça diferente da que o resto do sistema usa.
+ *
+ * O alternador PLANILHA/BACKLOG **não** vem de fora: as duas visões são desta
+ * tela, sobre os mesmos registros já carregados aqui. Ver `QuadroPlanilha`.
+ *
+ * `abasSecao` é opcional: sem ela a tela funciona sozinha, como funcionava.
+ */
+type Props = {
+  /** Abas que TROCAM a tela — ponta esquerda da barra. */
+  abasSecao?: ReactNode;
+  /** Controles extras da seção — ponta direita, junto dos desta tela. */
+  controlesSecao?: ReactNode;
+};
+
+/** Como a pessoa está olhando a planilha aberta. */
+type Visao = "planilha" | "backlog";
+
+const CHAVE_VISAO = "planilhas:visao";
+const CHAVE_ETAPA = "planilhas:colunaEtapa";
+
+/** Preferência gravada por planilha. Falha em silêncio: é conforto, não regra. */
+const lembrado = (chave: string, id: string): string | null => {
+  try {
+    return localStorage.getItem(`${chave}:${id}`);
+  } catch {
+    return null;
+  }
+};
+
+const lembrar = (chave: string, id: string, valor: string) => {
+  try {
+    localStorage.setItem(`${chave}:${id}`, valor);
+  } catch {
+    /* Modo privado, cookies bloqueados: a tela abre no padrão e funciona. */
+  }
+};
+
+const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
   const alert = useAlert();
+
+  /**
+   * Todo aviso desta tela é TOAST, nunca modal.
+   *
+   * ---------------------------------------------------------------------------
+   * Por que o modal era errado AQUI
+   * ---------------------------------------------------------------------------
+   * A planilha é a única tela do sistema em que se digita em rajada: dez, vinte
+   * células seguidas, sem parar entre uma e outra. O modal de erro é uma caixa
+   * no meio da tela com um botão de OK — ele ROUBA O FOCO do campo em que a
+   * pessoa está e engole a próxima tecla digitada. Numa tela de digitação
+   * contínua, um aviso que interrompe custa mais do que o erro que ele relata:
+   * a pessoa perde a linha em que estava e tem de reencontrá-la.
+   *
+   * O toast diz a mesma coisa no canto, some sozinho e não tira o cursor de
+   * onde ele está. Se a gravação falhou, a célula já voltou ao valor de antes
+   * — o aviso é notícia, não decisão.
+   */
+  const TOAST = { position: "bottom-right" as const, timer: 4000 };
+
+  const avisar = (titulo: string, mensagem?: string) => alert.toast("error", titulo, mensagem, TOAST);
   const { user } = useAuth();
   const gestor = ehGestor(user);
 
@@ -160,6 +250,22 @@ const PlanilhasPage = () => {
      tela — pede uma confirmação, mesmo estando vazia. */
   const [excluindo, setExcluindo] = useState<Modelo | null>(null);
   const [removendo, setRemovendo] = useState(false);
+
+  /*
+   * A visão da planilha aberta — e a coluna que faz as raias do quadro.
+   *
+   * As duas são PREFERÊNCIA, não conteúdo: nada aqui muda um dado. Ficam
+   * gravadas por planilha porque são hábito de trabalho — quem administra a
+   * Estamparia pelo quadro a abre no quadro amanhã de manhã, e a Camisaria,
+   * que é de digitar, continua abrindo na grade.
+   */
+  /* Tokens já anunciados nesta sessão — é o que evita repetir o toast do link
+     a cada vez que o mesmo nome é digitado. Ref, e não estado: ninguém
+     redesenha por causa dele. */
+  const linksEmitidos = useRef<Set<string>>(new Set());
+
+  const [visao, setVisao] = useState<Visao>("planilha");
+  const [colunaEtapaId, setColunaEtapaId] = useState("");
 
   const [formModelo, setFormModelo] = useState<{ nome: string; periodicidade: Periodicidade }>({ nome: "", periodicidade: "DIARIA" });
   const [formColuna, setFormColuna] = useState<{ nome: string; tipo: TipoColuna; opcoes: string; valorPadrao: string }>({ nome: "", tipo: "TEXTO", opcoes: "", valorPadrao: "" });
@@ -199,7 +305,7 @@ const PlanilhasPage = () => {
       await PlanilhaService.alterarColuna(c.id, { publico });
     } catch (err) {
       setColunas((prev) => prev.map((x) => (x.id === c.id ? { ...x, publico: !publico } : x)));
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível salvar."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível salvar."));
     }
   };
 
@@ -213,7 +319,7 @@ const PlanilhasPage = () => {
       await PlanilhaService.alterarColuna(c.id, { naoAntesDe: alvo });
     } catch (err) {
       setColunas((prev) => prev.map((x) => (x.id === c.id ? { ...x, nao_antes_de: antes } : x)));
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível salvar a regra."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível salvar a regra."));
     }
   };
 
@@ -228,7 +334,7 @@ const PlanilhasPage = () => {
       await PlanilhaService.alterarColuna(c.id, { nome });
     } catch (err) {
       setColunas((prev) => prev.map((x) => (x.id === c.id ? { ...x, nome: c.nome } : x)));
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível renomear."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível renomear."));
     }
   };
 
@@ -261,7 +367,7 @@ const PlanilhasPage = () => {
     try {
       setModelos(await PlanilhaService.modelos());
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível carregar as planilhas."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível carregar as planilhas."));
     } finally {
       setCarregando(false);
     }
@@ -304,9 +410,9 @@ const PlanilhasPage = () => {
 
       setModelos((ms) => ms.filter((m) => m.id !== excluindo.id));
       setExcluindo(null);
-      alert.success("Planilha excluída.", "Ela saiu da lista.");
+      alert.toast("success", "Planilha excluída", "Ela saiu da lista.", TOAST);
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível excluir a planilha."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível excluir a planilha."));
     } finally {
       setRemovendo(false);
     }
@@ -334,14 +440,31 @@ const PlanilhasPage = () => {
         setDataAtual(iso(new Date()));
       }
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a planilha a partir do modelo."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a planilha a partir do modelo."));
     } finally {
       setUsando(null);
     }
   };
 
-  const carregarPlanilha = useCallback(async (modelo: Modelo, data: string) => {
-    setCarregando(true);
+  /**
+   * Recarrega a planilha. `silencioso` mantém o conteúdo na tela enquanto isso.
+   *
+   * ---------------------------------------------------------------------------
+   * Por que a maioria das recargas é silenciosa
+   * ---------------------------------------------------------------------------
+   * `setCarregando(true)` troca a planilha inteira por um esqueleto cinza. Isso
+   * é certo quando ainda não há nada na tela — abrir a planilha, virar de mês —
+   * e é péssimo em todo o resto: quem digita numa célula e recebe a grade
+   * inteira piscando conclui que perdeu o que escreveu, e quem trabalha com
+   * outra pessoa na mesma planilha via a tela apagar sozinha a cada tecla dela
+   * (o aviso de tempo real chega a cada alteração).
+   *
+   * Silenciosa, a recarga troca os dados por baixo: a grade fica onde está, as
+   * linhas atualizam e ninguém percebe que houve uma requisição — que é
+   * exatamente o que se espera de uma sincronização.
+   */
+  const carregarPlanilha = useCallback(async (modelo: Modelo, data: string, silencioso = false) => {
+    if (!silencioso) setCarregando(true);
 
     try {
       const [cols, pag] = await Promise.all([PlanilhaService.colunas(modelo.id), PlanilhaService.registros(modelo.id, data)]);
@@ -359,9 +482,9 @@ const PlanilhasPage = () => {
 
       setColunas(cols);
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir a planilha."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir a planilha."));
     } finally {
-      setCarregando(false);
+      if (!silencioso) setCarregando(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -374,7 +497,7 @@ const PlanilhasPage = () => {
      aparecer do outro sem ninguém apertar atualizar. Só com planilha aberta —
      sem ela não há o que recarregar. */
   useSincronizacao(["planilhas", "producao"], () => {
-    if (aberta) carregarPlanilha(aberta, dataAtual);
+    if (aberta) carregarPlanilha(aberta, dataAtual, true);
   }, Boolean(aberta));
 
   /** Anda um período inteiro para frente ou para trás. */
@@ -399,7 +522,7 @@ const PlanilhasPage = () => {
       setFormModelo({ nome: "", periodicidade: "DIARIA" });
       carregarModelos();
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar."));
     } finally {
       setSalvando(false);
     }
@@ -423,7 +546,7 @@ const PlanilhasPage = () => {
       setFormColuna({ nome: "", tipo: "TEXTO", opcoes: "", valorPadrao: "" });
       carregarPlanilha(aberta, dataAtual);
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a coluna."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a coluna."));
     } finally {
       setSalvando(false);
     }
@@ -436,7 +559,7 @@ const PlanilhasPage = () => {
       await PlanilhaService.removerColuna(c.id);
       carregarPlanilha(aberta, dataAtual);
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível remover."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível remover."));
     }
   };
 
@@ -451,7 +574,7 @@ const PlanilhasPage = () => {
       await PlanilhaService.criarLote(aberta.id, 10, pagina.de);
       carregarPlanilha(aberta, dataAtual);
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a linha."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a linha."));
     }
   };
 
@@ -477,14 +600,14 @@ const PlanilhasPage = () => {
       /* Datas em ISO (`YYYY-MM-DD`) comparam como string na ordem certa —
          virar `Date` traria fuso para uma conta que não precisa dele. */
       if (limite && String(valor) < String(limite)) {
-        alert.error(
+        avisar(
           "Data inválida",
           `${coluna.nome} não pode ser antes de ${refNome} (${String(limite).split("-").reverse().join("/")}).`,
         );
 
         /* Recarrega para o campo voltar ao valor bom: o editor da célula já
            guardou o rascunho, e sem isso ele ficaria mostrando o recusado. */
-        if (aberta) carregarPlanilha(aberta, dataAtual);
+        if (aberta) carregarPlanilha(aberta, dataAtual, true);
 
         return;
       }
@@ -496,9 +619,13 @@ const PlanilhasPage = () => {
 
     try {
       await PlanilhaService.alterarRegistro(registroId, { valores: { [colunaId]: valor } });
+
+      /* Depois de gravar, e sem esperar: o link é consequência da célula, não
+         condição dela. Se demorar, a digitação não espera por ele. */
+      if (coluna) emitirLinkDoCliente(coluna, valor);
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível salvar."));
-      if (aberta) carregarPlanilha(aberta, dataAtual);
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível salvar."));
+      if (aberta) carregarPlanilha(aberta, dataAtual, true);
     }
   };
 
@@ -508,7 +635,7 @@ const PlanilhasPage = () => {
     try {
       await PlanilhaService.excluirRegistro(id);
     } catch {
-      if (aberta) carregarPlanilha(aberta, dataAtual);
+      if (aberta) carregarPlanilha(aberta, dataAtual, true);
     }
   };
 
@@ -548,7 +675,6 @@ const PlanilhasPage = () => {
    * Carrega só quando o painel abre: é consulta de exceção, não custa nada
    * ficar fora do carregamento da tela.
    */
-  const [linksAberto, setLinksAberto] = useState(false);
   const [historico, setHistorico] = useState<Alteracao[]>([]);
   const [carregandoHistorico, setCarregandoHistorico] = useState(false);
 
@@ -639,7 +765,7 @@ const PlanilhasPage = () => {
 
       await PlanilhaService.renomearPagina(aberta.id, chave, valor);
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível renomear."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível renomear."));
       carregarModelos();
       if (aberta) carregarPlanilha(aberta, dataAtual);
     }
@@ -693,13 +819,125 @@ const PlanilhasPage = () => {
       const nova = lista.find((m) => m.id === novoId);
       if (nova) setAberta(nova);
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível duplicar a planilha."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível duplicar a planilha."));
     } finally {
       setSalvando(false);
     }
   };
 
   const larguraTotal = useMemo(() => colunas.reduce((soma, c) => soma + (c.largura ?? 180), 56), [colunas]);
+
+  /* ------------------------- Planilha ⇄ Backlog ------------------------- */
+
+  /**
+   * As colunas que podem virar raias.
+   *
+   * Só SELEÇÃO: é a única cujo conjunto de valores é FECHADO e conhecido, e
+   * raia de quadro é isso — uma pilha por valor possível. Agrupar por texto
+   * livre produziria uma raia por jeito de escrever a mesma etapa, que é o
+   * problema que a coluna de seleção existe para resolver.
+   */
+  const colunasEtapa = useMemo(() => colunas.filter((c) => c.tipo === "SELECAO"), [colunas]);
+
+  const etapa = useMemo(
+    () => colunasEtapa.find((c) => c.id === colunaEtapaId) ?? colunasEtapa[0] ?? null,
+    [colunasEtapa, colunaEtapaId],
+  );
+
+  /* Ao abrir uma planilha, retoma como ela estava da última vez. A coluna
+     lembrada só vale se ainda existir: removida, cai na primeira. */
+  useEffect(() => {
+    if (!aberta) return;
+
+    setVisao(lembrado(CHAVE_VISAO, aberta.id) === "backlog" ? "backlog" : "planilha");
+    setColunaEtapaId(lembrado(CHAVE_ETAPA, aberta.id) ?? "");
+  }, [aberta]);
+
+  const trocarVisao = (v: Visao) => {
+    setVisao(v);
+    if (aberta) lembrar(CHAVE_VISAO, aberta.id, v);
+  };
+
+  const trocarColunaEtapa = (id: string) => {
+    setColunaEtapaId(id);
+    if (aberta) lembrar(CHAVE_ETAPA, aberta.id, id);
+  };
+
+  /**
+   * Arrastar o cartão é gravar a célula da etapa — o MESMO caminho da lista
+   * suspensa na grade.
+   *
+   * Não há endpoint de "mover" nem tabela de quadro: por isso as duas visões
+   * nunca divergem, e o histórico registra a mudança com o nome da coluna,
+   * como registraria se alguém tivesse escolhido na tabela.
+   */
+  const moverNoQuadro = (registroId: string, valor: string | null) => {
+    if (!etapa) return;
+
+    salvarCelula(registroId, etapa.id, valor);
+  };
+
+  /**
+   * Escrever o nome do cliente numa coluna de Cliente já emite o link dele.
+   *
+   * ---------------------------------------------------------------------------
+   * Por que automático
+   * ---------------------------------------------------------------------------
+   * O link não é uma decisão: quem põe o nome de alguém numa linha de produção
+   * está dizendo que aquele trabalho é daquela pessoa, e é exatamente disso que
+   * o link é feito. O passo manual só existia por causa da tela — havia um
+   * botão, então havia um clique — e o custo dele não era o clique: era o link
+   * que NUNCA foi emitido, porque ninguém lembrou de abrir o painel depois de
+   * preencher a planilha. Cliente sem link é cliente ligando para perguntar
+   * como está o pedido.
+   *
+   * Reemitir para o mesmo nome não duplica: o servidor devolve o link que já
+   * existe com a validade renovada. Então digitar o mesmo cliente em cinco
+   * linhas resulta em um link, não em cinco.
+   *
+   * Falha em silêncio de propósito. A gravação da célula deu certo — que é o
+   * que a pessoa pediu —, e um aviso de erro sobre algo que ela não pediu, no
+   * meio da digitação, seria ruído sobre trabalho que não se perdeu: o link
+   * continua podendo ser emitido pela aba Produções.
+   */
+  const emitirLinkDoCliente = async (coluna: Coluna, valor: unknown) => {
+    if (!aberta || coluna.tipo !== "CLIENTE") return;
+
+    const nome = String(valor ?? "").trim();
+
+    /* Apagar o nome não revoga nada: revogar é cortar o acesso de alguém, e
+       isso é decisão — não efeito colateral de limpar uma célula. */
+    if (!nome) return;
+
+    try {
+      const link = await PlanilhaService.criarLink(aberta.id, { clienteNome: nome, colunaClienteId: coluna.id });
+
+      /* Só avisa quando o link é NOVO. Reescrever o nome de quem já tem
+         devolveria o mesmo link, e um toast a cada célula viraria o barulho
+         que este toast existe para evitar. */
+      if (!linksEmitidos.current.has(link.token)) {
+        linksEmitidos.current.add(link.token);
+        alert.toast("success", `Link de ${nome} criado`, "Está na aba Produções, pronto para copiar.", TOAST);
+      }
+    } catch {
+      /* Ver a nota acima: a célula foi gravada, e é isso que importa aqui. */
+    }
+  };
+
+  /** Nova linha já dentro da raia: uma requisição, no período aberto. */
+  const criarNaRaia = async (valor: string) => {
+    if (!aberta || !pagina || !etapa) return;
+
+    try {
+      await PlanilhaService.criarRegistro(aberta.id, {
+        valores: { [etapa.id]: valor },
+        competencia: pagina.de,
+      });
+      carregarPlanilha(aberta, dataAtual);
+    } catch (err) {
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a linha."));
+    }
+  };
 
   /* ------------------------- Fora do plano ------------------------- */
 
@@ -708,142 +946,188 @@ const PlanilhasPage = () => {
 
   if (!aberta) {
     return (
-      <PageScreen icon={<Table2 className="h-5 w-5" />} title="Planilhas" subtitle="Modelos que a sua operação usa">
+      <PageScreen icon={<Table2 className="h-5 w-5" />} title="Produção" subtitle="As planilhas que a sua operação usa">
         {/*
-         * A barra de cima tem só o que se faz aqui: começar uma planilha.
+         * Uma tabela só, com a mesma anatomia de Clientes, Estoque e Vendas:
+         * cabeçalho com o nome da lista e os botões de criar, barra de
+         * navegação colada nele, fileira de rótulos e as linhas embaixo.
          *
-         * "Usar modelo" vem ANTES de "Nova planilha", e não é ordem
-         * decorativa: montar quinze colunas do zero é meia hora de trabalho, e
-         * quem chega a esta tela quase sempre quer algo que já existe pronto.
-         * O caminho em branco continua ali, um botão ao lado, para quem sabe
-         * exatamente o que quer.
+         * Eram cards em grade. Card é bom para três ou quatro destinos e
+         * péssimo para responder o que se pergunta aqui — "qual delas tem linha
+         * preenchida?", "qual é mensal?" —, porque os números ficavam
+         * espremidos numa legenda de 11px embaixo do nome, em posição diferente
+         * conforme o tamanho de cada nome. Em colunas, a mesma pergunta se
+         * responde correndo o olho por uma coluna só. E o formato passa a ser o
+         * do resto do sistema: quem aprendeu a ler uma tabela aqui não aprende
+         * nada de novo.
          */}
-        <div className="flex shrink-0 items-center justify-between gap-2">
-          <span className="text-[11.5px] text-faint">
-            {modelos.length} {modelos.length === 1 ? "planilha" : "planilhas"}
-          </span>
+        <div className="card glass-sheen flex min-h-[460px] min-w-0 flex-col overflow-hidden rounded-lg sm:min-h-[260px] sm:flex-1">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-fg/[0.06] px-4 py-3.5">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/[0.15]">
+                <Table2 className="h-4 w-4 text-accent-soft" />
+              </div>
+              <div>
+                <h2 className="text-[13px] text-ink">Planilhas</h2>
+                <p className="text-[11px] text-faint">
+                  {modelos.length} {modelos.length === 1 ? "planilha" : "planilhas"}
+                </p>
+              </div>
+            </div>
 
-          {gestor && (
-            <div className="flex items-center gap-2">
-              {catalogo.length > 0 && (
+            {/*
+             * Os botões de criar ficam no ALTO do cartão, como em toda tabela
+             * do sistema.
+             *
+             * "Usar modelo" vem ANTES de "Nova planilha", e não é ordem
+             * decorativa: montar quinze colunas do zero é meia hora de trabalho,
+             * e quem chega a esta tela quase sempre quer algo que já existe
+             * pronto. O caminho em branco continua ali, ao lado, para quem sabe
+             * exatamente o que quer.
+             */}
+            {gestor && (
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end [&>*]:flex-1 sm:[&>*]:flex-none">
+                {catalogo.length > 0 && (
+                  <button
+                    onClick={() => setModelosAberto(true)}
+                    className="focus-ring inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-fg/[0.1] px-3 py-2 text-[12.5px] text-mist transition-colors hover:border-accent/40 hover:text-accent-soft"
+                  >
+                    <LayoutTemplate size={15} /> Usar modelo
+                  </button>
+                )}
+
                 <button
-                  onClick={() => setModelosAberto(true)}
-                  className="focus-ring flex items-center gap-1.5 rounded-xl border border-fg/[0.1] px-3.5 py-2 text-[12.5px] text-mist transition-colors hover:border-accent/40 hover:text-accent-soft"
+                  onClick={() => setNovaAberta(true)}
+                  className="focus-ring inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-br from-accent-soft to-accent px-3 py-2 text-[12.5px] text-white shadow-glow transition-all hover:brightness-110 active:scale-[0.98]"
                 >
-                  <LayoutTemplate size={15} /> Usar modelo
+                  <Plus size={15} /> Nova planilha
                 </button>
-              )}
+              </div>
+            )}
+          </div>
 
-              <button onClick={() => setNovaAberta(true)} className="focus-ring flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-[12.5px] text-white transition-all hover:brightness-110">
-                <Plus size={15} /> Nova planilha
-              </button>
-            </div>
-          )}
-        </div>
+          {(abasSecao || controlesSecao) && <BarraFiltros navegacao={abasSecao}>{controlesSecao}</BarraFiltros>}
 
-        {/*
-         * Cada planilha é um quadrado, não uma linha de lista.
-         *
-         * Uma planilha não é um item de cadastro que se lê em sequência: são
-         * três ou quatro por empresa, cada uma um lugar de trabalho diferente.
-         * Em cards elas viram destinos — o olho pega qual é qual pelo formato e
-         * pela posição, e a mão acerta um alvo grande em vez de uma faixa de
-         * 44px. Em lista, "Camisaria" e "Estamparia" pareciam duas linhas do
-         * mesmo relatório.
-         */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {carregando ? (
-            <SkeletonListaPainel linhas={4} />
-          ) : modelos.length === 0 ? (
-            <div className="card glass-sheen flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-              <span className="grid h-14 w-14 place-items-center rounded-2xl border border-fg/[0.08] bg-fg/[0.03] text-faint">
-                <Table2 size={22} />
-              </span>
-              <p className="text-[14px] text-ink">Nenhuma planilha ainda</p>
-              <p className="max-w-sm text-[12.5px] leading-relaxed text-faint">
-                Comece por um modelo pronto — produção, estamparia, entregas — ou monte a sua do zero, escolhendo as colunas e o recorte de período.
-              </p>
+          <div className="flex min-h-0 flex-1 flex-col sm:overflow-x-auto">
+            <div
+              className="flex min-h-0 flex-1 flex-col sm:[min-width:var(--tabela-min)]"
+              style={{ "--tabela-min": `${LISTA_MIN_WIDTH}px` } as CSSProperties}
+            >
+              <ListaCabecalho cols={LISTA_COLS}>
+                {LISTA_ROTULOS.slice(0, 5).map((r, i) => (
+                  <p key={r} className={i >= 2 ? "text-right" : undefined}>
+                    {r}
+                  </p>
+                ))}
+                <p className="text-right">Ações</p>
+              </ListaCabecalho>
 
-              {gestor && catalogo.length > 0 && (
-                <button onClick={() => setModelosAberto(true)} className="mt-1 flex items-center gap-1.5 rounded-xl bg-accent px-5 py-2 text-[13px] text-white transition-all hover:brightness-110">
-                  <LayoutTemplate size={15} /> Ver modelos prontos
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {modelos.map((m) => {
-                const temDados = m.total_preenchidas > 0;
+              {/* São poucas planilhas por empresa — três no Standard, meia dúzia
+                  acima disso —, então aqui o corpo ROLA em vez de paginar: uma
+                  barra de paginação para seis linhas é rodapé para não dizer
+                  nada. */}
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {carregando ? (
+                  <SkeletonListaPainel linhas={4} />
+                ) : modelos.length === 0 ? (
+                  <div className="flex h-full items-center justify-center py-10">
+                    <div className="flex max-w-xs flex-col items-center gap-3 text-center text-faint">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-fg/[0.06] bg-fg/[0.03]">
+                        <Table2 className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-[13px] text-mist">Nenhuma planilha ainda</p>
+                        <p className="mt-0.5 text-[11px] leading-relaxed">
+                          Comece por um modelo pronto — produção, estamparia, entregas — ou monte a sua do zero, escolhendo as colunas e o recorte de período.
+                        </p>
+                      </div>
 
-                return (
-                  /*
-                   * O card é um `div`, não um `button`.
-                   *
-                   * A lixeira precisa ser um botão de verdade — e botão dentro
-                   * de botão é HTML inválido: o clique em "excluir" abriria a
-                   * planilha junto. A área de abrir virou um botão próprio,
-                   * ocupando o corpo do card, e a lixeira fica fora dele.
-                   */
-                  <div key={m.id} className="card glass-sheen group relative flex flex-col gap-3 p-4 transition-all hover:border-accent/30">
-                    <button
-                      onClick={() => {
-                        setAberta(m);
-                        setDataAtual(iso(new Date()));
-                      }}
-                      className="focus-ring flex flex-col items-start gap-3 rounded-lg text-left"
-                    >
-                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent/[0.14] text-accent-soft">
-                        <Table2 size={18} />
-                      </span>
-
-                      <span className="w-full min-w-0">
-                        <span className="block truncate text-[14px] text-ink">{m.nome}</span>
-                        <span className="mt-0.5 block truncate text-[11.5px] text-faint">
-                          {m.total_colunas} {m.total_colunas === 1 ? "coluna" : "colunas"} · {m.total_registros} {m.total_registros === 1 ? "linha" : "linhas"}
-                          {temDados ? ` · ${m.total_preenchidas} preenchida${m.total_preenchidas === 1 ? "" : "s"}` : ""}
-                        </span>
-                      </span>
-
-                      <span className="flex items-center gap-1 text-[11.5px] text-muted transition-colors group-hover:text-accent-soft">
-                        Abrir <ChevronRight size={13} />
-                      </span>
-                    </button>
-
-                    {/* Canto de cima: o período à esquerda da lixeira. */}
-                    <div className="absolute right-3 top-3 flex items-center gap-1.5">
-                      <span className="shrink-0 rounded-full border border-fg/[0.08] bg-fg/[0.03] px-2 py-0.5 text-[10.5px] text-mist">
-                        {PERIODICIDADES.find((p) => p.id === m.periodicidade)?.label}
-                      </span>
-
-                      {gestor && (
-                        /*
-                         * Desabilitada quando há linha preenchida, não escondida.
-                         *
-                         * Some, e a pessoa procura o botão achando que o sistema
-                         * não exclui. Apagada com o motivo no `title`, ela
-                         * aprende a regra de uma vez: esvazie a planilha e a
-                         * lixeira acende.
-                         */
+                      {gestor && catalogo.length > 0 && (
                         <button
-                          onClick={() => !temDados && setExcluindo(m)}
-                          disabled={temDados}
-                          aria-label={temDados ? `${m.nome} tem linhas preenchidas e não pode ser excluída` : `Excluir ${m.nome}`}
-                          title={
-                            temDados
-                              ? `Não dá para excluir: ${m.total_preenchidas} ${m.total_preenchidas === 1 ? "linha preenchida" : "linhas preenchidas"}. Apague as linhas primeiro.`
-                              : "Excluir planilha"
-                          }
-                          className="focus-ring grid h-7 w-7 shrink-0 place-items-center rounded-lg text-faint transition-colors hover:bg-danger/15 hover:text-danger disabled:cursor-not-allowed disabled:text-faint/40 disabled:hover:bg-transparent disabled:hover:text-faint/40"
+                          onClick={() => setModelosAberto(true)}
+                          className="focus-ring flex cursor-pointer items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-[12.5px] text-white transition-all hover:brightness-110"
                         >
-                          <Trash2 size={13} />
+                          <LayoutTemplate size={15} /> Ver modelos prontos
                         </button>
                       )}
                     </div>
                   </div>
-                );
-              })}
+                ) : (
+                  modelos.map((m) => {
+                    const temDados = m.total_preenchidas > 0;
+
+                    return (
+                      <ListaLinha
+                        key={m.id}
+                        cols={LISTA_COLS}
+                        altura={ROW_HEIGHT}
+                        rotulos={LISTA_ROTULOS}
+                        onClick={() => {
+                          setAberta(m);
+                          setDataAtual(iso(new Date()));
+                        }}
+                        ariaLabel={`Abrir a planilha ${m.nome}`}
+                        acoes={
+                          gestor ? (
+                            /*
+                             * Desabilitada quando há linha preenchida, não
+                             * escondida.
+                             *
+                             * Some, e a pessoa procura o botão achando que o
+                             * sistema não exclui. Apagada com o motivo no
+                             * rótulo, ela aprende a regra de uma vez: esvazie a
+                             * planilha e a lixeira acende.
+                             */
+                            <ListaAcao
+                              icon={<Trash2 size={14} />}
+                              label={
+                                temDados
+                                  ? `Não dá para excluir: ${m.total_preenchidas} ${m.total_preenchidas === 1 ? "linha preenchida" : "linhas preenchidas"}. Apague as linhas primeiro.`
+                                  : "Excluir planilha"
+                              }
+                              onClick={() => !temDados && setExcluindo(m)}
+                            />
+                          ) : undefined
+                        }
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/[0.14] text-accent-soft">
+                            <Table2 size={17} />
+                          </span>
+
+                          <div className="flex min-w-0 flex-col">
+                            <span className="truncate text-[13px] text-ink">{m.nome}</span>
+                            <span className="truncate text-[11px] text-faint">{m.descricao || "Sem descrição"}</span>
+                          </div>
+                        </div>
+
+                        <span className="flex min-w-0 items-center text-[12px] text-mist">
+                          <span className="truncate rounded-full border border-fg/[0.08] bg-fg/[0.03] px-2 py-0.5 text-[10.5px]">
+                            {PERIODICIDADES.find((p) => p.id === m.periodicidade)?.label}
+                          </span>
+                        </span>
+
+                        <span className="flex items-center justify-end text-[12px] tabular-nums text-mist">{m.total_colunas}</span>
+
+                        <span className="flex items-center justify-end text-[12px] tabular-nums text-mist">{m.total_registros}</span>
+
+                        {/* Preenchidas é o número que decide se a planilha pode
+                            ser excluída — e o único que diz se ela está em uso
+                            de verdade. Zero é notícia, não é célula vazia. */}
+                        <span className="flex items-center justify-end text-[12px] tabular-nums">
+                          {temDados ? <span className="text-mist">{m.total_preenchidas}</span> : <span className="text-faint">vazia</span>}
+                        </span>
+
+                        {/* Célula vazia: reserva a largura das ações, que são
+                            desenhadas sobrepostas pela `ListaLinha`. */}
+                        <span aria-hidden />
+                      </ListaLinha>
+                    );
+                  })
+                )}
+              </div>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Confirmação da exclusão. Só chega aqui planilha sem linha
@@ -980,27 +1264,21 @@ const PlanilhasPage = () => {
         </button>
       </div>
 
-      <button
-        onClick={() => abrirHistorico()}
-        title="Quem mudou o quê nesta planilha"
-        aria-label="Histórico"
-        className="focus-ring grid h-8 w-8 place-items-center rounded-xl border border-fg/[0.1] text-mist transition-colors hover:bg-fg/[0.05] hover:text-ink"
-      >
-        <History size={14} />
-      </button>
-
-      {/* Emitir link é criar acesso para fora da empresa: fica com o gestor. */}
-      {gestor && (
-        <button
-          onClick={() => setLinksAberto(true)}
-          title="Link de acompanhamento para o cliente"
-          className="focus-ring flex h-8 items-center gap-1.5 rounded-xl border border-fg/[0.1] px-2.5 text-[12px] text-mist transition-colors hover:bg-fg/[0.05] hover:text-ink"
-        >
-          <Link2 size={14} />
-          <span className="hidden md:inline">Cliente</span>
-        </button>
-      )}
-
+      {/*
+       * "Histórico" e "Cliente" saíram daqui.
+       *
+       * O HISTÓRICO virou pergunta de contexto: ele quase nunca é "o que mudou
+       * nesta planilha?" e quase sempre "quem mexeu NESTA célula?". A resposta
+       * continua a um clique direito na célula (ver `MenuContexto`), que é
+       * onde a pergunta nasce — e o botão do cabeçalho custava a largura de um
+       * atalho para abrir uma lista que ninguém lia de cabo a rabo.
+       *
+       * O LINK DO CLIENTE deixou de ser um botão porque deixou de ser um ato:
+       * escrever o nome numa coluna de Cliente já emite o link (ver
+       * `salvarCelula`). Pedir um clique a mais para a consequência óbvia do
+       * que a pessoa acabou de digitar era trabalho sem decisão. Os links
+       * emitidos ficam na aba Produções, onde se copia, se abre e se revoga.
+       */}
       <button
         onClick={() => setAberta(null)}
         title="Ver todas as planilhas"
@@ -1028,7 +1306,89 @@ const PlanilhasPage = () => {
       )}
 
       {/* A planilha ocupa todo o espaço restante do outlet. */}
-      <div className="card glass-sheen min-h-0 flex-1 overflow-auto">
+      <div className="card glass-sheen flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* A barra fica FORA do quadro que rola: os controles cabem em qualquer
+            largura, e arrastá-los junto com as colunas faria as abas saírem da
+            tela quando alguém rolasse a planilha para o lado. */}
+        <BarraFiltros navegacao={abasSecao} pagina={abasSecao ? undefined : { label: aberta.nome, icon: <Table2 className="h-3.5 w-3.5" /> }}>
+          {controlesSecao}
+
+          {/*
+           * Qual coluna faz as raias.
+           *
+           * Só no quadro, e só com mais de uma coluna de seleção: na grade ele
+           * não decide nada, e com uma coluna só não há o que escolher — o
+           * seletor ocuparia largura para não perguntar nada.
+           */}
+          {visao === "backlog" && colunasEtapa.length > 1 && (
+            <select
+              value={etapa?.id ?? ""}
+              onChange={(e) => trocarColunaEtapa(e.target.value)}
+              title="Qual coluna vira as raias do quadro"
+              aria-label="Coluna que agrupa o quadro"
+              className="focus-ring h-[38px] shrink-0 rounded-xl border border-fg/[0.1] bg-transparent px-3 text-[12.5px] text-ink outline-none"
+            >
+              {colunasEtapa.map((c) => (
+                <option key={c.id} value={c.id}>
+                  Agrupar por {c.nome}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/*
+           * As colunas se mexem nas DUAS visões.
+           *
+           * Na grade dá para clicar no rótulo de cada uma, mas no quadro não
+           * existe rótulo para clicar — e sem esta porta, mudar uma alternativa
+           * de etapa exigiria voltar para a tabela. Este é o mesmo painel do
+           * "+" do cabeçalho da grade: criar, renomear, remover, escolher
+           * alternativas e cores, e dizer quem edita o quê.
+           */}
+          {ehRoot && (
+            <button
+              type="button"
+              onClick={() => setConfigAberta(true)}
+              title="Criar, renomear e configurar as colunas desta planilha"
+              className="focus-ring flex h-[38px] shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-fg/[0.1] px-3 text-[12px] text-mist transition-colors hover:text-ink"
+            >
+              <Columns3 size={14} />
+              <span className="hidden sm:inline">Colunas</span>
+            </button>
+          )}
+
+          {/*
+           * Planilha ⇄ Backlog: a MESMA produção, em duas leituras.
+           *
+           * Não é um filtro nem um destino — é a forma de olhar o que já está
+           * aberto. Por isso mora aqui, na ponta dos controles, e não nas abas
+           * da esquerda, que trocam de tela.
+           */}
+          <div className="glass-subtle flex h-[38px] shrink-0 items-center gap-1 rounded-xl p-1">
+            {(
+              [
+                { id: "planilha", label: "Planilha", icone: <Table2 size={14} /> },
+                { id: "backlog", label: "Backlog", icone: <KanbanSquare size={14} /> },
+              ] as const
+            ).map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => trocarVisao(v.id)}
+                aria-pressed={visao === v.id}
+                title={v.id === "planilha" ? "Ver como planilha" : "Ver como quadro de etapas"}
+                className={`focus-ring flex h-full cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[12px] transition-colors ${
+                  visao === v.id ? "bg-accent text-white shadow-glow" : "text-mist hover:text-ink"
+                }`}
+              >
+                {v.icone}
+                <span className="hidden sm:inline">{v.label}</span>
+              </button>
+            ))}
+          </div>
+        </BarraFiltros>
+
+        <div className="min-h-0 flex-1 overflow-auto">
         {colunas.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
             <p className="text-[14px] text-ink">Esta planilha ainda não tem colunas</p>
@@ -1043,6 +1403,49 @@ const PlanilhasPage = () => {
               <p className="mt-1 text-[12px] text-faint">Peça ao responsável pela conta para configurar as colunas.</p>
             )}
           </div>
+        ) : visao === "backlog" ? (
+          /*
+           * O quadro é a MESMA página que a tabela mostra — os mesmos
+           * `pagina.registros`, já carregados, sem uma segunda busca e sem uma
+           * segunda tabela no banco. Trocar de visão não move nem copia nada.
+           */
+          !etapa ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+              <span className="grid h-14 w-14 place-items-center rounded-2xl border border-fg/[0.08] bg-fg/[0.03] text-faint">
+                <KanbanSquare size={22} />
+              </span>
+              <p className="text-[14px] text-ink">Esta planilha ainda não tem coluna de etapa</p>
+              <p className="max-w-sm text-[12.5px] leading-relaxed text-faint">
+                O quadro empilha as linhas por uma coluna do tipo <strong className="text-mist">Seleção</strong> — as
+                alternativas dela viram as raias. Crie uma (Etapa, Status, Situação) e as mesmas linhas desta planilha
+                aparecem aqui como cartões.
+              </p>
+
+              {ehRoot ? (
+                <button
+                  onClick={() => setConfigAberta(true)}
+                  className="mt-1 flex items-center gap-1.5 rounded-xl bg-accent px-5 py-2 text-[13px] text-white transition-all hover:brightness-110"
+                >
+                  <Columns3 size={15} /> Criar coluna de etapa
+                </button>
+              ) : (
+                <p className="mt-1 text-[12px] text-faint">Peça ao responsável pela conta para criar a coluna.</p>
+              )}
+            </div>
+          ) : (
+            <QuadroPlanilha
+              colunas={colunas}
+              registros={pagina?.registros ?? []}
+              etapa={etapa}
+              colunaPrazoId={aberta.coluna_prazo_fk}
+              /* Mesma regra da célula: coluna restrita não se edita arrastando
+                 — seria um jeito de contornar a permissão pelo mouse. */
+              podeMover={podeEditar(etapa)}
+              onMover={moverNoQuadro}
+              onCriar={podeEditar(etapa) ? criarNaRaia : undefined}
+              onExcluir={excluirLinha}
+            />
+          )
         ) : (
           <table className="border-separate border-spacing-0 text-left" style={{ minWidth: larguraTotal }}>
             <thead className="sticky top-0 z-20">
@@ -1173,6 +1576,7 @@ const PlanilhasPage = () => {
             </tbody>
           </table>
         )}
+        </div>
       </div>
 
       {/*
@@ -1361,16 +1765,6 @@ const PlanilhasPage = () => {
           ]}
         />
       )}
-
-      <Modal
-        open={linksAberto}
-        onClose={() => setLinksAberto(false)}
-        title="Acompanhamento do cliente"
-        subtitle={aberta.nome}
-        size="lg"
-      >
-        <LinksCliente planilhaId={aberta.id} colunas={colunas} registros={pagina?.registros ?? []} />
-      </Modal>
 
       {/*
        * Configurações da planilha — só o root.

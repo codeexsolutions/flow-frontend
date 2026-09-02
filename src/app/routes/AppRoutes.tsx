@@ -30,7 +30,8 @@ import FuncionariosPage from "@/features/funcionarios/pages/FuncionariosPage";
 import FuncionarioDetalhe from "@/features/funcionarios/pages/FuncionarioDetailPage";
 import OrcamentosPage from "@/features/orcamentos/pages/OrcamentosPage";
 import AjudaPage from "@/features/ajuda/pages/AjudaPage";
-import PlanilhasPage from "@/features/planilhas/pages/PlanilhasPage";
+import ProducoesPage from "@/features/producao/pages/ProducoesPage";
+import KanbanPage from "@/features/producao/pages/KanbanPage";
 import AcompanharProducaoPage from "@/features/acompanhamento/pages/AcompanharProducaoPage";
 import BaterPontoPage from "@/features/ponto/pages/BaterPontoPage";
 import AbrirPontoPage from "@/features/ponto/pages/AbrirPontoPage";
@@ -299,16 +300,47 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
               </RecursoDoPlano>
             }
           />
-          {/* O quadro de etapas volta ao ar como parte do CRM. No menu ele se
-              chama "Acompanhamento": o que anda de coluna em coluna ali é o
-              cliente, não o produto. A rota antiga fica de pé para não quebrar
-              link salvo. */}
-          {/* O quadro de etapas saiu do menu: a produção inteira é
-              controlada pela planilha. A rota redireciona em vez de sumir
-              para não quebrar link salvo — e o código da tela fica de pé,
-              caso a visão em quadro volte como opção da planilha. */}
-          <Route path="producao" element={<Navigate to="/planilhas" replace />} />
-          <Route path="planilhas" element={<PlanilhasPage />} />
+          {/*
+            Produção é uma SEÇÃO, e não uma tela: duas abas sob a mesma casca.
+
+              • `/producao`         — a lista de clientes e o link de
+                                      acompanhamento de cada um;
+              • `/producao/kanban`  — o trabalho, em planilha ou em quadro.
+
+            As planilhas moraram em `/planilhas` como destino próprio do menu.
+            Elas não sumiram: viraram uma das duas leituras do Kanban, porque
+            planilha e quadro são a mesma fila vista de dois jeitos — e um
+            destino de menu para cada leitura fazia a pessoa escolher a VISÃO
+            antes de escolher o ASSUNTO. A rota antiga redireciona para não
+            quebrar link salvo, atalho do celular nem aba deixada aberta.
+
+            A trava é `producao`, e não `planilhas`: a seção inteira entra a
+            partir do Professional. Quem tem plano abaixo cai na oferta do
+            `RecursoDoPlano` em vez de numa tela vazia.
+          */}
+          <Route
+            path="producao"
+            element={
+              <RecursoDoPlano
+                recurso="producao"
+                promessa="Acompanhe cada pedido por etapa, monte a produção em planilha ou quadro e mande a cada cliente o link do pedido dele."
+              >
+                <ProducoesPage />
+              </RecursoDoPlano>
+            }
+          />
+          <Route
+            path="producao/kanban"
+            element={
+              <RecursoDoPlano
+                recurso="producao"
+                promessa="Acompanhe cada pedido por etapa, monte a produção em planilha ou quadro e mande a cada cliente o link do pedido dele."
+              >
+                <KanbanPage />
+              </RecursoDoPlano>
+            }
+          />
+          <Route path="planilhas" element={<Navigate to="/producao/kanban" replace />} />
           <Route path="ajuda" element={<AjudaPage />} />
 
           <Route path="configuracoes" element={<ConfiguracoesPage />}>

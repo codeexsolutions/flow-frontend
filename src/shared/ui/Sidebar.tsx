@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
-import { Package, Users, DollarSign, Settings, LogOut, ShoppingCart, BarChart3, LayoutDashboard, Truck, UserCog, Wallet, LifeBuoy, Lock, MessageCircle, Table2 } from "lucide-react";
+import { Package, Users, DollarSign, Settings, LogOut, ShoppingCart, BarChart3, LayoutDashboard, Truck, UserCog, Wallet, LifeBuoy, Lock, MessageCircle, Factory } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import useAuth from "@/features/auth/store/auth.store";
@@ -60,7 +60,7 @@ import BotaoInstalar from "@/shared/pwa/BotaoInstalar";
 /* -------------------------------------------------------------------------- */
 
 /**
- * Os três atalhos do alto.
+ * Os atalhos do alto.
  *
  * `rota` é o que `navigate` recebe — `""` é a raiz, e é assim que o `isActive`
  * distingue "/" de "qualquer coisa que começa com /".
@@ -70,10 +70,19 @@ const ATALHOS: { rota: string; label: string; icone: typeof LayoutDashboard; rec
   /* "PDV" fica: não é jargão de software, é o nome que o lojista já usa, e é
      como a tela se chama no tour e na barra do celular. */
   { rota: "pdv", label: "PDV", icone: ShoppingCart },
-  /* Planilha é ferramenta do dia, não de administração: quem acompanha
-     produção a abre na mesma frequência com que abre o PDV. O cadeado vem do
-     plano — entra a partir do Standard, com teto de quantidade. */
-  { rota: "planilhas", label: "Planilhas", icone: Table2, recurso: "planilhas" },
+  /*
+   * Planilhas saiu daqui, e não foi por espaço.
+   *
+   * Ela era um destino de menu ao lado de Início e PDV — mas planilha não é
+   * um ASSUNTO, é um jeito de olhar a produção. Ao lado dela existia o quadro
+   * de etapas, com os mesmos pedidos e as mesmas pessoas, e ter os dois no
+   * menu obrigava a escolher a VISÃO antes de escolher o TRABALHO. Agora os
+   * dois são as duas leituras de Produção › Kanban, e o menu tem um destino
+   * onde tinha dois conceitos.
+   *
+   * A faixa fica com dois atalhos em vez de três, e a grade acompanha: dois
+   * botões espremidos em três colunas deixariam um vão morto à direita.
+   */
 ];
 
 const Sidebar = () => {
@@ -346,7 +355,7 @@ const Sidebar = () => {
          * o que se enxerga de relance, sem ler.
          */}
         <div className="relative border-b border-fg/[0.07] p-2.5">
-          <div className="grid grid-cols-3 gap-1">
+          <div className="grid grid-cols-2 gap-1">
             {ATALHOS.map(({ rota, label, icone: Icone, recurso }) => {
               const on = isActive(rota);
               const travado = Boolean(recurso && !temRecurso(recurso));
@@ -433,6 +442,21 @@ const Sidebar = () => {
           {item("vendas", <DollarSign size={16} />, gestor ? "Vendas" : "Minhas vendas")}
           {gestor && item("financeiro", <Wallet size={16} />, "Financeiro", false, !temRecurso("financeiro"))}
           {item("relatorios", <BarChart3 size={16} />, "Relatórios", false, !temRecurso("relatorios"))}
+          {/*
+           * Produção reúne o que era Planilhas mais o quadro de etapas.
+           *
+           * É UM item, e não uma gaveta com as duas telas dentro: a navegação
+           * entre Produções e Kanban mora na barra da própria tabela, junto do
+           * conteúdo que ela troca (ver `AbasProducao`). Repeti-la aqui daria
+           * dois lugares para o mesmo gesto, e o menu voltaria a ter gaveta.
+           *
+           * Fica com o cadeado abaixo do Professional porque é lá que o
+           * módulo entra — e o cadeado, não a ausência, é de propósito: quem
+           * não vê o item nunca descobre que o upgrade destrava um controle
+           * de produção, e essa é justamente a razão de subir de plano nessa
+           * faixa.
+           */}
+          {item("producao", <Factory size={16} />, "Produção", false, !temRecurso("producao"))}
           {/* Equipe só existe em plano que comporta mais de um usuário: mostrar
               para quem tem uma vaga só seria oferecer porta que não abre. */}
           {gestor && planoTemEquipe(equipe) && item("funcionarios", <UserCog size={16} />, "Funcionários")}
