@@ -223,7 +223,7 @@ const LinksCliente = ({ planilhaId, colunas, registros }: Props) => {
   if (colunasCliente.length === 0) {
     return (
       <p className="py-10 text-center text-[13px] text-faint">
-        Esta planilha não tem coluna de Cliente. Crie uma em <strong className="text-mist">Colunas</strong> para poder
+        Esta produção não tem coluna de Cliente. Crie uma em <strong className="text-mist">Colunas</strong> para poder
         enviar o acompanhamento a cada cliente.
       </p>
     );
@@ -331,7 +331,7 @@ const LinksCliente = ({ planilhaId, colunas, registros }: Props) => {
             por que a página do cliente abriu vazia. */}
         {cliente.trim() && !naPlanilha.has(cliente.trim()) && (
           <p className="text-[11.5px] text-amber-500">
-            Nenhuma linha desta página está com esse nome — confira se está escrito igual ao da planilha.
+            Nenhuma linha desta página está com esse nome — confira se está escrito igual ao da produção.
           </p>
         )}
       </div>

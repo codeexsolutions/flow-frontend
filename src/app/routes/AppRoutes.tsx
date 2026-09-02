@@ -323,7 +323,7 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
             element={
               <RecursoDoPlano
                 recurso="producao"
-                promessa="Acompanhe cada pedido por etapa, monte a produção em planilha ou quadro e mande a cada cliente o link do pedido dele."
+                promessa="Acompanhe cada pedido por etapa, monte a produção em tabela ou quadro e mande a cada cliente o link do pedido dele."
               >
                 <ProducoesPage />
               </RecursoDoPlano>
@@ -334,7 +334,7 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
             element={
               <RecursoDoPlano
                 recurso="producao"
-                promessa="Acompanhe cada pedido por etapa, monte a produção em planilha ou quadro e mande a cada cliente o link do pedido dele."
+                promessa="Acompanhe cada pedido por etapa, monte a produção em tabela ou quadro e mande a cada cliente o link do pedido dele."
               >
                 <KanbanPage />
               </RecursoDoPlano>

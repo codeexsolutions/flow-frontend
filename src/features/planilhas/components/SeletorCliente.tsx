@@ -181,7 +181,7 @@ const SeletorCliente = ({ valor, onChange, opcoes, naPlanilha, onConfirmar, plac
                         quem não está na planilha gera página vazia. */}
                     {naPlanilha.has(nome) && (
                       <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-                        na planilha
+                        na produção
                       </span>
                     )}
 

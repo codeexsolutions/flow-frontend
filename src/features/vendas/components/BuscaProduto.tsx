@@ -46,6 +46,20 @@ type Props = {
    * busca tem para onde cadastrar.
    */
   onCadastrar?: (nome: string) => void;
+  /**
+   * Lança o que foi digitado como item LIVRE, sem passar pelo cadastro.
+   *
+   * Existe para o orçamento, e só para ele. Orçar é dizer um preço por algo
+   * que muitas vezes ainda não é produto — "banner 2x1 em lona", "arte + 200
+   * cartões" —, e exigir a ficha completa antes de conseguir escrever a linha
+   * é pedir que se cadastre no estoque uma coisa que talvez nem seja vendida:
+   * o cliente pode dizer não, e o catálogo fica com o resto.
+   *
+   * O item nasce sem `produtoId`. Se a proposta virar venda, o produto é
+   * criado ali — quando existe motivo para ele existir. Ver `materializarAvulsos`
+   * na nota.
+   */
+  onItemAvulso?: (nome: string) => void;
 };
 
 /**
@@ -61,7 +75,7 @@ const ESPERA_MS = 180;
 /** Item sem saldo não pode entrar na nota — a menos que o produto libere. */
 const bloqueado = (p: ProductType) => nivelEstoque(p) === "esgotado" && !p.permiteVendaSemEstoque;
 
-const BuscaProduto = ({ produtos, carregando = false, onAdicionar, onCadastrar }: Props) => {
+const BuscaProduto = ({ produtos, carregando = false, onAdicionar, onCadastrar, onItemAvulso }: Props) => {
   const [busca, setBusca] = useState("");
   const [procurando, setProcurando] = useState(false);
   /* Qual sugestão está sob o cursor do teclado. */
@@ -184,7 +198,17 @@ const BuscaProduto = ({ produtos, carregando = false, onAdicionar, onCadastrar }
       return;
     }
 
-    if (sugestoes.length === 0) return;
+    /* Enter sem nenhuma sugestão lança o item livre: no orçamento é o caminho
+       principal, não a exceção. Digita, Enter, está na proposta. */
+    if (sugestoes.length === 0) {
+      if (e.key === "Enter" && onItemAvulso && termo) {
+        e.preventDefault();
+        onItemAvulso(busca.trim());
+        limpar();
+      }
+
+      return;
+    }
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -227,13 +251,14 @@ const BuscaProduto = ({ produtos, carregando = false, onAdicionar, onCadastrar }
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           onKeyDown={aoTeclar}
-          placeholder="Digite o produto, SKU ou bipe o código…"
+          placeholder={onItemAvulso ? "Digite o item, o produto ou bipe o código…" : "Digite o produto, SKU ou bipe o código…"}
           aria-label="Buscar produto para adicionar"
           className="w-full flex-1 bg-transparent py-2.5 text-[13px] text-ink outline-none placeholder:text-faint"
         />
 
-        {/* A dica de teclado só aparece quando há o que escolher. */}
-        {mostrarLista && (
+        {/* A dica de teclado só aparece quando há o que escolher — ou, no
+            orçamento, quando o Enter já resolve sozinho. */}
+        {(mostrarLista || (semResultado && onItemAvulso)) && (
           <span className="hidden shrink-0 items-center gap-1 text-[10.5px] text-faint sm:flex">
             <CornerDownLeft size={11} /> adiciona
           </span>
@@ -290,19 +315,61 @@ const BuscaProduto = ({ produtos, carregando = false, onAdicionar, onCadastrar }
 
       {semResultado && (
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 px-3 text-[12px] text-faint">
-          <span>Nenhum produto encontrado.</span>
-          {onCadastrar && (
-            <button
-              type="button"
-              onClick={() => {
-                onCadastrar(busca.trim());
-                setBusca("");
-              }}
-              className="focus-ring inline-flex items-center gap-1 rounded-md text-accent-soft underline-offset-2 hover:underline"
-            >
-              <PackagePlus size={13} />
-              Cadastrar “{busca.trim()}”
-            </button>
+          {/*
+           * A ordem inverte quando o item livre existe.
+           *
+           * "Não está no estoque" deixa de ser um beco: o primeiro caminho
+           * oferecido passa a ser escrever a linha assim mesmo, que é o que se
+           * quer em nove de cada dez orçamentos. Cadastrar continua ali, de
+           * propósito em segundo plano — é a decisão maior das duas.
+           */}
+          {onItemAvulso ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  onItemAvulso(busca.trim());
+                  limpar();
+                }}
+                className="focus-ring inline-flex items-center gap-1 rounded-md text-accent-soft underline-offset-2 hover:underline"
+              >
+                <Plus size={13} />
+                Lançar “{busca.trim()}” como item avulso
+              </button>
+
+              <span>— sem cadastrar no estoque.</span>
+
+              {onCadastrar && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onCadastrar(busca.trim());
+                    setBusca("");
+                  }}
+                  className="focus-ring inline-flex items-center gap-1 rounded-md underline-offset-2 hover:text-ink hover:underline"
+                >
+                  <PackagePlus size={13} />
+                  Cadastrar
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <span>Nenhum produto encontrado.</span>
+              {onCadastrar && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onCadastrar(busca.trim());
+                    setBusca("");
+                  }}
+                  className="focus-ring inline-flex items-center gap-1 rounded-md text-accent-soft underline-offset-2 hover:underline"
+                >
+                  <PackagePlus size={13} />
+                  Cadastrar “{busca.trim()}”
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

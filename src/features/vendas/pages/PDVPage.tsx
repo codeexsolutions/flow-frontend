@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LegacyRef, ReactNode } from "react";
-import { ShoppingCart, Plus, Receipt, UserCheck, DollarSign, Wallet, AlertCircle, Hash, TrendingUp, ChevronRight, Search, UserPlus, PackagePlus, FileText, Check, X, Trash2, Loader2, Pencil, CalendarDays } from "lucide-react";
+import { ShoppingCart, Plus, Receipt, UserCheck, DollarSign, Wallet, AlertCircle, Hash, TrendingUp, ChevronRight, Search, UserPlus, PackagePlus, FileText, Check, X, Trash2, Loader2, CalendarDays } from "lucide-react";
 
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -202,6 +202,10 @@ const PontoDeVenda = () => {
 
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
 
+  /* Proposta que a tela de Orçamentos mandou faturar — ver o efeito que lê
+     `location.state`. */
+  const [faturarId, setFaturarId] = useState<string | null>(null);
+
   /* Ação em andamento numa linha — trava só aquela, não a tabela inteira. */
   const [ocupado, setOcupado] = useState<string | null>(null);
 
@@ -322,15 +326,43 @@ const PontoDeVenda = () => {
    * seguida, senão um F5 (ou o voltar do navegador) reabriria o modal sozinho.
    */
   useEffect(() => {
-    const abrir = (location.state as { abrir?: "venda" | "orcamento" } | null)?.abrir;
+    const estado = location.state as { abrir?: "venda" | "orcamento"; faturar?: string } | null;
 
-    if (!abrir) return;
+    if (!estado?.abrir && !estado?.faturar) return;
 
-    if (abrir === "venda") setNovaVendaOpen(true);
-    else setOrcamentoOpen(true);
+    if (estado.abrir === "venda") setNovaVendaOpen(true);
+    else if (estado.abrir === "orcamento") setOrcamentoOpen(true);
+
+    /*
+     * `faturar` vem da tela de Orçamentos, que aprova mas não tem nota.
+     *
+     * Ela manda o id e o balcão faz o resto — não dá para aprovar de lá e
+     * abrir a venda aqui em dois lugares diferentes sem que as duas telas
+     * discordem uma da outra na primeira mudança de regra. O id fica guardado
+     * porque a lista de propostas pode ainda estar carregando: o efeito abaixo
+     * dispara quando ela chegar.
+     */
+    if (estado.faturar) {
+      setAba("orcamentos");
+      setFaturarId(estado.faturar);
+    }
 
     navigate(location.pathname, { replace: true, state: null });
   }, [location, navigate]);
+
+  /* A proposta que chegou pedindo para ser faturada, assim que ela existir na
+     lista. Zerado ANTES de abrir a nota: sem isso, uma recarga da lista
+     reabriria o mesmo modal. */
+  useEffect(() => {
+    if (!faturarId) return;
+
+    const proposta = orcamentos.find((o) => o.id === faturarId);
+
+    if (!proposta) return;
+
+    setFaturarId(null);
+    void aprovarOrcamento(proposta);
+  }, [faturarId, orcamentos]);
 
   const vendasVisiveis = useMemo(
     () =>
@@ -431,20 +463,6 @@ const PontoDeVenda = () => {
       },
     }));
 
-  const aprovarOrcamento = async (o: Orcamento) => {
-    setOcupado(o.id);
-
-    try {
-      await OrcamentoService.alterarStatus(o.id, "APROVADO");
-      setOrcamentos((prev) => prev.map((x) => (x.id === o.id ? { ...x, status: "APROVADO" } : x)));
-      alert.success("Orçamento aprovado!", "Agora é só converter em venda — o botão ao lado abre a nota com os itens.");
-    } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível aprovar o orçamento."));
-    } finally {
-      setOcupado(null);
-    }
-  };
-
   /**
    * O cliente disse não.
    *
@@ -519,18 +537,35 @@ const PontoDeVenda = () => {
   };
 
   /**
-   * Converte a proposta numa venda de verdade.
+   * O cliente disse sim — e a venda começa no mesmo clique.
    *
-   * A nota abre COM os itens e o cliente, e nada acontece no estoque nem no
-   * faturamento até ela ser gerada — a conversão continua sendo decisão de
-   * quem está no balcão, não efeito de clicar em "converter".
+   * -------------------------------------------------------------------------
+   * Por que aprovar e faturar viraram um botão só
+   * -------------------------------------------------------------------------
+   * Eram dois, lado a lado: "Cliente aprovou" marcava a proposta e mandava um
+   * aviso dizendo para clicar no outro; "Converter em venda" abria a nota. Na
+   * prática ninguém aprova sem faturar em seguida — o sim do cliente É o
+   * começo da venda —, então o primeiro botão só existia para pedir o segundo.
+   * E quem clicava só no primeiro ficava com a proposta marcada como aprovada
+   * e nenhuma venda, que é o pior estado dos três.
    *
-   * O cadastro do cliente sai na frente, e sozinho: parar a conversão para
-   * pedir "cadastre antes" é interromper exatamente o momento em que o cliente
-   * disse sim. Se a proposta ainda está aberta, ela também passa a apontar
-   * para o cadastro novo.
+   * Agora o gesto é um: a proposta fica aprovada e a nota abre montada, com o
+   * cliente e os itens. Nada acontece no estoque nem no faturamento até
+   * "Gerar Nota" — a decisão continua sendo de quem está no balcão, e fechar a
+   * nota no X deixa a proposta aprovada esperando, não perdida.
+   *
+   * A ORDEM importa e é esta:
+   *
+   *   1. o cadastro do cliente, criado se preciso — parar aqui para pedir
+   *      "cadastre antes" é interromper exatamente o momento em que o cliente
+   *      disse sim;
+   *   2. amarrar a proposta ao cadastro, enquanto ela ainda está ABERTA (a API
+   *      só aceita edição nesse estado — depois do passo 3 seria tarde);
+   *   3. registrar a aprovação, que é o que sobrevive se a nota for fechada
+   *      sem gerar;
+   *   4. abrir a nota.
    */
-  const converterEmVenda = async (o: Orcamento) => {
+  const aprovarOrcamento = async (o: Orcamento) => {
     if (ocupado) return;
 
     setOcupado(o.id);
@@ -557,8 +592,11 @@ const PontoDeVenda = () => {
             valorUnitario: i.valorUnitario,
           })),
         });
+      }
 
-        await carregarOrcamentos();
+      if (o.status !== "APROVADO") {
+        await OrcamentoService.alterarStatus(o.id, "APROVADO");
+        setOrcamentos((prev) => prev.map((x) => (x.id === o.id ? { ...x, status: "APROVADO", clienteId } : x)));
       }
 
       abrirNota({
@@ -566,25 +604,45 @@ const PontoDeVenda = () => {
         nome: o.clienteNome,
         itens: itensDoOrcamento(o),
         /*
-         * Vai SEMPRE, qualquer que seja a situação da proposta.
-         *
-         * Antes havia uma exceção para o já APROVADO — fazia sentido enquanto
-         * o efeito era "aprovar junto": não há o que aprovar duas vezes. Agora
-         * o efeito é apagar, e a proposta aprovada é justamente a que mais
-         * precisa sair da lista depois de virar nota.
+         * A proposta é APAGADA quando a nota nascer — ver `converterOrcamentoId`
+         * em `Invoice`. Vai sempre: a aprovada é justamente a que mais precisa
+         * sair da fila depois de virar nota.
          */
         converterOrcamentoId: o.id,
       });
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível converter o orçamento em venda."));
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível aprovar o orçamento."));
     } finally {
       setOcupado(null);
     }
   };
 
-  const editarOrcamento = (o: Orcamento) => {
+  /**
+   * Abrir a proposta — o que a linha inteira faz agora.
+   *
+   * O lápis saiu da fileira de ações. Ele competia com o clique na linha, que
+   * abria a leitura, e a divisão era arbitrária: os dois gestos levavam à
+   * MESMA proposta, um deles em modo de conserto e o outro não, e nada na tela
+   * dizia qual era qual antes de clicar. Numa lista em que a maioria das
+   * propostas está aguardando resposta, o botão certo era quase sempre o
+   * pequeno — o de 14px escondido junto de mais quatro.
+   *
+   * Agora a linha abre a proposta, e o que se pode fazer com ela vem do estado
+   * dela, não de qual pixel foi clicado:
+   *
+   *   • AGUARDANDO → abre para editar. É o único estado em que a API aceita
+   *     reescrever, e é o estado em que quase toda proposta está.
+   *
+   *   • RESPONDIDA (aprovada ou recusada) → abre a leitura. Não é uma recusa
+   *     disfarçada: o orçamento aprovado é o documento do que o cliente
+   *     aceitou e o recusado é o registro do que ele viu antes de dizer não —
+   *     reescrever qualquer um dos dois apagaria a prova da conversa. Só que
+   *     em vez de um aviso amarelo dizendo isso, a pessoa recebe o que dá para
+   *     ter ali: a proposta na tela.
+   */
+  const abrirProposta = (o: Orcamento) => {
     if (o.status !== "ABERTO") {
-      alert.warning("Proposta já respondida", "Só dá para editar um orçamento que ainda está aguardando resposta.");
+      setVisualizando(o);
       return;
     }
 
@@ -921,8 +979,8 @@ const PontoDeVenda = () => {
                     return (
                       <div key={o.id} className="group relative">
                         <button
-                          onClick={() => setVisualizando(o)}
-                          title="Ver a proposta"
+                          onClick={() => abrirProposta(o)}
+                          title={o.status === "ABERTO" ? "Editar a proposta" : "Ver a proposta"}
                           className="relative flex w-full items-center gap-3 border-b border-fg/[0.04] px-5 py-3.5 text-left transition-colors before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:rounded-r before:bg-warning before:opacity-0 before:transition-opacity hover:bg-fg/[0.03] hover:before:opacity-100"
                         >
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-warning/25 bg-warning/[0.12] text-[11px] tabular-nums text-warning">
@@ -959,17 +1017,21 @@ const PontoDeVenda = () => {
                          * já respondido seriam portas que não abrem.
                          */}
                         <LinhaAcoes>
-                          {o.status !== "APROVADO" && o.status !== "RECUSADO" && (
-                            <AcaoLinha icon={<Check size={14} />} label="Cliente aprovou" tone="sucesso" ocupado={nesteMomento} onClick={() => void aprovarOrcamento(o)} />
-                          )}
-
+                          {/*
+                           * Um botão, não dois.
+                           *
+                           * "Cliente aprovou" já abre a nota montada — ver
+                           * `aprovarOrcamento`. Na proposta que JÁ está
+                           * aprovada, o mesmo botão troca de nome: não há o que
+                           * aprovar de novo, só falta faturar.
+                           */}
                           {o.status !== "RECUSADO" && (
                             <AcaoLinha
-                              icon={<ShoppingCart size={14} />}
-                              label="Converter em venda"
-                              tone="aviso"
+                              icon={o.status === "APROVADO" ? <ShoppingCart size={14} /> : <Check size={14} />}
+                              label={o.status === "APROVADO" ? "Faturar venda" : "Cliente aprovou"}
+                              tone={o.status === "APROVADO" ? "aviso" : "sucesso"}
                               ocupado={nesteMomento}
-                              onClick={() => void converterEmVenda(o)}
+                              onClick={() => void aprovarOrcamento(o)}
                             />
                           )}
 
@@ -982,10 +1044,6 @@ const PontoDeVenda = () => {
                               distância das ações que se usam o dia inteiro. */}
                           {o.status === "RECUSADO" && (
                             <AcaoLinha icon={<Trash2 size={14} />} label="Apagar" tone="perigo" ocupado={nesteMomento} onClick={() => void excluirOrcamento(o)} />
-                          )}
-
-                          {o.status === "ABERTO" && (
-                            <AcaoLinha icon={<Pencil size={14} />} label="Editar" onClick={() => editarOrcamento(o)} />
                           )}
 
                           <MenuFormatoDownload label="Baixar" ocupado={nesteMomento} onEscolher={(formato) => void baixarOrcamento(o, formato)} />

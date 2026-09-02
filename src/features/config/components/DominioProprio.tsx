@@ -268,9 +268,38 @@ const DominioProprio = () => {
               {estado?.naHospedagem === true ? "Falta só isto, no provedor do domínio" : "Para funcionar, falta fazer fora daqui"}
             </p>
 
+            {/*
+             * O TXT de posse vem PRIMEIRO, e só quando existe.
+             *
+             * Ele é o passo que ninguém adivinha: o registro A pode estar
+             * criado e certo, o endereço resolve, e mesmo assim o navegador
+             * derruba a conexão — porque sem esta confirmação a hospedagem não
+             * emite o certificado. Sem este bloco, a tela mandava conferir o
+             * registro A que já estava lá, e a pessoa ficava dias no laço.
+             */}
+            {estado?.verificacao && (
+              <div className="flex flex-col gap-1.5 rounded-xl border border-warning/25 bg-warning/[0.06] px-3 py-2.5">
+                <p className="text-[12px] leading-relaxed text-mist">
+                  <span className="text-warning">Primeiro:</span> crie um registro{" "}
+                  <span className="text-ink">TXT</span> com o nome{" "}
+                  <span className="text-ink">{estado.verificacao.nome}</span> e este valor — é assim que a hospedagem
+                  confirma que o domínio é seu. Sem ele o certificado de segurança não é emitido.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => copiar(estado.verificacao!.valor)}
+                  className="focus-ring flex w-full items-center justify-between gap-2 rounded-lg border border-fg/[0.1] bg-fg/[0.03] px-2.5 py-1.5 text-left text-[11.5px] text-ink transition-colors hover:border-accent/40"
+                >
+                  <span className="min-w-0 break-all">{estado.verificacao.valor}</span>
+                  <Copy size={12} className="shrink-0 text-faint" />
+                </button>
+              </div>
+            )}
+
             <div className="flex flex-col gap-1">
               <p className="text-[12px] leading-relaxed text-mist">
-                {estado?.naHospedagem !== true && <span className="text-ink">1.</span>} No provedor onde você comprou
+                {estado?.verificacao && <span className="text-warning">Depois:</span>} No provedor onde você comprou
                 o domínio, crie um registro{" "}
                 <span className="text-ink">{registro.tipo}</span>
                 {registro.nome && (
@@ -304,10 +333,12 @@ const DominioProprio = () => {
                 é o outro motivo pelo qual um endereço pode não abrir — e sem
                 dizer qual dos dois falhou, "não funciona" manda procurar no
                 lugar errado. */}
-            {estado?.naHospedagem === true && (
+            {estado?.naHospedagem === true && !estado.verificacao && (
               <p className="flex items-center gap-2 text-[11.5px] text-mist">
                 <CircleCheck size={13} className="shrink-0 text-success" />
-                Domínio já liberado na hospedagem — falta só o registro acima.
+                {estado.apontado === true
+                  ? "Domínio liberado e DNS apontado — só falta o certificado ser emitido."
+                  : "Domínio já liberado na hospedagem — falta só o registro acima."}
               </p>
             )}
 

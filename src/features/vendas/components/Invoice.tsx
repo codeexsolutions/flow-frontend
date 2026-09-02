@@ -326,6 +326,46 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   };
 
   /**
+   * Um item que não está no estoque — e que não precisa estar.
+   *
+   * Orçar é dizer um preço por algo que muitas vezes ainda não é produto:
+   * "banner 2x1 em lona", "arte + 200 cartões", "conserto da placa". Até aqui
+   * escrever essa linha exigia parar a proposta, abrir o cadastro e preencher
+   * uma ficha inteira — para um item que o cliente pode recusar, e que ficaria
+   * no catálogo de qualquer jeito.
+   *
+   * A linha nasce sem `produtoId`, com preço zero para a pessoa digitar na
+   * própria tabela. Nada é criado no estoque agora: se a proposta virar venda,
+   * `materializarAvulsos` cria o produto ali — quando ele passa a ter motivo
+   * para existir.
+   *
+   * Sem somar com linha igual, ao contrário do produto de catálogo: dois
+   * "Banner" num orçamento costumam ser dois banners diferentes, cada um com
+   * seu preço, e juntá-los apagaria a distinção que a pessoa acabou de fazer.
+   */
+  const adicionarAvulso = (nomeItem: string) => {
+    const limpo = nomeItem.trim();
+
+    if (!limpo) return;
+
+    setItens((prev) => [
+      ...prev,
+      {
+        itemPedidoId: gerarUID(),
+        quantidadeItem: 1,
+        valorVendaItem: 0,
+        variacaoId: null,
+        produto: { nomeProduto: limpo, produtoId: "", valorProduto: 0 },
+      },
+    ]);
+
+    alert.toast("success", "Item avulso adicionado!", "Informe a quantidade e o preço na linha.", { position: "bottom-right", timer: 2600 });
+  };
+
+  /** A linha veio da busca livre, e não do catálogo. */
+  const ehAvulso = (l: ItemPedidoType) => !String(l.produto.produtoId ?? "").trim();
+
+  /**
    * Cadastra o produto e já o lança na nota.
    *
    * Faltar um produto no meio da venda é rotina — e mandar quem atende até
@@ -467,8 +507,8 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   };
 
   /* ─── Nota CRUD ─── */
-  const montarItens = () =>
-    itens.map((item) => ({
+  const montarItens = (lista: ItemPedidoType[] = itens) =>
+    lista.map((item) => ({
       produtoId: item.produto.produtoId,
       quantidade: item.quantidadeItem,
       valorVenda: item.valorVendaItem,
@@ -486,7 +526,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
     }
 
     if (itens.length === 0) {
-      alert.warning("Sem produtos", "Adicione ao menos um produto ao orçamento.");
+      alert.warning("Orçamento vazio", "Adicione ao menos um item — do estoque ou avulso.");
       return;
     }
 
@@ -524,6 +564,75 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
     }
   };
 
+  /**
+   * Dá existência aos itens avulsos, no instante em que a venda vai nascer.
+   *
+   * Nota de venda aponta para produto: é dele que sai a baixa de estoque, é
+   * nele que o relatório soma o que foi vendido, e o servidor não aceita um
+   * item sem esse vínculo. O orçamento pode viver com uma linha de texto —
+   * a venda não pode.
+   *
+   * Então o produto é criado AQUI, e não lá atrás: proposta recusada não
+   * deixa nada no catálogo, e só o que foi de fato vendido vira cadastro.
+   *
+   * Nasce SEM controle de estoque, de propósito. Um "banner 2x1" criado neste
+   * segundo teria saldo zero, e a própria venda que o criou seria recusada por
+   * falta de estoque — o item existiria só para bloquear a si mesmo. Sem
+   * contagem, ele se comporta como o que é: algo que se faz sob encomenda.
+   *
+   * Antes de criar, procura pelo nome: orçar "banner 2x1" para dez clientes
+   * não pode render dez produtos iguais no estoque.
+   */
+  const materializarAvulsos = async (lista: ItemPedidoType[]): Promise<ItemPedidoType[]> => {
+    const avulsos = lista.filter(ehAvulso);
+
+    if (avulsos.length === 0) return lista;
+
+    let catalogo = products;
+
+    const acharPorNome = (nomeItem: string) =>
+      catalogo.find((p) => p.nome?.trim().toLowerCase() === nomeItem.trim().toLowerCase());
+
+    /* Nomes distintos, para não criar dois produtos quando a mesma linha
+       aparece duas vezes na nota. */
+    const pendentes = [...new Set(avulsos.map((l) => l.produto.nomeProduto.trim()))].filter((n) => n && !acharPorNome(n));
+
+    for (const nomeItem of pendentes) {
+      const preco = avulsos.find((l) => l.produto.nomeProduto.trim() === nomeItem)?.valorVendaItem ?? 0;
+
+      await ProductService.create({
+        nome: nomeItem,
+        tipo: "PRODUTO",
+        valorCompra: 0,
+        valorVenda: preco,
+        quantidade: 0,
+        /* O ponto todo: sem contagem, a venda que acabou de criar o item não
+           esbarra no saldo zero dele. */
+        controlaEstoque: false,
+        permiteVendaSemEstoque: false,
+        estoqueMinimo: null,
+        observacoes: "Criado a partir de um item avulso de orçamento.",
+      });
+    }
+
+    if (pendentes.length > 0) {
+      /* Relê o catálogo uma vez só, depois de criar todos: é dele que saem os
+         ids, e uma leitura por item seria N requisições para a mesma lista. */
+      const { data } = await ProductService.getAll();
+
+      catalogo = (data.data ?? []) as ProductType[];
+      setProducts(catalogo);
+    }
+
+    return lista.map((l) => {
+      if (!ehAvulso(l)) return l;
+
+      const achado = acharPorNome(l.produto.nomeProduto);
+
+      return achado ? { ...l, produto: { ...l.produto, produtoId: achado.id } } : l;
+    });
+  };
+
   const handleSalvar = async () => {
     if (!clienteId) {
       alert.warning("Sem cliente", "Selecione um cliente para emitir a nota.");
@@ -550,10 +659,29 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
 
     setSavingNote(true);
     try {
+      /*
+       * Os itens avulsos viram produto ANTES de qualquer coisa ir para o
+       * servidor: dali em diante a nota é uma nota comum, e nenhuma das duas
+       * ramificações abaixo precisa saber que essa distinção existiu.
+       */
+      const itensDaNota = await materializarAvulsos(itens);
+
+      /* A tela passa a mostrar as linhas já vinculadas — sem isto, o selo de
+         "item avulso" continuaria numa linha que não é mais avulsa, e um
+         segundo salvamento tentaria criar o produto de novo. */
+      if (itensDaNota !== itens) setItens(itensDaNota);
+
+      const semVinculo = itensDaNota.find(ehAvulso);
+
+      if (semVinculo) {
+        alert.error("Não foi possível preparar a nota", `O item “${semVinculo.produto.nomeProduto}” não pôde virar produto. Cadastre-o em Estoque e tente de novo.`);
+        return;
+      }
+
       if (id) {
         // UPDATE — usa PedidoUpdateDto. Atenção: esse endpoint lê `produtosPedido`,
         // não `itensPedido`.
-        const payload: PedidoUpdateDto = { clienteId, produtosPedido: montarItens() };
+        const payload: PedidoUpdateDto = { clienteId, produtosPedido: montarItens(itensDaNota) };
         await NoteService.update(payload, id);
 
         // Não há pagamento pendente a gravar junto: registrar já grava direto
@@ -563,7 +691,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
         // CREATE — usa NovoPedidoDto. A nota criada NÃO fecha a tela: quem
         // paga "depois de salvar" precisa da nota aberta para registrar o
         // pagamento na sequência. O id novo mantém a nota em modo edição.
-        const payload: NovoPedidoDto = { clienteId, itensPedido: montarItens() };
+        const payload: NovoPedidoDto = { clienteId, itensPedido: montarItens(itensDaNota) };
         const criada = await NoteService.create(payload);
 
         const novoId = criada?.data?.data?.[0] as string | undefined;
@@ -1025,7 +1153,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
             */}
             <div data-sem-foto className="hidden px-6 pt-6 md:block">
               <div className="max-w-md">
-                <BuscaProduto produtos={products} carregando={loadingProdutos} onAdicionar={adicionarProduto} onCadastrar={setNovoProduto} />
+                <BuscaProduto produtos={products} carregando={loadingProdutos} onAdicionar={adicionarProduto} onCadastrar={setNovoProduto} onItemAvulso={modoOrcamento ? adicionarAvulso : undefined} />
               </div>
             </div>
 
@@ -1064,6 +1192,15 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                                     na nota e o cliente não sabe o que levou. */}
                                 {item.variacaoDescricao && (
                                   <span className="ml-1.5 rounded bg-fg/[0.07] px-1.5 py-px text-[10px] text-mist">{item.variacaoDescricao}</span>
+                                )}
+
+                                {/* `data-sem-foto`: é recado para quem monta a
+                                    proposta, não para o cliente. No papel que
+                                    ele recebe, item avulso e produto de
+                                    catálogo são a mesma coisa — uma linha com
+                                    um preço. */}
+                                {ehAvulso(item) && (
+                                  <span data-sem-foto className="ml-1.5 rounded bg-warning/[0.15] px-1.5 py-px text-[10px] text-warning">avulso</span>
                                 )}
                               </p>
                               {falta && (
@@ -1107,8 +1244,12 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                       ) : (
                         <tr>
                           <td colSpan={5} className="py-12 text-center text-mist">
-                            <p className="text-sm">Nenhum produto na nota</p>
-                            <p className="mt-2 text-[12px] text-faint">Use a busca acima para adicionar produtos.</p>
+                            <p className="text-sm">{modoOrcamento ? "Nenhum item no orçamento" : "Nenhum produto na nota"}</p>
+                            <p className="mt-2 text-[12px] text-faint">
+                              {modoOrcamento
+                                ? "Busque no estoque — ou digite o item e tecle Enter para lançar avulso."
+                                : "Use a busca acima para adicionar produtos."}
+                            </p>
                           </td>
                         </tr>
                       )}
@@ -1120,7 +1261,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
 
             {/* Mobile — busca de produtos, fora da foto da nota */}
             <div data-sem-foto className="px-6 pt-5 md:hidden">
-              <BuscaProduto produtos={products} carregando={loadingProdutos} onAdicionar={adicionarProduto} onCadastrar={setNovoProduto} />
+              <BuscaProduto produtos={products} carregando={loadingProdutos} onAdicionar={adicionarProduto} onCadastrar={setNovoProduto} onItemAvulso={modoOrcamento ? adicionarAvulso : undefined} />
             </div>
 
             {/* Mobile */}
@@ -1135,6 +1276,9 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                         {item.produto.nomeProduto}
                         {item.variacaoDescricao && (
                           <span className="ml-1.5 rounded bg-fg/[0.07] px-1.5 py-px text-[10px] text-mist">{item.variacaoDescricao}</span>
+                        )}
+                        {ehAvulso(item) && (
+                          <span data-sem-foto className="ml-1.5 rounded bg-warning/[0.15] px-1.5 py-px text-[10px] text-warning">avulso</span>
                         )}
                         {faltaDaLinha(item) && (
                           <span className="mt-0.5 block text-[10.5px] text-danger">sem estoque suficiente</span>
@@ -1174,7 +1318,9 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                 <div className="rounded-xl border border-dashed border-fg/[0.12] py-10 text-center text-sm text-mist">Nenhum produto</div>
               )}
               {!loadingPedido && itens.length === 0 && (
-                <p className="py-2 text-center text-[12px] text-faint">Use a busca acima para adicionar produtos.</p>
+                <p className="py-2 text-center text-[12px] text-faint">
+                  {modoOrcamento ? "Busque no estoque — ou digite o item e tecle Enter para lançar avulso." : "Use a busca acima para adicionar produtos."}
+                </p>
               )}
             </div>
 
@@ -1264,8 +1410,23 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Download da nota (PNG ou PDF), com o nome da empresa no arquivo. */}
-            <MenuDownloadNota refNota={notaRef} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Baixar orçamento" : "Baixar nota"} />
+            {/*
+             * Baixar só DEPOIS que o documento existe.
+             *
+             * O botão vinha desde a nota em branco, e o arquivo que ele
+             * entregava era uma foto do rascunho: sem número, sem data
+             * gravada, com o que estava na tela naquele segundo. Mandado ao
+             * cliente, virava um documento que o sistema não conhece — não dá
+             * para achar pelo número, não consta em lugar nenhum, e o que ele
+             * promete não está registrado. Pior no orçamento, onde o preço do
+             * papel passa a valer sem que exista proposta.
+             *
+             * Gerada a nota (ou a proposta), o botão aparece no mesmo lugar,
+             * sem fechar nada — e o que ele baixa é o documento de verdade.
+             */}
+            {(modoOrcamento ? Boolean(orcamentoId) : Boolean(id)) && (
+              <MenuDownloadNota refNota={notaRef} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Baixar orçamento" : "Baixar nota"} />
+            )}
 
             {/* Recibo: só depois de quitada. Antes disso não há o que
                 comprovar, e um "recibo" de nota em aberto é um documento que

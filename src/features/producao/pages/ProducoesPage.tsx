@@ -71,7 +71,7 @@ const TABLE_MIN_WIDTH = 856;
  * última posição é vazia de propósito: aquela coluna só reserva a largura das
  * ações, e no cartão ela não tem o que rotular.
  */
-const ROTULOS = ["Cliente", "Planilha", "Aberturas", "Validade", "Situação", undefined];
+const ROTULOS = ["Cliente", "Produção", "Aberturas", "Validade", "Situação", undefined];
 
 const SkeletonRows = ({ count }: { count: number }) => (
   <SkeletonTableRows count={count} cols={COLS} rowHeight={ROW_HEIGHT}>
@@ -213,7 +213,7 @@ const ProducoesPage = () => {
   );
 
   const opcoesPlanilha = useMemo(
-    () => [{ valor: "todas", label: "Todas as planilhas" }, ...planilhas.map((p) => ({ valor: p.id, label: p.nome }))],
+    () => [{ valor: "todas", label: "Todas as produções" }, ...planilhas.map((p) => ({ valor: p.id, label: p.nome }))],
     [planilhas],
   );
 
@@ -374,7 +374,7 @@ const ProducoesPage = () => {
               onChange={setPlanilha}
               opcoes={opcoesPlanilha}
               icone={<Table2 size={14} />}
-              aria-label="Filtrar por planilha de origem"
+              aria-label="Filtrar por produção de origem"
               className="w-[184px] shrink-0"
             />
           )}
@@ -431,7 +431,7 @@ const ProducoesPage = () => {
                       <p className="mt-0.5 text-[11px]">
                         {temFiltro
                           ? "Ajuste a busca ou os filtros."
-                          : "Abra o Kanban, escolha a planilha e emita o link em “Cliente”."}
+                          : "Abra o Kanban, escolha a produção e emita o link em “Cliente”."}
                       </p>
                     </div>
                     {temFiltro && (

@@ -9,7 +9,29 @@ import type { ReactNode } from "react";
  */
 export const FolhaA4 = ({ children }: { children: ReactNode }) => <div className="folha-a4 mx-auto bg-white text-[#111] shadow-e3 print:shadow-none">{children}</div>;
 
-export const FolhaHeader = ({ empresa, documento, titulo, periodo, logo }: { empresa: string; documento?: string; titulo: string; periodo: string; logo?: string }) => (
+export const FolhaHeader = ({
+  empresa,
+  documento,
+  titulo,
+  periodo,
+  filtro,
+  logo,
+}: {
+  empresa: string;
+  documento?: string;
+  titulo: string;
+  periodo: string;
+  /**
+   * O recorte além do tempo — "Vendedor: João".
+   *
+   * Vai IMPRESSO, e não só na tela de quem monta. Uma folha filtrada por
+   * vendedor tem números menores que os da empresa; sem dizer no papel de quem
+   * ela fala, quem recebe a folha lê o total da loja e conclui que a loja caiu
+   * pela metade.
+   */
+  filtro?: string;
+  logo?: string;
+}) => (
   <header className="flex items-start justify-between gap-6 border-b-2 border-[#111] pb-3">
     <div className="flex items-center gap-3">
       {logo && <img src={logo} alt="" className="h-12 w-12 rounded object-cover" />}
@@ -21,12 +43,20 @@ export const FolhaHeader = ({ empresa, documento, titulo, periodo, logo }: { emp
     <div className="text-right">
       <p className="text-[12pt] leading-tight">{titulo}</p>
       <p className="text-[8pt] text-[#555]">{periodo}</p>
+      {filtro && <p className="text-[8pt] text-[#555]">{filtro}</p>}
     </div>
   </header>
 );
 
+/**
+ * A fileira de números do topo.
+ *
+ * A grade acompanha a QUANTIDADE de itens em vez de ser fixa em quatro: com
+ * cinco, o quinto caía sozinho numa segunda fileira e a folha ficava com um
+ * quadro solto ocupando a largura toda.
+ */
 export const FolhaKpis = ({ itens }: { itens: { label: string; valor: string }[] }) => (
-  <section className="mt-4 grid grid-cols-4 gap-2">
+  <section className="mt-4 grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(itens.length, 1), 5)}, minmax(0, 1fr))` }}>
     {itens.map((k) => (
       <div key={k.label} className="rounded border border-[#ddd] px-2.5 py-2">
         <p className="text-[7pt] uppercase tracking-wide text-[#666]">{k.label}</p>

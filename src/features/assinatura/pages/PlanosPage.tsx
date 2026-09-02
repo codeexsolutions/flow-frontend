@@ -63,7 +63,7 @@ const PlanosPage = () => {
           </h1>
           <p className="mt-2.5 max-w-lg text-[13px] leading-relaxed text-mist">
             {umPlanoSo
-              ? "Um plano, o sistema inteiro: PDV, clientes, produtos, financeiro, planilhas e relatórios. Sem pacote para destravar depois."
+              ? "Um plano, o sistema inteiro: PDV, clientes, produtos, financeiro, produções e relatórios. Sem pacote para destravar depois."
               : "Do empreendedor que vende sozinho à operação com mais de uma loja. Você troca de plano quando quiser, pagando só a diferença."}
           </p>
 

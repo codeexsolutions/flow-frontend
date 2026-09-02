@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FileText, Search, Check, X, Trash2, Loader2, Info, ShoppingCart, Download } from "lucide-react";
 
 import OrcamentoService, { type Orcamento, type StatusOrcamento } from "@/features/orcamentos/services/orcamento.service";
@@ -42,6 +43,7 @@ const FILTROS: { id: "todos" | StatusOrcamento; label: string }[] = [
  */
 const OrcamentosPage = () => {
   const alert = useAlert();
+  const navigate = useNavigate();
   const enterprise = useEnterprise((s) => s.enterprise);
 
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
@@ -123,14 +125,28 @@ const OrcamentosPage = () => {
       await OrcamentoService.alterarStatus(o.id, status);
       setOrcamentos((prev) => prev.map((x) => (x.id === o.id ? { ...x, status } : x)));
 
-      if (status === "APROVADO") {
-        alert.success("Orçamento aprovado!", "Agora abra a venda no PDV para faturar — orçamento não vira venda sozinho.");
-      }
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível atualizar a situação."));
     } finally {
       setSalvando(null);
     }
+  };
+
+  /**
+   * Aprovar aqui é o mesmo gesto do balcão: aprova E fatura.
+   *
+   * Esta tela não tem nota — a nota mora no PDV, com a busca de produtos, o
+   * pagamento e o estoque. Duplicá-la aqui seria manter duas versões da mesma
+   * conversão, e elas divergiriam na primeira mudança de regra.
+   *
+   * Então quem aprova daqui é levado ao balcão com a proposta já apontada: o
+   * PDV marca o aprovado e abre a nota montada (ver `aprovarOrcamento` lá).
+   * A aprovação NÃO acontece antes de sair desta tela de propósito — marcar
+   * aqui e falhar lá deixaria a proposta aprovada sem venda nenhuma.
+   */
+  const aprovarEFaturar = (o: Orcamento) => {
+    setVisualizando(null);
+    navigate("/pdv", { state: { faturar: o.id } });
   };
 
   const excluir = async (o: Orcamento) => {
@@ -154,7 +170,7 @@ const OrcamentosPage = () => {
       <div className="flex shrink-0 items-start gap-2.5 rounded-xl border border-fg/[0.07] bg-fg/[0.02] px-4 py-2.5">
         <Info size={14} className="mt-0.5 shrink-0 text-accent-soft" />
         <p className="text-[12px] leading-relaxed text-mist">
-          Orçamento é proposta: <span className="text-ink">não entra no faturamento, não baixa estoque e não gera conta a receber</span>. Quando o cliente aceitar, abra a venda no PDV.
+          Orçamento é proposta: <span className="text-ink">não entra no faturamento, não baixa estoque e não gera conta a receber</span>. Quando o cliente aceitar, “Cliente aprovou” abre a venda já montada no balcão.
         </p>
       </div>
 
@@ -259,17 +275,17 @@ const OrcamentosPage = () => {
               <MenuDownloadNota refNota={refNotaBaixada} nomeEmpresa={enterprise?.nomeFantasia ?? "orcamento"} prefixo="orcamento" titulo="Baixar orçamento" />
 
               <div className="flex flex-wrap items-center gap-2">
-                {visualizando.status !== "APROVADO" && (
+                {/* Um botão só, como no balcão: aprovar já é começar a venda.
+                    Na proposta que JÁ está aprovada ele só troca de nome —
+                    não há o que aprovar de novo, falta faturar. */}
+                {visualizando.status !== "RECUSADO" && (
                   <button
                     disabled={salvando === visualizando.id}
-                    onClick={() => {
-                      mudarStatus(visualizando, "APROVADO");
-                      setVisualizando((v) => (v ? { ...v, status: "APROVADO" } : v));
-                    }}
+                    onClick={() => aprovarEFaturar(visualizando)}
                     className="flex min-h-[36px] items-center gap-1.5 rounded-lg border border-success/30 bg-success/[0.1] px-3 text-[12px] text-success transition-colors hover:bg-success/20 disabled:opacity-50"
                   >
-                    {salvando === visualizando.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                    Cliente aprovou
+                    {visualizando.status === "APROVADO" ? <ShoppingCart size={13} /> : <Check size={13} />}
+                    {visualizando.status === "APROVADO" ? "Faturar venda" : "Cliente aprovou"}
                   </button>
                 )}
 

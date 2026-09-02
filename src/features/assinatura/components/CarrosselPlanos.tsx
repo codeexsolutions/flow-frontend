@@ -18,7 +18,7 @@ const LIMITES: { chave: keyof Plano; rotulo: string; icone: LucideIcon }[] = [
 
 /** Os que só aparecem no detalhe — importam depois de escolher, não antes. */
 const LIMITES_EXTRA: { chave: keyof Plano; rotulo: string; icone: LucideIcon }[] = [
-  { chave: "limitePlanilhas", rotulo: "Planilhas", icone: Table2 },
+  { chave: "limitePlanilhas", rotulo: "Produções", icone: Table2 },
   { chave: "limiteAtendentes", rotulo: "Atendentes", icone: Headset },
   { chave: "limiteIaMes", rotulo: "Atendimentos IA/mês", icone: Bot },
 ];

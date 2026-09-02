@@ -28,6 +28,7 @@ import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { KpiFaixa } from "@/shared/ui/Painel";
 import { Rosca } from "@/shared/ui/Rosca";
 import { PageScreen } from "@/shared/ui/PageShell";
+import SeletorPeriodo, { PERIODO_TUDO, type Periodo } from "@/shared/ui/SeletorPeriodo";
 import { SkeletonKpis, SkeletonGrafico, SkeletonListaPainel } from "@/shared/ui/skeleton";
 import useAuth from "@/features/auth/store/auth.store";
 
@@ -39,7 +40,7 @@ import { ehVendavel } from "@/shared/domain/produto";
 import { estaAberto, estaFechado, estaCancelado, totalDoPedido } from "@/shared/domain/pedido";
 import { formatCurrency } from "@/shared/utils/currency";
 import { formatNumber, getInitials } from "@/shared/utils/format";
-import { MONTHS, isSameMonth, formatDateShort, toDate } from "@/shared/utils/date";
+import { MONTHS, formatDateShort, toDate } from "@/shared/utils/date";
 
 /* ─────────────────────────────── Componentes ─────────────────────────────── */
 
@@ -125,18 +126,23 @@ const NumeroAnimado = ({ valor, moeda = true }: { valor: number; moeda?: boolean
 };
 
 /**
- * Variação contra o mês passado.
+ * Variação contra a janela anterior de mesmo tamanho.
  *
- * Um número sozinho não diz se o mês está bom. 12 mil é ótimo depois de 8 e
- * ruim depois de 20 — a comparação é o que transforma o valor em informação.
+ * Um número sozinho não diz se o período está bom. 12 mil é ótimo depois de 8
+ * e ruim depois de 20 — a comparação é o que transforma o valor em informação.
  *
- * Sem base anterior não inventa porcentagem: mostra "primeiro mês". Dividir por
- * zero daria "∞%" ou "+100%", os dois mentindo sobre um crescimento que não
- * existe porque não havia com o que comparar.
+ * A base é sempre um intervalo do MESMO tamanho, imediatamente antes: três
+ * meses comparam com os três anteriores, uma semana com a semana de trás.
+ * Comparar recortes de tamanhos diferentes daria uma queda de 60% só porque um
+ * lado tem menos dias que o outro.
+ *
+ * Sem base anterior não inventa porcentagem. Dividir por zero daria "∞%" ou
+ * "+100%", os dois mentindo sobre um crescimento que não existe porque não
+ * havia com o que comparar.
  */
 const Variacao = ({ atual, anterior }: { atual: number; anterior: number }) => {
   if (anterior <= 0) {
-    return <span className="text-[11px] text-faint">{atual > 0 ? "primeiro mês com movimento" : "sem base de comparação"}</span>;
+    return <span className="text-[11px] text-faint">{atual > 0 ? "primeiro período com movimento" : "sem base de comparação"}</span>;
   }
 
   const pct = ((atual - anterior) / anterior) * 100;
@@ -149,7 +155,7 @@ const Variacao = ({ atual, anterior }: { atual: number; anterior: number }) => {
     <span className={`inline-flex items-center gap-1 text-[11px] ${cor}`}>
       <Icone size={12} />
       {parado ? "estável" : `${pct > 0 ? "+" : ""}${pct.toFixed(1).replace(".", ",")}%`}
-      <span className="text-faint">vs. mês passado</span>
+      <span className="text-faint">vs. período anterior</span>
     </span>
   );
 };
@@ -290,18 +296,53 @@ const Barras = ({
 
 /* ──────────────────────────────── Página ────────────────────────────────── */
 
-/** Janelas do gráfico. O ano inteiro esconde o detalhe do trimestre. */
-const JANELAS = [
-  { meses: 3, label: "3 meses" },
-  { meses: 6, label: "6 meses" },
-  { meses: 12, label: "Ano" },
-] as const;
+/** Meia-noite do dia — comparar datas com hora dentro nunca bate. */
+const soODia = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+/** O primeiro dia do mês da data — o eixo do gráfico anda de mês em mês. */
+const primeiroDoMes = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+
+/** Quantos meses de calendário o intervalo toca. */
+const mesesDoIntervalo = (de: Date, ate: Date) =>
+  (ate.getFullYear() - de.getFullYear()) * 12 + (ate.getMonth() - de.getMonth()) + 1;
+
+/**
+ * A mesma data, `n` meses atrás — com o dia preso ao fim do mês curto.
+ *
+ * Sem o teto, 31 de março menos um mês vira "31 de fevereiro", que o
+ * JavaScript traduz para 3 de março: a janela de comparação de "Mês passado"
+ * invadiria o mês que ela deveria comparar.
+ */
+const recuarMeses = (d: Date, n: number) => {
+  const alvo = new Date(d.getFullYear(), d.getMonth() - n, 1);
+  const ultimoDia = new Date(alvo.getFullYear(), alvo.getMonth() + 1, 0).getDate();
+
+  return new Date(
+    alvo.getFullYear(),
+    alvo.getMonth(),
+    Math.min(d.getDate(), ultimoDia),
+    d.getHours(),
+    d.getMinutes(),
+    d.getSeconds(),
+    d.getMilliseconds(),
+  );
+};
 
 const DashboardPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [janela, setJanela] = useState<3 | 6 | 12>(12);
+  /*
+   * O recorte de tempo do painel inteiro — números, gráfico e rankings.
+   *
+   * Nasce em TODO O PERÍODO. O painel falava só do mês corrente, e isso deixava
+   * a home respondendo a uma pergunta só: no dia 2 ela mostrava dois dias de
+   * loja e dava a impressão de um negócio parado, e o histórico do ano só
+   * existia no gráfico, sem os números ao lado. Abrindo em todo o período, a
+   * primeira coisa que se vê é a loja inteira — e o mês continua a um clique,
+   * no seletor do cabeçalho.
+   */
+  const [periodo, setPeriodo] = useState<Periodo>(PERIODO_TUDO);
 
   const vendas = useVendaStore((s) => s.vendas);
   const fetchVendas = useVendaStore((s) => s.fetchVendas);
@@ -330,41 +371,207 @@ const DashboardPage = () => {
   const dados = useMemo(() => {
     const agora = new Date();
     const ativas = vendas.filter((v) => !estaCancelado(v));
-    const doMes = ativas.filter((v) => isSameMonth(v.pedido.dataPedido, agora));
 
-    /* Mês anterior: a base de comparação de todos os KPIs. */
-    const mesPassado = new Date(agora.getFullYear(), agora.getMonth() - 1, 1);
-    const doMesPassado = ativas.filter((v) => isSameMonth(v.pedido.dataPedido, mesPassado));
+    const dentro = (v: (typeof ativas)[number], de: Date | null, ate: Date | null) => {
+      const d = toDate(v.pedido.dataPedido);
+
+      if (!d) return false;
+      if (de && d < de) return false;
+      if (ate && d > ate) return false;
+
+      return true;
+    };
+
+    const noPeriodo = ativas.filter((v) => dentro(v, periodo.de, periodo.ate));
+
+    /*
+     * A janela anterior — a base de toda variação da tela.
+     *
+     * É o que dá sentido ao número: três meses comparam com os três de trás,
+     * uma semana com a semana anterior. Em "todo o período" ela não existe —
+     * não há nada antes do começo da loja —, e é por isso que a base é `null`
+     * em vez de um intervalo vazio: os KPIs escondem a comparação inteira em
+     * vez de mostrar "-100%".
+     *
+     * São DUAS regras, e a diferença importa:
+     *
+     * • Período que começa no dia 1º (todos os atalhos de mês e de ano) recua
+     *   por MESES DE CALENDÁRIO. No dia 15, "Este mês" compara com o dia 1 ao
+     *   15 do mês passado — que é a conta que quem vende faz de cabeça. Recuar
+     *   pela duração em dias compararia com o dia 17 ao 31 do mês anterior, e
+     *   o número estaria certo por uma definição que ninguém usa.
+     *
+     * • Intervalo livre recua pela DURAÇÃO. "12 a 19 de maio" não tem mês para
+     *   se apoiar; o que dá para comparar é a semana imediatamente antes.
+     */
+    const anterior = (() => {
+      if (!periodo.de || !periodo.ate) return null;
+
+      if (periodo.de.getDate() === 1) {
+        const meses = mesesDoIntervalo(periodo.de, periodo.ate);
+
+        return { de: recuarMeses(periodo.de, meses), ate: recuarMeses(periodo.ate, meses) };
+      }
+
+      return {
+        de: new Date(periodo.de.getTime() - (periodo.ate.getTime() - periodo.de.getTime()) - 1),
+        ate: new Date(periodo.de.getTime() - 1),
+      };
+    })();
+
+    const noAnterior = anterior ? ativas.filter((v) => dentro(v, anterior.de, anterior.ate)) : [];
 
     const soma = (lista: typeof ativas) => lista.reduce((acc, v) => acc + totalDoPedido(v), 0);
 
-    const faturadoMes = soma(doMes);
-    const recebidoMes = soma(doMes.filter(estaFechado));
+    const faturado = soma(noPeriodo);
+    const recebido = soma(noPeriodo.filter(estaFechado));
+
+    /* A receber e notas em aberto ignoram o período de propósito: dívida é do
+       AGORA, não do recorte. Quem deve de março continua devendo quando a tela
+       está mostrando junho. */
     const aReceber = soma(ativas.filter(estaAberto));
 
-    const faturadoMesPassado = soma(doMesPassado);
-    const recebidoMesPassado = soma(doMesPassado.filter(estaFechado));
+    const faturadoAnterior = soma(noAnterior);
+    const recebidoAnterior = soma(noAnterior.filter(estaFechado));
 
-    /* Hoje: o recorte que responde "como está indo o dia", que o mês esconde. */
+    /* Hoje: o recorte que responde "como está indo o dia", que o período
+       esconde. Fica fora do filtro pelo mesmo motivo — é o subtítulo da tela,
+       e ele fala do turno, não do que se escolheu ver. */
     const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
     const doDia = ativas.filter((v) => {
       const d = toDate(v.pedido.dataPedido);
       return !!d && d >= inicioHoje;
     });
 
-    const ticketMes = doMes.length ? faturadoMes / doMes.length : 0;
-    const ticketMesPassado = doMesPassado.length ? faturadoMesPassado / doMesPassado.length : 0;
+    const ticket = noPeriodo.length ? faturado / noPeriodo.length : 0;
+    const ticketAnterior = noAnterior.length ? faturadoAnterior / noAnterior.length : 0;
 
-    const ano = agora.getFullYear();
-    const porMes = MONTHS.map((name, i) => {
-      const lista = ativas.filter((v) => {
-        const d = toDate(v.pedido.dataPedido);
-        return !!d && d.getFullYear() === ano && d.getMonth() === i;
-      });
+    /*
+     * Os meses que têm venda, do mais recente para o mais antigo.
+     *
+     * É o que alimenta o seletor do cabeçalho: a lista de recortes é feita do
+     * que EXISTE, não de atalhos fixos que caem em meses vazios. Serve também
+     * ao gráfico, que precisa saber onde a história começa.
+     */
+    const chavesDeMes = new Set<string>();
+
+    for (const v of ativas) {
+      const d = toDate(v.pedido.dataPedido);
+      if (d) chavesDeMes.add(`${d.getFullYear()}-${d.getMonth()}`);
+    }
+
+    const mesesComMovimento = [...chavesDeMes]
+      .map((chave) => {
+        const [ano, mes] = chave.split("-").map(Number);
+        return new Date(ano, mes, 1);
+      })
+      .sort((a, b) => +b - +a);
+
+    const primeira = mesesComMovimento.length ? mesesComMovimento[mesesComMovimento.length - 1] : null;
+
+    /*
+     * O gráfico, na granularidade que o recorte pede.
+     *
+     * -----------------------------------------------------------------------
+     * Por que a barra não é sempre o mês
+     * -----------------------------------------------------------------------
+     * Um mês escolhido no seletor virava UMA barra. O gráfico ficava com um
+     * traço solitário no meio da caixa, sem dizer nada que o KPI ao lado já
+     * não dissesse — e escondia justamente o que se quer saber ao abrir um mês
+     * fechado: em que dias a loja vendeu. Sábado puxa o mês? A primeira semana
+     * carrega o resto? A resposta estava no dado e não aparecia em lugar
+     * nenhum.
+     *
+     * Recorte curto (até dois meses) desce para o DIA; daí para cima, mês. O
+     * corte é pelo tamanho e não pelo tipo de escolha, então um intervalo
+     * livre de dez dias ganha a mesma leitura fina que um mês do seletor.
+     *
+     * Dia sem venda entra na série com zero, e é informação: buraco no meio da
+     * curva é a segunda-feira em que a loja não abriu. Pular o dia faria duas
+     * segundas seguidas parecerem dias consecutivos.
+     */
+    const inicioBruto = soODia(periodo.de ?? primeira ?? agora);
+
+    /* O fim é cortado em HOJE: a cauda de dias (ou meses) futuros zerados
+       achatava a curva inteira contra a base por metade da largura. */
+    const fimCandidato = soODia(periodo.ate && periodo.ate < agora ? periodo.ate : agora);
+    const fimBruto = fimCandidato < inicioBruto ? inicioBruto : fimCandidato;
+
+    const DIA_MS = 24 * 60 * 60 * 1000;
+    const diasNoRecorte = Math.round((+fimBruto - +inicioBruto) / DIA_MS) + 1;
+    const porDia = diasNoRecorte <= 62;
+
+    /*
+     * Um balde por dia (ou por mês), preenchido numa passada só.
+     *
+     * Filtrar a lista inteira dentro do laço das barras seria varrer todas as
+     * vendas trinta vezes para montar um mês.
+     */
+    const chaveDia = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const chaveMes = (d: Date) => `${d.getFullYear()}-${d.getMonth()}`;
+    const chaveDe = porDia ? chaveDia : chaveMes;
+
+    const baldes = new Map<string, { faturado: number; recebido: number }>();
+
+    for (const v of ativas) {
+      const d = toDate(v.pedido.dataPedido);
+
+      if (!d) continue;
+
+      const chave = chaveDe(d);
+      const balde = baldes.get(chave) ?? { faturado: 0, recebido: 0 };
+      const valor = totalDoPedido(v);
+
+      balde.faturado += valor;
+      if (estaFechado(v)) balde.recebido += valor;
+
+      baldes.set(chave, balde);
+    }
+
+    /* Os pontos do eixo, do começo ao fim do recorte, sem furos. */
+    const pontos: Date[] = [];
+
+    if (porDia) {
+      for (let d = inicioBruto; d <= fimBruto; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+        pontos.push(d);
+      }
+    } else {
+      const primeiroMes = primeiroDoMes(inicioBruto);
+      const ultimoMes = primeiroDoMes(fimBruto);
+
+      for (let m = primeiroMes; m <= ultimoMes; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
+        pontos.push(m);
+
+        /* Trava de sanidade: data corrompida no banco poderia render um laço
+           de milhares de barras e travar a aba. */
+        if (pontos.length >= 120) break;
+      }
+    }
+
+    /*
+     * O rótulo do eixo diz o mínimo que basta para não confundir.
+     *
+     * Em dias dentro de um mês só, o número do dia — "01/09" trinta vezes é
+     * a mesma informação repetida com o dobro dos caracteres. Atravessando
+     * meses, entra o mês. Em meses dentro de um ano só, o nome do mês;
+     * atravessando anos, entra o ano.
+     */
+    const cruzaMes = pontos.length > 0 && chaveMes(pontos[0]) !== chaveMes(pontos[pontos.length - 1]);
+    const cruzaAno = pontos.length > 0 && pontos[0].getFullYear() !== pontos[pontos.length - 1].getFullYear();
+
+    const rotularPonto = (d: Date) => {
+      if (porDia) return cruzaMes ? `${d.getDate()}/${MONTHS[d.getMonth()]}` : String(d.getDate());
+
+      return cruzaAno ? `${MONTHS[d.getMonth()]}/${String(d.getFullYear()).slice(2)}` : MONTHS[d.getMonth()];
+    };
+
+    const serie = pontos.map((d) => {
+      const balde = baldes.get(chaveDe(d));
+
       return {
-        name,
-        faturado: soma(lista),
-        recebido: soma(lista.filter(estaFechado)),
+        name: rotularPonto(d),
+        faturado: balde?.faturado ?? 0,
+        recebido: balde?.recebido ?? 0,
       };
     });
 
@@ -375,9 +582,9 @@ const DashboardPage = () => {
       .sort((a, b) => (a.quantidade ?? 0) - (b.quantidade ?? 0))
       .slice(0, 6);
 
-    /* Quem mais comprou no mês. */
+    /* Quem mais comprou no período. */
     const porCliente = new Map<string, { nome: string; total: number; compras: number }>();
-    doMes.forEach((v) => {
+    noPeriodo.forEach((v) => {
       const atual = porCliente.get(v.clienteId) ?? { nome: v.nomeCliente, total: 0, compras: 0 };
       atual.total += totalDoPedido(v);
       atual.compras += 1;
@@ -385,9 +592,9 @@ const DashboardPage = () => {
     });
     const topClientes = [...porCliente.values()].sort((a, b) => b.total - a.total).slice(0, 5);
 
-    /* O que mais saiu no mês — por quantidade, que é o que repõe estoque. */
+    /* O que mais saiu no período — por quantidade, que é o que repõe estoque. */
     const porProduto = new Map<string, { nome: string; quantidade: number; total: number }>();
-    doMes.forEach((v) => {
+    noPeriodo.forEach((v) => {
       (v.pedido.itensPedido ?? []).forEach((it) => {
         const id = it.produto?.produtoId ?? it.itemPedidoId;
         const atual = porProduto.get(id) ?? { nome: it.produto?.nomeProduto ?? "Produto", quantidade: 0, total: 0 };
@@ -406,7 +613,7 @@ const DashboardPage = () => {
     /* Mix de recebimento. `formaPagamento` é a do último pagamento da nota — o
        subtítulo do painel diz isso, para ninguém ler como rateio exato. */
     const porForma = new Map<string, { total: number; notas: number }>();
-    doMes.filter(estaFechado).forEach((v) => {
+    noPeriodo.filter(estaFechado).forEach((v) => {
       const f = v.pedido.formaPagamento?.trim() || "Não informado";
       const atual = porForma.get(f) ?? { total: 0, notas: 0 };
       atual.total += totalDoPedido(v);
@@ -416,33 +623,31 @@ const DashboardPage = () => {
     const formas = [...porForma.entries()].map(([forma, d]) => ({ forma, ...d })).sort((a, b) => b.total - a.total);
 
     return {
-      faturadoMes,
-      recebidoMes,
+      faturado,
+      recebido,
       aReceber,
-      faturadoMesPassado,
-      recebidoMesPassado,
-      vendasNoMes: doMes.length,
-      vendasMesPassado: doMesPassado.length,
+      faturadoAnterior,
+      recebidoAnterior,
+      vendasNoPeriodo: noPeriodo.length,
+      /* `null` = não há janela anterior (todo o período). Os KPIs escondem a
+         linha de comparação em vez de inventar uma queda. */
+      temComparacao: anterior !== null,
       faturadoHoje: soma(doDia),
       vendasHoje: doDia.length,
-      ticketMes,
-      ticketMesPassado,
+      ticket,
+      ticketAnterior,
       abertasAgora: ativas.filter(estaAberto).length,
-      porMes,
+      mesesComMovimento,
+      serie,
+      /* O subtítulo do gráfico diz qual das duas leituras está na tela. */
+      granularidade: porDia ? ("dia" as const) : ("mes" as const),
       recentes,
       criticos,
       topClientes,
       topProdutos,
       formas,
     };
-  }, [vendas, produtos]);
-
-  /* O gráfico corta no mês corrente: a cauda de meses futuros zerados achatava
-     a curva inteira contra a base por metade da largura. */
-  const serie = useMemo(() => {
-    const ate = new Date().getMonth() + 1;
-    return dados.porMes.slice(Math.max(0, ate - janela), ate);
-  }, [dados.porMes, janela]);
+  }, [vendas, produtos, periodo]);
 
   const saudacao = useMemo(() => {
     const h = new Date().getHours();
@@ -497,6 +702,14 @@ const DashboardPage = () => {
    */
   const atalhos = (
     <>
+      {/* O período vem ANTES dos atalhos: ele governa a tela toda, e os
+          atalhos só levam para fora dela. Na faixa que rola no celular, é o
+          primeiro item — o que se procura ali é o recorte, não o caminho para
+          outra rota. */}
+      <SeletorPeriodo valor={periodo} onChange={setPeriodo} meses={dados.mesesComMovimento} />
+
+      <span aria-hidden className="hidden h-5 w-px shrink-0 bg-fg/[0.08] sm:block" />
+
       {ATALHOS.map(({ label, icone: Icone, para }) => (
         <motion.button
           key={para}
@@ -535,18 +748,18 @@ const DashboardPage = () => {
           <KpiFaixa className="sm:grid-cols-3 xl:grid-cols-5">
           <Kpi
             icon={<DollarSign size={16} />}
-            label="Faturado no mês"
-            valor={dados.faturadoMes}
-            hint={`${dados.vendasNoMes} ${dados.vendasNoMes === 1 ? "venda" : "vendas"}`}
-            rodape={<Variacao atual={dados.faturadoMes} anterior={dados.faturadoMesPassado} />}
+            label={`Faturado · ${periodo.rotulo.toLowerCase()}`}
+            valor={dados.faturado}
+            hint={`${dados.vendasNoPeriodo} ${dados.vendasNoPeriodo === 1 ? "venda" : "vendas"}`}
+            rodape={dados.temComparacao ? <Variacao atual={dados.faturado} anterior={dados.faturadoAnterior} /> : undefined}
             tone="accent"
           />
           <Kpi
             icon={<Wallet size={16} />}
-            label="Recebido no mês"
-            valor={dados.recebidoMes}
-            hint={dados.faturadoMes > 0 ? `${Math.round((dados.recebidoMes / dados.faturadoMes) * 100)}% do faturado` : undefined}
-            rodape={<Variacao atual={dados.recebidoMes} anterior={dados.recebidoMesPassado} />}
+            label={`Recebido · ${periodo.rotulo.toLowerCase()}`}
+            valor={dados.recebido}
+            hint={dados.faturado > 0 ? `${Math.round((dados.recebido / dados.faturado) * 100)}% do faturado` : undefined}
+            rodape={dados.temComparacao ? <Variacao atual={dados.recebido} anterior={dados.recebidoAnterior} /> : undefined}
             tone="success"
           />
           <Kpi
@@ -559,9 +772,9 @@ const DashboardPage = () => {
           <Kpi
             icon={<Receipt size={16} />}
             label="Ticket médio"
-            valor={dados.ticketMes}
-            hint="por venda no mês"
-            rodape={<Variacao atual={dados.ticketMes} anterior={dados.ticketMesPassado} />}
+            valor={dados.ticket}
+            hint="por venda no período"
+            rodape={dados.temComparacao ? <Variacao atual={dados.ticket} anterior={dados.ticketAnterior} /> : undefined}
             tone="accent"
           />
           <Kpi icon={<Users size={16} />} label="Clientes" valor={clientes.length} moeda={false} /* Só o que se vende: a frase diz "produtos", e insumo não é um.
@@ -583,7 +796,9 @@ const DashboardPage = () => {
               </span>
               <div>
                 <h2 className="text-[13.5px] leading-none text-ink">Faturamento</h2>
-                <p className="mt-1 text-[11.5px] text-faint">Mês a mês, faturado contra recebido</p>
+                <p className="mt-1 text-[11.5px] text-faint">
+                  {dados.granularidade === "dia" ? "Dia a dia" : "Mês a mês"} · {periodo.rotulo.toLowerCase()}
+                </p>
               </div>
             </div>
 
@@ -601,26 +816,10 @@ const DashboardPage = () => {
                 ))}
               </div>
 
-              {/* Janela do gráfico. A pílula ativa desliza entre as opções em vez
-                  de piscar de lugar — o olho acompanha para onde foi. */}
-              <div className="flex items-center gap-0.5 rounded-lg border border-fg/[0.08] bg-fg/[0.03] p-0.5">
-                {JANELAS.map((j) => (
-                  <button
-                    key={j.meses}
-                    onClick={() => setJanela(j.meses)}
-                    className="relative cursor-pointer rounded-md px-2.5 py-1 text-[11px] transition-colors"
-                  >
-                    {janela === j.meses && (
-                      <motion.span
-                        layoutId="janela-grafico"
-                        transition={{ type: "spring", stiffness: 520, damping: 38 }}
-                        className="absolute inset-0 rounded-md bg-accent"
-                      />
-                    )}
-                    <span className={`relative ${janela === j.meses ? "text-white" : "text-mist"}`}>{j.label}</span>
-                  </button>
-                ))}
-              </div>
+              {/* O seletor de 3/6/12 meses que morava aqui saiu: o período do
+                  cabeçalho já decide o intervalo, e dois controles para a mesma
+                  decisão fazem um deles estar sempre errado — este mostrava o
+                  ano corrente mesmo com o painel somando outro recorte. */}
             </div>
           </header>
 
@@ -629,7 +828,7 @@ const DashboardPage = () => {
           ) : (
             <div className="h-[176px] px-1 py-2">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={serie} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+                <AreaChart data={dados.serie} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
                   <defs>
                     {/* Preenchimento fundo no topo e queda longa: dá volume à
                         área sem escurecer a base do gráfico. */}
@@ -678,6 +877,9 @@ const DashboardPage = () => {
                     labelStyle={{ color: "rgb(var(--faint))", marginBottom: 4 }}
                     itemStyle={{ padding: 0 }}
                     formatter={(v) => formatCurrency(Number(v ?? 0))}
+                    /* O eixo mostra "12"; o balão diz "dia 12" — sozinho, o
+                       número podia ser qualquer coisa. */
+                    labelFormatter={(l) => (dados.granularidade === "dia" ? `Dia ${l}` : String(l))}
                   />
 
                   {/* Entram em escada — a segunda 180ms depois. Mesma ideia das
@@ -714,18 +916,18 @@ const DashboardPage = () => {
           )}
         </section>
 
-        <Painel title="Como receberam" subtitle="última forma de cada nota quitada no mês" icon={<CreditCard size={15} />} action={<VerTudo onClick={() => navigate("/vendas/financeiro")} />}>
-          {carregando ? <SkeletonGrafico altura={176} /> : dados.formas.length === 0 ? <Vazio>Nenhuma nota quitada neste mês.</Vazio> : <Rosca fatias={dados.formas.map((f) => ({ nome: f.forma, valor: f.total }))} formatar={formatCurrency} />}
+        <Painel title="Como receberam" subtitle="última forma de cada nota quitada no período" icon={<CreditCard size={15} />} action={<VerTudo onClick={() => navigate("/vendas/financeiro")} />}>
+          {carregando ? <SkeletonGrafico altura={176} /> : dados.formas.length === 0 ? <Vazio>Nenhuma nota quitada neste período.</Vazio> : <Rosca fatias={dados.formas.map((f) => ({ nome: f.forma, valor: f.total }))} formatar={formatCurrency} />}
         </Painel>
       </Bloco>
 
       {/* Rankings, em barras */}
       <Bloco i={2} className="grid shrink-0 grid-cols-1 gap-3 lg:grid-cols-2">
-        <Painel title="Quem mais comprou" subtitle="no mês, por valor" icon={<Trophy size={15} />} action={<VerTudo onClick={() => navigate("/clientes")} />}>
+        <Painel title="Quem mais comprou" subtitle="no período, por valor" icon={<Trophy size={15} />} action={<VerTudo onClick={() => navigate("/clientes")} />}>
           {carregando ? (
             <SkeletonGrafico altura={176} />
           ) : dados.topClientes.length === 0 ? (
-            <Vazio>Ainda não há compras neste mês.</Vazio>
+            <Vazio>Ainda não há compras neste período.</Vazio>
           ) : (
             <Barras
               cor={COR_FATURADO}
@@ -735,11 +937,11 @@ const DashboardPage = () => {
           )}
         </Painel>
 
-        <Painel title="Mais vendidos" subtitle="no mês, por quantidade" icon={<Boxes size={15} />} action={<VerTudo onClick={() => navigate("/relatorios")} />}>
+        <Painel title="Mais vendidos" subtitle="no período, por quantidade" icon={<Boxes size={15} />} action={<VerTudo onClick={() => navigate("/relatorios")} />}>
           {carregando ? (
             <SkeletonGrafico altura={176} />
           ) : dados.topProdutos.length === 0 ? (
-            <Vazio>Nenhum item vendido neste mês.</Vazio>
+            <Vazio>Nenhum item vendido neste período.</Vazio>
           ) : (
             <Barras
               cor={COR_RECEBIDO}

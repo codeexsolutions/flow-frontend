@@ -81,7 +81,7 @@ const FAQ: GrupoFaq[] = [
     itens: [
       {
         p: "Meu funcionário precisa ver o financeiro?",
-        r: <>Você decide, por pessoa. Em <b className="text-ink">Funcionários</b>, cada funcionário tem as áreas que enxerga marcadas uma a uma — dá para liberar o PDV e as planilhas sem abrir o caixa. Quem não tem a área marcada não acessa nem digitando o endereço.</>,
+        r: <>Você decide, por pessoa. Em <b className="text-ink">Funcionários</b>, cada funcionário tem as áreas que enxerga marcadas uma a uma — dá para liberar o PDV e as produções sem abrir o caixa. Quem não tem a área marcada não acessa nem digitando o endereço.</>,
       },
       {
         p: "Esqueci minha senha. E agora?",

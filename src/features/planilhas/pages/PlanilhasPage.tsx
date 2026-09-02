@@ -62,7 +62,7 @@ const LISTA_MIN_WIDTH = 792;
  * última posição é vazia de propósito: aquela coluna só reserva a largura das
  * ações, e no cartão ela não tem o que rotular.
  */
-const LISTA_ROTULOS = ["Planilha", "Período", "Colunas", "Linhas", "Preenchidas", undefined];
+const LISTA_ROTULOS = ["Produção", "Período", "Colunas", "Linhas", "Preenchidas", undefined];
 
 /**
  * Como cada evento do histórico se lê.
@@ -88,7 +88,7 @@ function descreverEvento(h: Alteracao): { titulo: string; detalhe: string | null
     case "COLUNA_REMOVIDA":
       return { titulo: `Coluna removida: ${h.coluna_nome ?? ""}`.trim(), detalhe: null };
     case "PLANILHA_RENOMEADA":
-      return { titulo: "Planilha renomeada", detalhe: `${de} → ${para}` };
+      return { titulo: "Produção renomeada", detalhe: `${de} → ${para}` };
     case "PAGINA_RENOMEADA":
       return { titulo: "Página renomeada", detalhe: para };
     default:
@@ -367,7 +367,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     try {
       setModelos(await PlanilhaService.modelos());
     } catch (err) {
-      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível carregar as planilhas."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível carregar as produções."));
     } finally {
       setCarregando(false);
     }
@@ -410,9 +410,9 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
 
       setModelos((ms) => ms.filter((m) => m.id !== excluindo.id));
       setExcluindo(null);
-      alert.toast("success", "Planilha excluída", "Ela saiu da lista.", TOAST);
+      alert.toast("success", "Produção excluída", "Ela saiu da lista.", TOAST);
     } catch (err) {
-      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível excluir a planilha."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível excluir a produção."));
     } finally {
       setRemovendo(false);
     }
@@ -440,7 +440,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
         setDataAtual(iso(new Date()));
       }
     } catch (err) {
-      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a planilha a partir do modelo."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a produção a partir do modelo."));
     } finally {
       setUsando(null);
     }
@@ -482,7 +482,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
 
       setColunas(cols);
     } catch (err) {
-      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir a planilha."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir a produção."));
     } finally {
       if (!silencioso) setCarregando(false);
     }
@@ -639,6 +639,65 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     }
   };
 
+  /**
+   * Repete a linha de cima nesta.
+   *
+   * O trabalho desta tela é quase todo repetição com uma diferença: o mesmo
+   * cliente, o mesmo prazo, a mesma etapa — muda a peça. Redigitar treze
+   * células para trocar uma é o gesto que mais se faz aqui, e era o único sem
+   * atalho: dava para excluir a linha, dava para ver o histórico dela, mas
+   * copiar a de cima exigia célula por célula.
+   *
+   * Copia SÓ o que esta pessoa poderia digitar à mão. Coluna restrita fica
+   * como está: o servidor recusaria a gravação inteira, e — pior — copiar
+   * seria uma porta lateral para escrever onde a permissão diz que não.
+   *
+   * Uma requisição só, com todos os valores. Treze chamadas de `salvarCelula`
+   * seriam treze linhas de histórico para um gesto que a pessoa entende como
+   * um.
+   */
+  const copiarDeCima = async (registroId: string) => {
+    const lista = pagina?.registros ?? [];
+    const i = lista.findIndex((r) => r.id === registroId);
+
+    /* A primeira linha não tem de onde copiar — o menu já desabilita o item,
+       isto é o cinto de segurança. */
+    if (i <= 0) return;
+
+    const acima = lista[i - 1];
+    const editaveis = colunas.filter((c) => podeEditar(c));
+
+    if (editaveis.length === 0) {
+      avisar("Nada para copiar", "Você não pode editar nenhuma coluna desta produção.");
+      return;
+    }
+
+    /* `?? null` e não `?? undefined`: célula vazia em cima tem de ESVAZIAR a
+       de baixo. Omitir a chave deixaria o valor antigo, e o resultado seria
+       uma linha que não é cópia de nada. */
+    const valores: Record<string, unknown> = {};
+
+    for (const c of editaveis) valores[c.id] = acima.valores[c.id] ?? null;
+
+    setPagina((p) =>
+      p ? { ...p, registros: p.registros.map((r) => (r.id === registroId ? { ...r, valores: { ...r.valores, ...valores } } : r)) } : p,
+    );
+
+    try {
+      await PlanilhaService.alterarRegistro(registroId, { valores });
+
+      /* Mesma consequência de digitar o nome à mão: a coluna de Cliente emite
+         o link. Como o cliente é o mesmo da linha de cima, o servidor devolve
+         o token que já existe e nenhum toast repete. */
+      for (const c of editaveis) {
+        if (c.tipo === "CLIENTE") emitirLinkDoCliente(c, valores[c.id]);
+      }
+    } catch (err) {
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível copiar a linha de cima."));
+      if (aberta) carregarPlanilha(aberta, dataAtual, true);
+    }
+  };
+
   /*
    * As páginas desta planilha, para o rodapé.
    *
@@ -711,12 +770,22 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
      mesmo tempo é ruído, e nenhum menu de planilha do mundo faz isso. */
   const [menuColuna, setMenuColuna] = useState<string | null>(null);
 
-  /* Menu do botão direito: onde clicou e sobre o quê. */
-  const [menuCelula, setMenuCelula] = useState<null | { x: number; y: number; registroId: string; coluna: Coluna; linha: number }>(null);
+  /*
+   * Menu do botão direito: onde clicou e sobre o quê.
+   *
+   * `alvo` separa os dois cliques que abrem o MESMO menu. Na célula, cabem as
+   * ações dela — histórico, limpar, configurar a coluna. No número da linha
+   * não cabe nenhuma: ali não há célula sob o cursor, e oferecer "limpar
+   * célula" apontando para a primeira coluna limparia uma que a pessoa nem
+   * mirou. Sobram as ações de linha, que são as mesmas nos dois casos.
+   */
+  const [menuCelula, setMenuCelula] = useState<
+    null | { x: number; y: number; registroId: string; coluna: Coluna; linha: number; alvo: "celula" | "linha" }
+  >(null);
 
-  const abrirMenuCelula = (e: React.MouseEvent, registroId: string, coluna: Coluna, linha: number) => {
+  const abrirMenuCelula = (e: React.MouseEvent, registroId: string, coluna: Coluna, linha: number, alvo: "celula" | "linha" = "celula") => {
     e.preventDefault();
-    setMenuCelula({ x: e.clientX, y: e.clientY, registroId, coluna, linha });
+    setMenuCelula({ x: e.clientX, y: e.clientY, registroId, coluna, linha, alvo });
   };
 
   /**
@@ -819,7 +888,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
       const nova = lista.find((m) => m.id === novoId);
       if (nova) setAberta(nova);
     } catch (err) {
-      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível duplicar a planilha."));
+      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível duplicar a produção."));
     } finally {
       setSalvando(false);
     }
@@ -946,7 +1015,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
 
   if (!aberta) {
     return (
-      <PageScreen icon={<Table2 className="h-5 w-5" />} title="Produção" subtitle="As planilhas que a sua operação usa">
+      <PageScreen icon={<Table2 className="h-5 w-5" />} title="Produção" subtitle="As produções que a sua operação usa">
         {/*
          * Uma tabela só, com a mesma anatomia de Clientes, Estoque e Vendas:
          * cabeçalho com o nome da lista e os botões de criar, barra de
@@ -968,9 +1037,9 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                 <Table2 className="h-4 w-4 text-accent-soft" />
               </div>
               <div>
-                <h2 className="text-[13px] text-ink">Planilhas</h2>
+                <h2 className="text-[13px] text-ink">Produções</h2>
                 <p className="text-[11px] text-faint">
-                  {modelos.length} {modelos.length === 1 ? "planilha" : "planilhas"}
+                  {modelos.length} {modelos.length === 1 ? "produção" : "produções"}
                 </p>
               </div>
             </div>
@@ -1000,7 +1069,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                   onClick={() => setNovaAberta(true)}
                   className="focus-ring inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-br from-accent-soft to-accent px-3 py-2 text-[12.5px] text-white shadow-glow transition-all hover:brightness-110 active:scale-[0.98]"
                 >
-                  <Plus size={15} /> Nova planilha
+                  <Plus size={15} /> Nova produção
                 </button>
               </div>
             )}
@@ -1036,7 +1105,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                         <Table2 className="h-6 w-6" />
                       </div>
                       <div>
-                        <p className="text-[13px] text-mist">Nenhuma planilha ainda</p>
+                        <p className="text-[13px] text-mist">Nenhuma produção ainda</p>
                         <p className="mt-0.5 text-[11px] leading-relaxed">
                           Comece por um modelo pronto — produção, estamparia, entregas — ou monte a sua do zero, escolhendo as colunas e o recorte de período.
                         </p>
@@ -1066,7 +1135,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                           setAberta(m);
                           setDataAtual(iso(new Date()));
                         }}
-                        ariaLabel={`Abrir a planilha ${m.nome}`}
+                        ariaLabel={`Abrir a produção ${m.nome}`}
                         acoes={
                           gestor ? (
                             /*
@@ -1083,7 +1152,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                               label={
                                 temDados
                                   ? `Não dá para excluir: ${m.total_preenchidas} ${m.total_preenchidas === 1 ? "linha preenchida" : "linhas preenchidas"}. Apague as linhas primeiro.`
-                                  : "Excluir planilha"
+                                  : "Excluir produção"
                               }
                               onClick={() => !temDados && setExcluindo(m)}
                             />
@@ -1132,9 +1201,9 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
 
         {/* Confirmação da exclusão. Só chega aqui planilha sem linha
             preenchida — a lixeira nem acende nas outras. */}
-        <Modal open={!!excluindo} onClose={() => setExcluindo(null)} title="Excluir planilha" subtitle={excluindo?.nome} accent="rgb(var(--danger))" maxWidth="max-w-sm">
+        <Modal open={!!excluindo} onClose={() => setExcluindo(null)} title="Excluir produção" subtitle={excluindo?.nome} accent="rgb(var(--danger))" maxWidth="max-w-sm">
           <p className="text-[13px] leading-relaxed text-mist">
-            A planilha sai da lista com as colunas que você montou. Não há linha preenchida nela, então nenhum trabalho se perde — mas a estrutura terá de ser refeita.
+            A produção sai da lista com as colunas que você montou. Não há linha preenchida nela, então nenhum trabalho se perde — mas a estrutura terá de ser refeita.
           </p>
 
           <div className="mt-5 flex justify-end gap-2">
@@ -1154,7 +1223,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
 
         {/* Modelos prontos — o catálogo que publicamos e o que foi desenhado
             para esta empresa em particular. */}
-        <Modal open={modelosAberto} onClose={() => setModelosAberto(false)} title="Modelos prontos" subtitle="A planilha nasce com as colunas já definidas" size="lg">
+        <Modal open={modelosAberto} onClose={() => setModelosAberto(false)} title="Modelos prontos" subtitle="A produção nasce com as colunas já definidas" size="lg">
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             {catalogo.map((m) => (
               <button
@@ -1194,7 +1263,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
           </div>
         </Modal>
 
-        <Modal open={novaAberta} onClose={() => setNovaAberta(false)} title="Nova planilha" subtitle="Você define as colunas depois">
+        <Modal open={novaAberta} onClose={() => setNovaAberta(false)} title="Nova produção" subtitle="Você define as colunas depois">
           <div className="flex flex-col gap-3">
             <input
               autoFocus
@@ -1217,7 +1286,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                   </button>
                 ))}
               </div>
-              <p className="mt-1.5 text-[11.5px] leading-relaxed text-faint">Define o recorte: a planilha mostra o dia, a semana ou o mês de cada vez.</p>
+              <p className="mt-1.5 text-[11.5px] leading-relaxed text-faint">Define o recorte: a produção mostra o dia, a semana ou o mês de cada vez.</p>
             </div>
 
             <div className="flex justify-end gap-2 pt-1">
@@ -1281,11 +1350,11 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
        */}
       <button
         onClick={() => setAberta(null)}
-        title="Ver todas as planilhas"
+        title="Ver todas as produções"
         className="focus-ring flex h-8 items-center gap-1.5 rounded-xl border border-fg/[0.1] px-2.5 text-[12px] text-mist transition-colors hover:bg-fg/[0.05] hover:text-ink"
       >
         <ArrowLeft size={14} />
-        <span className="hidden md:inline">Planilhas</span>
+        <span className="hidden md:inline">Produções</span>
       </button>
     </>
   );
@@ -1349,7 +1418,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
             <button
               type="button"
               onClick={() => setConfigAberta(true)}
-              title="Criar, renomear e configurar as colunas desta planilha"
+              title="Criar, renomear e configurar as colunas desta produção"
               className="focus-ring flex h-[38px] shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-fg/[0.1] px-3 text-[12px] text-mist transition-colors hover:text-ink"
             >
               <Columns3 size={14} />
@@ -1367,7 +1436,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
           <div className="glass-subtle flex h-[38px] shrink-0 items-center gap-1 rounded-xl p-1">
             {(
               [
-                { id: "planilha", label: "Planilha", icone: <Table2 size={14} /> },
+                { id: "planilha", label: "Tabela", icone: <Table2 size={14} /> },
                 { id: "backlog", label: "Backlog", icone: <KanbanSquare size={14} /> },
               ] as const
             ).map((v) => (
@@ -1376,7 +1445,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                 type="button"
                 onClick={() => trocarVisao(v.id)}
                 aria-pressed={visao === v.id}
-                title={v.id === "planilha" ? "Ver como planilha" : "Ver como quadro de etapas"}
+                title={v.id === "planilha" ? "Ver como tabela" : "Ver como quadro de etapas"}
                 className={`focus-ring flex h-full cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[12px] transition-colors ${
                   visao === v.id ? "bg-accent text-white shadow-glow" : "text-mist hover:text-ink"
                 }`}
@@ -1391,7 +1460,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
         <div className="min-h-0 flex-1 overflow-auto">
         {colunas.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-            <p className="text-[14px] text-ink">Esta planilha ainda não tem colunas</p>
+            <p className="text-[14px] text-ink">Esta produção ainda não tem colunas</p>
             <p className="max-w-sm text-[12.5px] leading-relaxed text-faint">Defina o que cada coluna representa e de que tipo ela é — texto, seleção, data, imagem.</p>
 
             {ehRoot ? (
@@ -1414,10 +1483,10 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
               <span className="grid h-14 w-14 place-items-center rounded-2xl border border-fg/[0.08] bg-fg/[0.03] text-faint">
                 <KanbanSquare size={22} />
               </span>
-              <p className="text-[14px] text-ink">Esta planilha ainda não tem coluna de etapa</p>
+              <p className="text-[14px] text-ink">Esta produção ainda não tem coluna de etapa</p>
               <p className="max-w-sm text-[12.5px] leading-relaxed text-faint">
                 O quadro empilha as linhas por uma coluna do tipo <strong className="text-mist">Seleção</strong> — as
-                alternativas dela viram as raias. Crie uma (Etapa, Status, Situação) e as mesmas linhas desta planilha
+                alternativas dela viram as raias. Crie uma (Etapa, Status, Situação) e as mesmas linhas desta produção
                 aparecem aqui como cartões.
               </p>
 
@@ -1519,8 +1588,8 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                   {ehRoot && (
                     <button
                       onClick={() => setConfigAberta(true)}
-                      title="Configurações da planilha"
-                      aria-label="Configurações da planilha"
+                      title="Configurações da produção"
+                      aria-label="Configurações da produção"
                       className="grid h-full w-full place-items-center py-2.5 text-faint transition-colors hover:bg-fg/[0.04] hover:text-accent-soft"
                     >
                       <Plus size={14} />
@@ -1533,7 +1602,14 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
             <tbody>
               {(pagina?.registros ?? []).map((r, i) => (
                 <tr key={r.id} className="group transition-colors hover:bg-fg/[0.02]">
-                  <td className="sticky left-0 z-10 border-b border-r border-fg/[0.05] bg-surface px-2 py-1 text-center text-[11px] tabular-nums text-faint transition-colors group-hover:text-mist">
+                  {/* O número da linha também abre o menu: as ações de LINHA
+                      (copiar a de cima, excluir, histórico) são as mesmas, e
+                      quem quer a linha inteira mira o número, não uma célula
+                      qualquer dela. */}
+                  <td
+                    onContextMenu={(e) => abrirMenuCelula(e, r.id, colunas[0], i + 1, "linha")}
+                    className="sticky left-0 z-10 cursor-context-menu border-b border-r border-fg/[0.05] bg-surface px-2 py-1 text-center text-[11px] tabular-nums text-faint transition-colors group-hover:text-mist"
+                  >
                     {i + 1}
                   </td>
 
@@ -1645,8 +1721,8 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
         <button
           onClick={duplicarAtual}
           disabled={salvando}
-          title={`Criar outra planilha com as mesmas colunas de ${aberta.nome}`}
-          aria-label="Duplicar planilha"
+          title={`Criar outra produção com as mesmas colunas de ${aberta.nome}`}
+          aria-label="Duplicar produção"
           className="focus-ring ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-lg text-mist transition-colors hover:bg-fg/[0.05] hover:text-ink disabled:opacity-40"
         >
           <Copy size={13} />
@@ -1678,7 +1754,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                 teria de fechar e procurar o botão do histórico geral. */}
             {historicoAlvo?.coluna && (
               <button onClick={() => abrirHistorico()} className="mt-2 text-[12px] text-accent-soft hover:underline">
-                Ver o histórico da planilha inteira
+                Ver o histórico da produção inteira
               </button>
             )}
           </div>
@@ -1717,20 +1793,24 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
         <MenuContexto
           x={menuCelula.x}
           y={menuCelula.y}
-          titulo={`${menuCelula.coluna.nome} · linha ${menuCelula.linha}`}
+          titulo={menuCelula.alvo === "linha" ? `Linha ${menuCelula.linha}` : `${menuCelula.coluna.nome} · linha ${menuCelula.linha}`}
           onFechar={() => setMenuCelula(null)}
           itens={[
-            {
-              id: "hist-celula",
-              rotulo: "Histórico desta célula",
-              icone: History,
-              onClick: () =>
-                abrirHistorico({
-                  registro: menuCelula.registroId,
-                  coluna: menuCelula.coluna.id,
-                  rotulo: `${menuCelula.coluna.nome} · linha ${menuCelula.linha}`,
-                }),
-            },
+            ...(menuCelula.alvo === "celula"
+              ? [
+                  {
+                    id: "hist-celula",
+                    rotulo: "Histórico desta célula",
+                    icone: History,
+                    onClick: () =>
+                      abrirHistorico({
+                        registro: menuCelula.registroId,
+                        coluna: menuCelula.coluna.id,
+                        rotulo: `${menuCelula.coluna.nome} · linha ${menuCelula.linha}`,
+                      }),
+                  },
+                ]
+              : []),
             {
               id: "hist-linha",
               rotulo: "Histórico da linha",
@@ -1738,22 +1818,35 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
               onClick: () => abrirHistorico({ registro: menuCelula.registroId, rotulo: `Linha ${menuCelula.linha}` }),
             },
             {
-              id: "limpar",
-              rotulo: "Limpar célula",
-              icone: Eraser,
+              id: "copiar-cima",
+              rotulo: "Copiar a linha de cima",
+              icone: Copy,
               separar: true,
-              /* Coluna restrita não é limpável por quem não pode editá-la — o
-                 servidor recusaria, e oferecer a ação seria mentira. */
-              desabilitado: !podeEditar(menuCelula.coluna),
-              onClick: () => salvarCelula(menuCelula.registroId, menuCelula.coluna.id, null),
+              /* Sem linha acima não há o que copiar — e "linha 1" é justamente
+                 onde o item apareceria mais vezes se ficasse ativo. */
+              desabilitado: menuCelula.linha <= 1,
+              onClick: () => copiarDeCima(menuCelula.registroId),
             },
-            {
-              id: "config",
-              rotulo: "Configurar coluna",
-              icone: Settings2,
-              desabilitado: !ehRoot,
-              onClick: () => setMenuColuna(menuCelula.coluna.id),
-            },
+            ...(menuCelula.alvo === "celula"
+              ? [
+                  {
+                    id: "limpar",
+                    rotulo: "Limpar célula",
+                    icone: Eraser,
+                    /* Coluna restrita não é limpável por quem não pode editá-la
+                       — o servidor recusaria, e oferecer a ação seria mentira. */
+                    desabilitado: !podeEditar(menuCelula.coluna),
+                    onClick: () => salvarCelula(menuCelula.registroId, menuCelula.coluna.id, null),
+                  },
+                  {
+                    id: "config",
+                    rotulo: "Configurar coluna",
+                    icone: Settings2,
+                    desabilitado: !ehRoot,
+                    onClick: () => setMenuColuna(menuCelula.coluna.id),
+                  },
+                ]
+              : []),
             {
               id: "excluir",
               rotulo: `Excluir linha ${menuCelula.linha}`,

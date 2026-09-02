@@ -290,9 +290,9 @@ const ProducaoPage = ({ abasSecao, controlesSecao, visaoFixa }: Props = {}) => {
               key={v}
               onClick={() => setVisao(v)}
               aria-pressed={visao === v}
-              className={`cursor-pointer rounded-lg px-3 py-1.5 text-[12px] capitalize transition-colors ${visao === v ? "bg-accent text-white shadow-glow" : "text-mist hover:text-ink"}`}
+              className={`cursor-pointer rounded-lg px-3 py-1.5 text-[12px] transition-colors ${visao === v ? "bg-accent text-white shadow-glow" : "text-mist hover:text-ink"}`}
             >
-              {v}
+              {v === "planilha" ? "Tabela" : "Quadro"}
             </button>
           ))}
         </div>

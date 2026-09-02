@@ -2,7 +2,7 @@ import sysgrafix from "@/shared/api/sysgrafix";
 
 /** O registro que falta criar no provedor do domínio. Vem da hospedagem. */
 export type RegistroDns = {
-  tipo: "A" | "CNAME";
+  tipo: "A" | "CNAME" | "TXT";
   /** O que vai no campo "nome"/"host" do painel do provedor. */
   nome: string;
   valor: string;
@@ -16,6 +16,14 @@ export type EstadoDominio = {
   /** `null` = sem integração com a hospedagem; o cadastro lá é manual. */
   naHospedagem: boolean | null;
   registro: RegistroDns | null;
+  /**
+   * O TXT de posse, quando a hospedagem ainda não confirmou que o domínio é
+   * seu. Enquanto ele existir, o certificado NÃO é emitido — e o endereço
+   * responde derrubando a conexão, sem cara de "falta configurar".
+   */
+  verificacao: RegistroDns | null;
+  /** O DNS aponta para cá, segundo a hospedagem. `null` = sem integração. */
+  apontado: boolean | null;
 };
 
 const um = <T>(r: { data?: { data?: T[] } }): T => (r.data?.data ?? [])[0] as T;
