@@ -110,12 +110,12 @@ const RelatoriosPage = () => {
     const mapa = new Map<string, string>();
 
     for (const v of ativas) {
-      const id = String(v.pedido.vendedorId ?? "");
-      if (id) mapa.set(id, v.pedido.nomeVendedor?.trim() || "Sem nome");
+      const id = String(v.vendedorId ?? "");
+      if (id) mapa.set(id, v.nomeVendedor?.trim() || "Sem nome");
     }
 
     const lista = [...mapa.entries()].map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-    const temOrfas = ativas.some((v) => !v.pedido.vendedorId);
+    const temOrfas = ativas.some((v) => !v.vendedorId);
 
     return temOrfas ? [...lista, { id: "sem", nome: "Sem vendedor" }] : lista;
   }, [ativas]);
@@ -141,9 +141,9 @@ const RelatoriosPage = () => {
 
     const doVendedor = (v: PedidoClienteType) => {
       if (vendedor === TODOS_VENDEDORES) return true;
-      if (vendedor === "sem") return !v.pedido.vendedorId;
+      if (vendedor === "sem") return !v.vendedorId;
 
-      return String(v.pedido.vendedorId ?? "") === vendedor;
+      return String(v.vendedorId ?? "") === vendedor;
     };
 
     return ativas.filter((v) => dentro(v) && doVendedor(v));
@@ -181,8 +181,8 @@ const RelatoriosPage = () => {
     const mapa = new Map<string, { nome: string; pedidos: number; total: number; recebido: number }>();
 
     noRecorte.forEach((v) => {
-      const chave = String(v.pedido.vendedorId ?? "sem");
-      const nome = v.pedido.vendedorId ? v.pedido.nomeVendedor?.trim() || "Sem nome" : "Sem vendedor";
+      const chave = String(v.vendedorId ?? "sem");
+      const nome = v.vendedorId ? v.nomeVendedor?.trim() || "Sem nome" : "Sem vendedor";
       const atual = mapa.get(chave) ?? { nome, pedidos: 0, total: 0, recebido: 0 };
 
       atual.pedidos += 1;
@@ -256,7 +256,7 @@ const RelatoriosPage = () => {
   const colVendas: Coluna<PedidoClienteType>[] = [
     { header: "Data", cell: (v) => formatDate(v.pedido.dataPedido), width: "14%" },
     { header: "Cliente", cell: (v) => v.nomeCliente, width: "34%" },
-    { header: "Vendedor", cell: (v) => v.pedido.nomeVendedor?.trim() || "—", width: "20%" },
+    { header: "Vendedor", cell: (v) => v.nomeVendedor?.trim() || "—", width: "20%" },
     { header: "Status", cell: (v) => (estaAberto(v) ? "Em aberto" : "Pago"), width: "14%" },
     { header: "Total", cell: (v) => formatCurrency(totalDoPedido(v)), align: "right", width: "18%" },
   ];
@@ -372,7 +372,7 @@ const RelatoriosPage = () => {
       noRecorte.map((v) => ({
         Data: formatDate(v.pedido.dataPedido),
         Cliente: v.nomeCliente,
-        Vendedor: v.pedido.nomeVendedor?.trim() || "—",
+        Vendedor: v.nomeVendedor?.trim() || "—",
         Status: estaAberto(v) ? "Em aberto" : "Pago",
         Total: totalDoPedido(v),
         Pago: valorPagoDoPedido(v),
