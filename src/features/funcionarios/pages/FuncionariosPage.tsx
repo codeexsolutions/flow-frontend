@@ -3,10 +3,11 @@ import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Users, ShieldCheck, UserPlus, Crown, AlertTriangle,
-  UserCog, Trash2, Percent, Clock, ListFilter, Link2, Receipt,
+  UserCog, Trash2, Percent, Clock, ListFilter, Receipt, SlidersHorizontal,
 } from "lucide-react";
 
 import { TabelaCard, TabelaHead, TabelaRow, TabelaVazia, type Coluna } from "@/shared/ui/DataTable";
+import { AbasTabela } from "@/shared/ui/AbasTabela";
 import { KpiFaixa } from "@/shared/ui/Painel";
 import { Modal } from "@/shared/ui/Modal";
 import { useAlert } from "@/shared/ui/Alert";
@@ -166,7 +167,22 @@ const FuncionariosPage = () => {
 
   /** `"novo"` abre o cadastro; um funcionário abre a ficha dele. */
   const [editando, setEditando] = useState<Funcionario | "novo" | null>(null);
-  const [configPonto, setConfigPonto] = useState(false);
+  /**
+   * Qual metade da tela está aberta.
+   *
+   * A configuração do ponto era um MODAL, aberto por um botão espremido entre
+   * três filtros na barra. Ela não é filtro nem ação de linha: é a segunda
+   * metade do assunto "equipe" — de um lado quem trabalha aqui, do outro as
+   * regras que valem para todos (o link do ponto, o horário da loja, o raio
+   * da localização). Duas abas dizem isso pela forma; um botão escondido entre
+   * filtros dizia que era mais um filtro.
+   *
+   * E, como painel, ele deixa de ser uma janela sobre a lista: dá para ajustar
+   * o horário e voltar para conferir quem bateu sem fechar nada.
+   */
+  const [aba, setAba] = useState<"equipe" | "config">("equipe");
+
+  const naEquipe = aba === "equipe";
 
   const ehRoot = Boolean(user?.root);
 
@@ -493,18 +509,6 @@ const FuncionariosPage = () => {
         className="w-[132px] shrink-0"
       />
 
-      {/* A configuração do ponto é de TELA, não de linha: ela vale para a
-          empresa inteira, e por isso mora na barra e não na ficha de alguém. */}
-      <button
-        type="button"
-        onClick={() => setConfigPonto(true)}
-        title="Link do ponto, horário de funcionamento e localização da loja"
-        className="focus-ring inline-flex h-[38px] shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-fg/[0.08] bg-fg/[0.04] px-3 text-[12.5px] text-mist transition-colors hover:border-fg/[0.16] hover:text-ink"
-      >
-        <Link2 className="h-3.5 w-3.5" />
-        Ponto
-      </button>
-
       {temFiltro && (
         <button
           type="button"
@@ -564,21 +568,43 @@ const FuncionariosPage = () => {
         </KpiFaixa>
 
         <TabelaCard
-          title="Equipe"
-          icon={<Users size={15} />}
-          count={carregando ? undefined : filtrados.length}
+          title={naEquipe ? "Equipe" : "Configurações da equipe"}
+          icon={naEquipe ? <Users size={15} /> : <SlidersHorizontal size={15} />}
+          count={naEquipe && !carregando ? filtrados.length : undefined}
           countLabel={filtrados.length === 1 ? "pessoa" : "pessoas"}
-          pagina={{ label: "Funcionários", icon: <UserCog className="h-3.5 w-3.5" /> }}
-          controles={controles}
+          navegacao={
+            <AbasTabela<"equipe" | "config">
+              grupo="abas-funcionarios"
+              valor={aba}
+              onValor={setAba}
+              abas={[
+                { id: "equipe", label: "Funcionários", icone: <UserCog size={14} />, contagem: carregando ? undefined : funcionarios.length },
+                { id: "config", label: "Configurações", icone: <SlidersHorizontal size={14} /> },
+              ]}
+            />
+          }
+          /* Os filtros restringem a LISTA. Na aba de configurações não há lista
+             para restringir, e deixá-los ali seria oferecer um controle que não
+             faz nada — pior do que não oferecer nenhum. */
+          controles={naEquipe ? controles : undefined}
           /* O botão fica de pé durante o carregamento, e não escondido: some
              daqui e a barra inteira se rearranja quando ele volta, que é
              exatamente o salto que o esqueleto existe para evitar. Cadastrar
              não depende da lista ter chegado — o formulário novo só precisa
              dos campos da pessoa. */
-          onAdd={() => setEditando("novo")}
+          onAdd={naEquipe ? () => setEditando("novo") : undefined}
           addLabel="Novo funcionário"
-          minWidth={720}
+          /* Sem largura mínima na aba de configurações: os 720px existem para a
+             grade de colunas da tabela, e imporiam rolagem lateral a um painel
+             que cabe na tela. */
+          minWidth={naEquipe ? 720 : 0}
         >
+          {!naEquipe ? (
+            <div className="p-4">
+              <PontoConfigPainel />
+            </div>
+          ) : (
+          <>
           <TabelaHead colunas={colunas} cols={COLS} />
 
           {carregando ? (
@@ -612,20 +638,9 @@ const FuncionariosPage = () => {
               />
             ))
           )}
+          </>
+          )}
         </TabelaCard>
-
-        {/* -------------------- Configuração do ponto -------------------- */}
-        <Modal
-          open={configPonto}
-          onClose={() => setConfigPonto(false)}
-          title="Ponto por link"
-          subtitle="O funcionário bate sem ter login no sistema"
-          size="lg"
-        >
-          {/* Montado só quando abre: o painel busca a configuração no `useEffect`,
-              e deixá-lo montado faria essa chamada a cada visita à tela. */}
-          {configPonto && <PontoConfigPainel />}
-        </Modal>
 
         {/* -------------------- Ficha do funcionário -------------------- */}
         {/* `maxWidth` acima do `lg` padrão pelo mesmo motivo da ficha do

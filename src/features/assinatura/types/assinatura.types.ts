@@ -242,6 +242,7 @@ export const RECURSO_LABEL: Record<string, string> = {
   orcamentos: "Orçamentos",
   planilhas: "Produções",
   producao: "Controle de produção",
+  funcionarios: "Equipe, acessos e ponto",
   crm: "CRM com funil de vendas",
   crmMultiAtendente: "CRM multi-atendente",
   metas: "Metas por vendedor",

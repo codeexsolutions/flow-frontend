@@ -128,8 +128,10 @@ const TabBar = () => {
     // Financeiro voltou a ser destino próprio: caixa, a pagar e a receber numa tela só.
     ...(gestor ? [{ rota: "/financeiro", label: "Financeiro", icon: <Wallet size={18} />, recurso: "financeiro" }] : []),
     { rota: "/relatorios", label: "Relatórios", icon: <BarChart3 size={18} />, recurso: "relatorios" },
-    // Equipe é do dono e só existe em plano que comporta mais de um usuário.
-    ...(gestor && planoTemEquipe(equipe) ? [{ rota: "/funcionarios", label: "Funcionários", icon: <UserCircle size={18} /> }] : []),
+    /* Equipe é do dono, é módulo pago (`recurso`), e some de vez em plano de um
+       login só — sem segunda pessoa não há equipe para gerenciar, e o cadeado
+       prometeria uma tela que o upgrade não entregaria sozinho. */
+    ...(gestor && planoTemEquipe(equipe) ? [{ rota: "/funcionarios", label: "Funcionários", icon: <UserCircle size={18} />, recurso: "funcionarios" }] : []),
 
     { rota: "/clientes", label: "Clientes", icon: <Users size={18} />, familia: "Atendimento" },
 

@@ -265,8 +265,36 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
           <Route path="vendas/lista" element={<Navigate to="/vendas" replace />} />
           <Route path="vendas/orcamentos" element={<Navigate to="/pdv/orcamentos" replace />} />
 
-          <Route path="funcionarios" element={<FuncionariosPage />} />
-          <Route path="funcionarios/:funcionarioId" element={<FuncionarioDetalhe />} />
+          {/*
+            Funcionários é módulo pago.
+            Antes a aba era decidida por `planoTemEquipe` — "o plano deixa mais
+            de um usuário?" —, o que a mostrava em qualquer plano de duas
+            pessoas para cima, e a ROTA não era travada por nada: quem digitasse
+            o endereço entrava. Agora é a mesma trava dos outros módulos, e a
+            de verdade está no servidor (`funcionario.route.ts`).
+          */}
+          <Route
+            path="funcionarios"
+            element={
+              <RecursoDoPlano
+                recurso="funcionarios"
+                promessa="Cadastre a equipe, dê acesso ao sistema com as áreas de cada um, monte a jornada e receba o ponto batido pelo celular."
+              >
+                <FuncionariosPage />
+              </RecursoDoPlano>
+            }
+          />
+          <Route
+            path="funcionarios/:funcionarioId"
+            element={
+              <RecursoDoPlano
+                recurso="funcionarios"
+                promessa="Cadastre a equipe, dê acesso ao sistema com as áreas de cada um, monte a jornada e receba o ponto batido pelo celular."
+              >
+                <FuncionarioDetalhe />
+              </RecursoDoPlano>
+            }
+          />
 
           {/* Módulos que dependem do plano. O `RecursoDoPlano` mostra a
               oferta no lugar da tela — não redireciona: quem clicou em

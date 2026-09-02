@@ -89,7 +89,19 @@ const FuncionarioForm = ({ funcionario, areas, ehRoot, podeCriarAcesso, onCancel
     funcionario?.comissaoPercentual != null ? String(funcionario.comissaoPercentual) : "",
   );
 
-  const [batePonto, setBatePonto] = useState(funcionario?.batePonto ?? false);
+  /*
+   * Cadastro NOVO já nasce batendo ponto.
+   *
+   * O padrão era desligado, e ele descrevia a exceção em vez da regra: numa
+   * loja, quase todo mundo cumpre horário — sócio, comissionado e autônomo são
+   * os poucos que não. Desligado, a jornada de cada pessoa só passava a existir
+   * depois que alguém voltasse na ficha para ligar a chave, e o link do ponto
+   * chegava à equipe sem ninguém reconhecido do outro lado.
+   *
+   * `??` e não `||`: funcionário existente com a chave desligada tem de
+   * continuar desligado, e `false || true` daria `true`.
+   */
+  const [batePonto, setBatePonto] = useState(funcionario?.batePonto ?? true);
 
   /* ── O acesso ─────────────────────────────────────────────────────────── */
 
@@ -493,7 +505,7 @@ const FuncionarioForm = ({ funcionario, areas, ehRoot, podeCriarAcesso, onCancel
                       label="Bate ponto"
                       hint={
                         novo
-                          ? "Ligue para quem registra horário. A jornada é configurada depois de cadastrar."
+                          ? "Vem ligado porque é o caso da maioria. Desligue para sócio, comissionado ou autônomo. A jornada é configurada depois de cadastrar."
                           : "Ligue para quem registra horário. Sócio, comissionado e autônomo normalmente não batem."
                       }
                       checked={batePonto}

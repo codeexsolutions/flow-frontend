@@ -351,8 +351,11 @@ const Sidebar = () => {
          * conteúdo de baixo.
          *
          * Ativo é preenchido de acento, e não um contorno como nos itens da
-         * lista: aqui são três alvos grandes lado a lado, e o preenchimento é
-         * o que se enxerga de relance, sem ler.
+         * lista: aqui são alvos grandes lado a lado, e o preenchimento é o que
+         * se enxerga de relance, sem ler.
+         *
+         * O PARADO também tem forma — borda e sombra rasa. Ver a nota no botão
+         * sobre por que a borda existe nos dois estados.
          */}
         <div className="relative border-b border-fg/[0.07] p-2.5">
           <div className="grid grid-cols-2 gap-1">
@@ -365,7 +368,7 @@ const Sidebar = () => {
                   <div
                     key={label}
                     title={`${label} não está incluído no seu plano. Veja as opções em Configurações › Faturas.`}
-                    className="flex cursor-not-allowed flex-col items-center justify-center gap-1 rounded-lg border border-fg/[0.06] py-2 text-[10.5px] text-faint opacity-55"
+                    className="flex cursor-not-allowed flex-col items-center justify-center gap-1 rounded-lg border border-fg/[0.1] bg-fg/[0.02] py-2 text-[10.5px] text-faint opacity-55"
                   >
                     <span className="relative">
                       <Icone size={17} />
@@ -382,8 +385,28 @@ const Sidebar = () => {
                   type="button"
                   onClick={() => goto(rota)}
                   aria-current={on ? "page" : undefined}
-                  className={`focus-ring relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg py-2 text-[10.5px] transition-colors duration-200 ${
-                    on ? "text-white" : "text-mist hover:bg-fg/[0.05] hover:text-ink"
+                  /*
+                   * Parado, o atalho agora TEM CORPO: borda, fundo e uma
+                   * sombra rasa.
+                   *
+                   * Antes só o ativo se via — os dois eram texto solto sobre o
+                   * mesmo fundo do menu, e a faixa que existe para destacar
+                   * Início e PDV entregava um botão aceso e um desaparecido.
+                   * Quem procurava o PDV com o Início aberto tinha de ler, e
+                   * ler é o que um atalho existe para evitar.
+                   *
+                   * A borda está nos DOIS estados, com cores diferentes: só no
+                   * parado, o botão mudaria de tamanho ao ser clicado e a
+                   * fileira inteira daria um pulo.
+                   *
+                   * `shadow-e1` e não uma sombra crua: é o token que acompanha
+                   * os sete temas — no tema plano ele vira um fio de contorno,
+                   * onde sombra de verdade ficaria suja.
+                   */
+                  className={`focus-ring relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg border py-2 text-[10.5px] transition-colors duration-200 ${
+                    on
+                      ? "border-accent/60 text-white"
+                      : "border-fg/[0.1] bg-fg/[0.04] text-mist shadow-e1 hover:border-accent/40 hover:bg-fg/[0.07] hover:text-ink"
                   }`}
                 >
                   {/* Sem `layoutId`, pelo mesmo motivo dos itens da lista: o pai
@@ -459,7 +482,10 @@ const Sidebar = () => {
           {item("producao", <Factory size={16} />, "Produção", false, !temRecurso("producao"))}
           {/* Equipe só existe em plano que comporta mais de um usuário: mostrar
               para quem tem uma vaga só seria oferecer porta que não abre. */}
-          {gestor && planoTemEquipe(equipe) && item("funcionarios", <UserCog size={16} />, "Funcionários")}
+          {/* `planoTemEquipe` continua valendo por CIMA da trava de plano: um
+              plano que inclui o módulo mas só permite um login não tem equipe
+              para gerenciar, e a aba apareceria vazia. */}
+          {gestor && planoTemEquipe(equipe) && item("funcionarios", <UserCog size={16} />, "Funcionários", false, !temRecurso("funcionarios"))}
 
           {/* Clientes aparecia duas vezes no menu antigo, uma em cada aba, para
               não cobrar troca de gaveta no destino mais visitado do sistema.
