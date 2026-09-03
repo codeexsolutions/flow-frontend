@@ -83,34 +83,63 @@ const useMarcaDominio = create<Estado>((set) => ({
 }));
 
 /**
- * Escreve a identidade da empresa na ABA do navegador.
+ * Escreve a identidade da empresa na ABA e no APP INSTALADO.
  *
- * Título e favicon não são React: vivem no `<head>`, fora da árvore. Ficam
- * aqui, numa função só, porque são o par que sempre muda junto — trocar um sem
- * o outro deixa a aba com o nome da loja e o ícone do Flow, que é pior do que
- * não personalizar nada.
- *
- * O favicon precisa ser um elemento NOVO a cada troca: reaproveitar o `<link>`
- * existente só mudando o `href` é ignorado por parte dos navegadores, que
- * mantêm o ícone já desenhado.
+ * Título, favicon, ícone do iOS e manifest não são React: vivem no `<head>`,
+ * fora da árvore. Ficam aqui, numa função só, porque são o conjunto que sempre
+ * muda junto — trocar um sem os outros deixa a aba com o nome da loja e o
+ * ícone do Flow, que é pior do que não personalizar nada.
  */
 export const vestirAba = (marca: MarcaDominio | null) => {
   if (!marca) return;
 
-  if (marca.nome) document.title = marca.nome;
+  if (marca.nome) {
+    document.title = marca.nome;
+
+    /* O nome que o iOS usa embaixo do ícone quando o app é adicionado à tela
+       de início. Ele lê a meta tag, não o manifest. */
+    const tituloIos = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+
+    if (tituloIos) tituloIos.setAttribute("content", marca.nome);
+  }
+
+  /*
+   * O manifest do PWA passa a ser o da empresa.
+   *
+   * Endereço PRÓPRIO, e não o `/manifest.webmanifest` de sempre: aquele está no
+   * precache do service worker, e a versão personalizada valeria só na primeira
+   * visita — depois o cache devolveria a genérica. Ver `manifestDaMarca` no
+   * `middleware.ts`.
+   *
+   * Trocado antes do primeiro render (esta função roda no `main.tsx`), que é
+   * quando o navegador ainda vai ler o manifest para decidir se oferece a
+   * instalação.
+   */
+  const linkManifest = document.querySelector('link[rel="manifest"]');
+
+  if (linkManifest) linkManifest.setAttribute("href", "/marca/manifest.webmanifest");
 
   if (!marca.logo) return;
 
-  for (const antigo of Array.from(document.querySelectorAll("link[rel~='icon']"))) {
+  /*
+   * Favicon e ícone do iOS.
+   *
+   * Precisam ser elementos NOVOS a cada troca: reaproveitar o `<link>` que já
+   * existe mudando só o `href` é ignorado por parte dos navegadores, que
+   * mantêm o ícone já desenhado.
+   */
+  for (const antigo of Array.from(document.querySelectorAll("link[rel~='icon'], link[rel='apple-touch-icon']"))) {
     antigo.remove();
   }
 
-  const icone = document.createElement("link");
+  for (const rel of ["icon", "apple-touch-icon"]) {
+    const icone = document.createElement("link");
 
-  icone.rel = "icon";
-  icone.href = marca.logo;
+    icone.rel = rel;
+    icone.href = marca.logo;
 
-  document.head.appendChild(icone);
+    document.head.appendChild(icone);
+  }
 };
 
 export default useMarcaDominio;

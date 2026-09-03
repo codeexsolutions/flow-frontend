@@ -288,11 +288,6 @@ const AcompanharProducaoPage = () => {
 
       const novo = await AcompanhamentoService.producao(token);
 
-      /* Aviso de mudança não pode APAGAR a página.
-           A recarga silenciosa pode voltar `null` por queda de rede ou pelo
-           link ter sido revogado no meio; trocar o conteúdo por "Link
-           indisponível" numa página que já estava aberta e correta é um susto
-           gratuito. Sem resposta, fica o que já estava. */
       if (novo || !silencioso) setDados(novo);
 
       setCarregando(false);

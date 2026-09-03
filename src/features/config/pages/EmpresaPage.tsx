@@ -15,7 +15,6 @@ import { empresaSchema, identificacaoSchema, type EmpresaData, type EmpresaInput
 import EmpresaIdentificacao from "@/features/config/components/EmpresaIdentificacao";
 import EmpresaContato from "@/features/config/components/EmpresaContato";
 import EmpresaEndereco from "@/features/config/components/EmpresaEndereco";
-import CorporateBadge from "@/features/config/components/CorporateBadge";
 import PixEmpresa from "@/features/config/components/PixEmpresa";
 import DominioProprio from "@/features/config/components/DominioProprio";
 
@@ -222,19 +221,22 @@ const EmpresaPage = () => {
 
   return (
     /*
-     * Grade única, alinhada à esquerda. Antes era uma aba por vez dentro de um
-     * `overflow-y-auto` próprio — que rolava dentro da rolagem de Configurações.
-     * Agora os três blocos ficam visíveis juntos e cada um salva o seu.
-     * `items-start` impede que um card curto seja esticado até a altura do vizinho.
+     * A tela tem a altura da JANELA, e quem troca o conteúdo é a barra de abas.
+     *
+     * As seções continuam separadas (Identificação / Contato / Endereço) e cada
+     * uma salva o seu — o que mudou foi o esqueleto. Antes a página crescia e
+     * quem rolava era Configurações inteira: o cabeçalho da seção e o botão
+     * Salvar saíam de vista junto com os campos, e o Salvar é justamente o que
+     * se procura depois de mexer no último deles.
+     *
+     * Agora só o CORPO do cartão rola (`corpoRolavel`): cabeçalho e Salvar
+     * ficam de pé. A coluna da direita — o cartão da empresa, o Pix e o
+     * domínio — continua onde estava, porque é ela que fecha o grid; ela rola
+     * por conta própria quando não couber.
      */
-    /*
-     * As seções continuam separadas (Identificação / Contato / Endereço) —
-     * cada uma salva o seu. O que mudou foi só o esqueleto: sem o
-     * `overflow-y-auto` próprio, que rolava dentro da rolagem de Configurações.
-     */
-    <div className="grid grid-cols-1 items-start gap-4 pb-2 xl:grid-cols-3">
-      <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
-        <div className="flex w-fit items-center gap-1 rounded-lg border border-fg/[0.07] bg-fg/[0.03] p-1">
+    <div className="grid grid-cols-1 items-start gap-4 pb-2 xl:min-h-0 xl:flex-1 xl:grid-cols-3 xl:items-stretch xl:pb-0">
+      <div className="flex min-w-0 flex-col gap-4 xl:col-span-2 xl:min-h-0">
+        <div className="flex w-fit shrink-0 items-center gap-1 rounded-lg border border-fg/[0.07] bg-fg/[0.03] p-1">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -248,7 +250,7 @@ const EmpresaPage = () => {
         </div>
 
         {tab === "identificacao" && (
-          <SettingsCard icon={<Building2 className="h-4 w-4" />} title="Identificação" desc="Dados principais da empresa" footer={<SaveBtn tabId="identificacao" onClick={() => doSave("identificacao", salvarIdentificacao)} />}>
+          <SettingsCard corpoRolavel icon={<Building2 className="h-4 w-4" />} title="Identificação" desc="Dados principais da empresa" footer={<SaveBtn tabId="identificacao" onClick={() => doSave("identificacao", salvarIdentificacao)} />}>
             <EmpresaIdentificacao register={register} errors={errors} setValue={setValue} watch={watch} />
 
             {/*
@@ -286,20 +288,26 @@ const EmpresaPage = () => {
         )}
 
         {tab === "contato" && (
-          <SettingsCard icon={<MessageCircle className="h-4 w-4" />} title="Contato" desc="Telefones e e-mail da empresa" footer={<SaveBtn tabId="contato" onClick={() => doSave("contato", salvarContato)} />}>
+          <SettingsCard corpoRolavel icon={<MessageCircle className="h-4 w-4" />} title="Contato" desc="Telefones e e-mail da empresa" footer={<SaveBtn tabId="contato" onClick={() => doSave("contato", salvarContato)} />}>
             <EmpresaContato register={register} errors={errors} />
           </SettingsCard>
         )}
 
         {tab === "endereco" && (
-          <SettingsCard icon={<MapPin className="h-4 w-4" />} title="Endereço" desc="CEP e localização da empresa" footer={<SaveBtn tabId="endereco" onClick={() => doSave("endereco", salvarEndereco)} />}>
+          <SettingsCard corpoRolavel icon={<MapPin className="h-4 w-4" />} title="Endereço" desc="CEP e localização da empresa" footer={<SaveBtn tabId="endereco" onClick={() => doSave("endereco", salvarEndereco)} />}>
             <EmpresaEndereco register={register} control={control} errors={errors} onBuscarCep={buscarCep} />
           </SettingsCard>
         )}
       </div>
 
-      <aside className="flex min-w-0 flex-col gap-3 xl:sticky xl:top-0">
-        <CorporateBadge />
+      {/* A coluna da empresa. Rola por dentro em vez de esticar a página: são
+          três cartões de altura variável (o do domínio cresce com o passo a
+          passo do DNS) e sem isto eles voltariam a empurrar a tela para baixo
+          dos 100vh que ela acabou de ganhar. */}
+      <aside className="flex min-w-0 flex-col gap-3 xl:min-h-0 xl:overflow-y-auto xl:pb-1 xl:pr-0.5">
+        {/* O cartão da empresa saiu daqui para Configurações › Meu perfil: nesta
+            tela ele repetia, em modo leitura, os mesmos campos que o
+            formulário ao lado estava editando. */}
         {/* Chave Pix mora aqui: é cadastro da empresa, não assunto de nota. */}
         <PixEmpresa />
         {/* O endereço próprio também: é a identidade da empresa vista de fora,

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, Download, Share, SquarePlus } from "lucide-react";
 
 import { Modal } from "@/shared/ui/Modal";
+import useMarcaDominio from "@/shared/marca/marcaDominio";
 import { useInstalacaoPwa } from "@/shared/pwa/instalacao";
 
 /**
@@ -40,6 +41,11 @@ const BotaoInstalar = ({ variante = "solto", className = "" }: Props) => {
 
   const rotulo = "Instalar aplicativo";
 
+  /* Empresa com domínio próprio instala o app COM O NOME DELA — é o que o
+     manifest servido por host devolve (ver `manifestDaMarca`). O texto da
+     ajuda acompanha, senão a instrução descreve outro app. */
+  const nomeDoApp = useMarcaDominio((s) => s.marca)?.nome || "CodeEx Flow";
+
   return (
     <>
       {variante === "menu" ? (
@@ -70,7 +76,11 @@ const BotaoInstalar = ({ variante = "solto", className = "" }: Props) => {
           {[
             { icone: <Share size={15} />, texto: "Toque em Compartilhar, na barra de baixo do Safari." },
             { icone: <SquarePlus size={15} />, texto: "Role a lista e toque em “Adicionar à Tela de Início”." },
-            { icone: <Check size={15} />, texto: "Confirme em “Adicionar”. O CodeEx Flow aparece como um app." },
+            /* No domínio da empresa, o app que aparece na tela de início é o
+               DELA — e é o nome dela que o iPhone vai mostrar embaixo do
+               ícone. Prometer "CodeEx Flow" faria a instrução não bater com o
+               que a pessoa vê no fim dos três toques. */
+            { icone: <Check size={15} />, texto: `Confirme em “Adicionar”. O ${nomeDoApp} aparece como um app.` },
           ].map((passo, i) => (
             <li key={i} className="flex items-center gap-3 rounded-xl border border-fg/[0.06] bg-fg/[0.02] px-3.5 py-3">
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent/[0.14] text-accent-soft">{passo.icone}</span>

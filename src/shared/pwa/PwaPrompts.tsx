@@ -3,6 +3,7 @@ import { Download, WifiOff, X } from "lucide-react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
 import { useInstalacaoPwa } from "@/shared/pwa/instalacao";
+import useMarcaDominio from "@/shared/marca/marcaDominio";
 
 /**
  * Avisos do app instalável, todos discretos e no rodapé.
@@ -109,6 +110,9 @@ const PwaPrompts = () => {
      evento do navegador serve uma vez, e dois donos brigariam por ele. */
   const { podeInstalar, instalar } = useInstalacaoPwa();
 
+  /* Ver a nota em `BotaoInstalar`: no domínio do cliente o app é o dele. */
+  const nomeDoApp = useMarcaDominio((s) => s.marca)?.nome || "CodeEx Flow";
+
   const [dispensou, setDispensou] = useState(() => Boolean(localStorage.getItem(DISPENSOU_INSTALACAO)));
   const [offline, setOffline] = useState(() => !navigator.onLine);
 
@@ -142,7 +146,7 @@ const PwaPrompts = () => {
       {instalavel && (
         <Faixa
           icon={<Download size={16} />}
-          texto="Instale o CodeEx Flow e abra direto da tela de início."
+          texto={`Instale o ${nomeDoApp} e abra direto da tela de início.`}
           onFechar={dispensarInstalacao}
           acao={
             <button type="button" onClick={() => void instalar()} className="focus-ring shrink-0 rounded-xl bg-accent px-3 py-1.5 text-[12px] text-white transition hover:brightness-110">

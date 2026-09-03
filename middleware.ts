@@ -28,11 +28,18 @@ import { next } from "@vercel/edge";
  * host desconhecido, resposta estranha — cai no `next()` e o pedido segue.
  */
 
-/* Documentos, não arquivos. `assets/`, fontes e qualquer coisa com extensão
-   ficam de fora: o robô não pede JavaScript, e interceptar isso seria custo em
-   toda requisição da aplicação. */
+/*
+ * Dois alvos, por motivos diferentes.
+ *
+ * O primeiro são DOCUMENTOS — `assets/`, fontes e qualquer coisa com extensão
+ * ficam de fora, porque o robô de prévia não pede JavaScript e interceptar isso
+ * seria custo em toda requisição da aplicação.
+ *
+ * O segundo é o manifest do PWA da empresa, num caminho PRÓPRIO — ver a nota em
+ * `manifestDaMarca` sobre por que o endereço precisa ser outro.
+ */
 export const config = {
-    matcher: ["/((?!assets/|icons/|fonts/|.*\\.[a-zA-Z0-9]+$).*)"],
+    matcher: ["/((?!assets/|icons/|fonts/|.*\\.[a-zA-Z0-9]+$).*)", "/marca/manifest.webmanifest"],
 };
 
 /**
@@ -80,27 +87,114 @@ type Marca = {
 const escapar = (t: string) =>
     t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+/** Busca quem é o dono do endereço. `null` no nosso domínio e em qualquer falha. */
+async function marcaDoHost(host: string): Promise<Marca | null> {
+    const resposta = await fetch(`${API}/publico/marca?host=${encodeURIComponent(host)}`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(3000),
+    });
+
+    if (!resposta.ok) return null;
+
+    const corpo = await resposta.json();
+    const marca = (corpo?.data ?? [])[0] as Marca | undefined;
+
+    return marca?.nome ? marca : null;
+}
+
+/**
+ * O manifest do app instalado, com a marca da empresa.
+ *
+ * Instalado na tela de início, o sistema virava um ícone do Flow com o nome do
+ * Flow — dentro do celular do funcionário de outra loja. O manifest é o arquivo
+ * que decide isso, e ele é estático: um só, servido igual para todos os
+ * domínios.
+ *
+ * ---------------------------------------------------------------------------
+ * Por que num endereço PRÓPRIO, e não no `/manifest.webmanifest`
+ * ---------------------------------------------------------------------------
+ * O `manifest.webmanifest` está no precache do service worker. Servi-lo daqui
+ * funcionaria na primeira visita e pararia de funcionar na segunda, quando o
+ * cache assume — o pior tipo de defeito, o que só aparece depois e não deixa
+ * rastro. Num caminho que o worker não conhece, todo pedido vai à rede.
+ *
+ * Quem aponta o `<link rel="manifest">` para cá é a aplicação, ao descobrir que
+ * o endereço tem dono (ver `vestirAba`). No nosso domínio nada aponta para
+ * aqui, e o manifest de sempre continua valendo.
+ *
+ * ---------------------------------------------------------------------------
+ * Os ícones
+ * ---------------------------------------------------------------------------
+ * A logo da empresa é um arquivo só, de tamanho que não controlamos, e o
+ * manifest exige `sizes`. Declará-la nos dois tamanhos que o Android procura
+ * (192 e 512) é o que faz o ícone ser aceito; o navegador redimensiona. A
+ * alternativa — `sizes: "any"` — leva o Chrome a recusar o app como instalável
+ * em parte dos casos, e aí não há ícone nenhum porque não há instalação.
+ *
+ * `maskable` fica de FORA de propósito: o Android recorta o ícone maskable em
+ * círculo, e uma logo sem margem de segurança perde as bordas. Sem a marcação
+ * ele desenha a logo inteira sobre um fundo — feio é melhor que cortado.
+ */
+function manifestDaMarca(marca: Marca): Response {
+    const icones = marca.logo
+        ? [
+              { src: marca.logo, sizes: "192x192", type: "image/webp", purpose: "any" },
+              { src: marca.logo, sizes: "512x512", type: "image/webp", purpose: "any" },
+          ]
+        : [
+              { src: "/pwa-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+              { src: "/pwa-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          ];
+
+    const corpo = {
+        name: marca.nome,
+        short_name: marca.nome.length > 12 ? marca.nome.slice(0, 12).trim() : marca.nome,
+        description: `Sistema de gestão de ${marca.nome}.`,
+        lang: "pt-BR",
+        /* A cor da empresa pinta a barra do sistema no app instalado. Sem cor
+           gravada, o escuro de sempre — que combina com o tema padrão. */
+        theme_color: marca.cor || "#0e0d1a",
+        background_color: marca.cor || "#0e0d1a",
+        display: "standalone",
+        orientation: "any",
+        start_url: "/",
+        scope: "/",
+        icons: icones,
+    };
+
+    return new Response(JSON.stringify(corpo), {
+        headers: {
+            "content-type": "application/manifest+json; charset=utf-8",
+            "cache-control": "public, max-age=300",
+        },
+    });
+}
+
 export default async function middleware(request: Request) {
     try {
-        if (!ehRobo(request.headers.get("user-agent") ?? "")) return next();
-
         const url = new URL(request.url);
         const host = url.hostname.replace(/^www\./, "");
 
-        const resposta = await fetch(`${API}/publico/marca?host=${encodeURIComponent(host)}`, {
-            headers: { Accept: "application/json" },
-            signal: AbortSignal.timeout(3000),
-        });
+        /* O manifest é pedido pelo NAVEGADOR, não pelo robô: vem antes de
+           qualquer checagem de user-agent. */
+        if (url.pathname === "/marca/manifest.webmanifest") {
+            const marca = await marcaDoHost(host);
 
-        if (!resposta.ok) return next();
+            /* Endereço sem dono pedindo o manifest da marca não deveria
+               acontecer — a aplicação só aponta para cá quando há dono. Se
+               acontecer, devolve o caminho normal em vez de um 404, que
+               desinstalaria o app de quem já o tem. */
+            return marca ? manifestDaMarca(marca) : next();
+        }
 
-        const corpo = await resposta.json();
-        const marca = (corpo?.data ?? [])[0] as Marca | undefined;
+        if (!ehRobo(request.headers.get("user-agent") ?? "")) return next();
+
+        const marca = await marcaDoHost(host);
 
         /* Endereço sem empresa própria — o nosso, por exemplo. A prévia do Flow
            é a que já vem do `index.html`, e reescrevê-la aqui seria manter duas
            versões da mesma coisa. */
-        if (!marca?.nome) return next();
+        if (!marca) return next();
 
         const nome = escapar(marca.nome);
         const descricao = escapar(`Acesse o sistema de ${marca.nome}.`);

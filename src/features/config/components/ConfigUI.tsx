@@ -12,9 +12,32 @@ const labelBase = "block text-[10px] uppercase tracking-[0.7px] text-faint mb-1"
 
 /* ---------------------------------- Card ---------------------------------- */
 
-export const SettingsCard = memo(({ icon, title, desc, children, footer, className = "" }: { icon: ReactNode; title: string; desc?: string; children: ReactNode; footer?: ReactNode; className?: string }) => (
-  <section className={`flex flex-col overflow-hidden rounded-2xl border border-fg/[0.07] bg-surface ${className}`}>
-    <header className="flex items-center gap-2.5 border-b border-fg/[0.06] px-5 py-3.5">
+export const SettingsCard = memo(({ icon, title, desc, children, footer, className = "", corpoRolavel = false }: {
+  icon: ReactNode;
+  title: string;
+  desc?: string;
+  children: ReactNode;
+  footer?: ReactNode;
+  className?: string;
+  /**
+   * O CORPO rola, e o cartão tem a altura que lhe deram.
+   *
+   * O padrão (`false`) é o certo para uma página que cresce: o cartão tem a
+   * altura do conteúdo e quem rola é a página. Numa tela presa à janela vale o
+   * contrário — o cabeçalho diz o que é o cartão e o rodapé tem o Salvar, e
+   * os dois precisam ficar de pé enquanto os campos passam por baixo. Um
+   * "Salvar" que só aparece depois de rolar até o fim é um botão que a pessoa
+   * procura.
+   *
+   * Vale a partir de `xl`, e só lá: a tela presa à janela existe onde há duas
+   * colunas. No celular a página rola inteira, como sempre rolou — prender a
+   * altura ali daria um visor de 200px rolando dentro de outro que também
+   * rola, e o polegar nunca sabe qual dos dois vai se mexer.
+   */
+  corpoRolavel?: boolean;
+}) => (
+  <section className={`flex flex-col overflow-hidden rounded-2xl border border-fg/[0.07] bg-surface ${corpoRolavel ? "xl:min-h-0 xl:flex-1" : ""} ${className}`}>
+    <header className="flex shrink-0 items-center gap-2.5 border-b border-fg/[0.06] px-5 py-3.5">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/[0.15]">
         <span className="text-accent-soft">{icon}</span>
       </div>
@@ -24,9 +47,9 @@ export const SettingsCard = memo(({ icon, title, desc, children, footer, classNa
       </div>
     </header>
 
-    <div className="p-5">{children}</div>
+    <div className={`p-5 ${corpoRolavel ? "xl:min-h-0 xl:flex-1 xl:overflow-y-auto" : ""}`}>{children}</div>
 
-    {footer && <div className="border-t border-fg/[0.06] bg-fg/[0.02] px-5 py-3.5">{footer}</div>}
+    {footer && <div className="shrink-0 border-t border-fg/[0.06] bg-fg/[0.02] px-5 py-3.5">{footer}</div>}
   </section>
 ));
 SettingsCard.displayName = "SettingsCard";
