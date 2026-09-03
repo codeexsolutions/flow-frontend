@@ -123,6 +123,34 @@ export type MarcaEmpresa = {
   dominio: string | null;
 };
 
+/**
+ * O `carregamento: false` que se repete abaixo — e por que é só aqui.
+ *
+ * O interceptor de `sysgrafix` abre uma caixa "Salvando…" em toda gravação
+ * (ver `shared/api/carregamento.ts`). Essa caixa é certa na maior parte do
+ * sistema: cadastrar produto, fechar nota, registrar pagamento — gestos que a
+ * pessoa faz uma vez e espera terminar.
+ *
+ * A planilha e o backlog não funcionam assim. Ali se digita em rajada — dez,
+ * vinte células seguidas — e cada saída de campo é uma gravação. A caixa não
+ * tem botão, ROUBA O FOCO do campo e engole a próxima tecla: quem estava
+ * descendo a coluna perde a linha e tem de reencontrá-la. No backlog é o
+ * mesmo: arrastar um cartão travava o quadro por meio segundo, e arrastar
+ * cinco travava cinco vezes. É a mesma razão pela qual `/mover`, o arrastar do
+ * quadro de produção, já estava fora do aviso.
+ *
+ * Nada se perde calando o aviso: a gravação é otimista (a célula já mostra o
+ * valor novo), e a falha volta como toast no canto, com a célula revertida —
+ * ver `salvarCelula` em `PlanilhasPage`. O aviso dizia o que a tela já dizia,
+ * e cobrava o foco por isso.
+ *
+ * O que CONTINUA com a caixa: criar e excluir planilha, criar coluna, usar um
+ * modelo do catálogo, emitir e revogar link. São gestos deliberados, feitos
+ * uma vez, fora do fluxo de digitação — e alguns demoram o bastante para que
+ * o silêncio pareça travamento.
+ */
+const SEM_AVISO = { carregamento: false as const };
+
 const lista = <T>(r: { data?: { data?: T[] } }): T[] => r.data?.data ?? [];
 const um = <T>(r: { data?: { data?: T[] } }): T => (r.data?.data ?? [])[0] as T;
 
@@ -136,7 +164,7 @@ const PlanilhaService = {
   },
 
   async alterarModelo(id: string, dados: Record<string, unknown>) {
-    await sysgrafix.patch(`/planilhas/${id}`, dados);
+    await sysgrafix.patch(`/planilhas/${id}`, dados, SEM_AVISO);
   },
 
   /** Os modelos prontos que esta empresa recebeu. */
@@ -165,7 +193,7 @@ const PlanilhaService = {
 
   /** Batiza uma página. Nome vazio devolve o rótulo pela data. */
   async renomearPagina(modeloId: string, competencia: string, nome: string) {
-    await sysgrafix.patch(`/planilhas/${modeloId}/paginas`, { competencia, nome });
+    await sysgrafix.patch(`/planilhas/${modeloId}/paginas`, { competencia, nome }, SEM_AVISO);
   },
 
   /* --------- Links de acompanhamento (o que o cliente abre) --------- */
@@ -183,8 +211,22 @@ const PlanilhaService = {
   async criarLink(
     modeloId: string,
     dados: { clienteNome: string; colunaClienteId?: string; colunasVisiveis?: string[]; validadeDias?: number | null },
+    /**
+     * `true` quando o link é CONSEQUÊNCIA de uma célula, não um pedido.
+     *
+     * Escrever um nome numa coluna de Cliente emite o link sozinho (ver
+     * `emitirLinkDoCliente`). Sem esta saída, digitar o nome do cliente
+     * abriria a caixa "Salvando…" no meio da planilha — um aviso para algo
+     * que a pessoa nem pediu, tirando o foco de onde ela estava digitando. O
+     * toast de "link criado" já conta o que aconteceu, no canto e sem
+     * interromper.
+     *
+     * No botão de gerar link (`LinksCliente`) fica `false`: ali o gesto foi
+     * deliberado e a espera é a resposta a ele.
+     */
+    automatico = false,
   ) {
-    return um<LinkPublico>(await sysgrafix.post(`/planilhas/${modeloId}/links`, dados));
+    return um<LinkPublico>(await sysgrafix.post(`/planilhas/${modeloId}/links`, dados, automatico ? SEM_AVISO : undefined));
   },
 
   async revogarLink(linkId: string) {
@@ -225,7 +267,7 @@ const PlanilhaService = {
   },
 
   async alterarColuna(colunaId: string, dados: Record<string, unknown>) {
-    await sysgrafix.patch(`/planilhas/colunas/${colunaId}`, dados);
+    await sysgrafix.patch(`/planilhas/colunas/${colunaId}`, dados, SEM_AVISO);
   },
 
   async removerColuna(colunaId: string) {
@@ -234,7 +276,7 @@ const PlanilhaService = {
 
   /** Cria um bloco de linhas em branco de uma vez. */
   async criarLote(modeloId: string, quantidade: number, competencia: string) {
-    await sysgrafix.post(`/planilhas/${modeloId}/registros/lote`, { quantidade, competencia });
+    await sysgrafix.post(`/planilhas/${modeloId}/registros/lote`, { quantidade, competencia }, SEM_AVISO);
   },
 
   async registros(modeloId: string, data?: string) {
@@ -242,15 +284,15 @@ const PlanilhaService = {
   },
 
   async criarRegistro(modeloId: string, dados: { valores?: Record<string, unknown>; competencia?: string }) {
-    return um<string>(await sysgrafix.post(`/planilhas/${modeloId}/registros`, dados));
+    return um<string>(await sysgrafix.post(`/planilhas/${modeloId}/registros`, dados, SEM_AVISO));
   },
 
   async alterarRegistro(registroId: string, dados: Record<string, unknown>) {
-    await sysgrafix.patch(`/planilhas/registros/${registroId}`, dados);
+    await sysgrafix.patch(`/planilhas/registros/${registroId}`, dados, SEM_AVISO);
   },
 
   async excluirRegistro(registroId: string) {
-    await sysgrafix.delete(`/planilhas/registros/${registroId}`);
+    await sysgrafix.delete(`/planilhas/registros/${registroId}`, SEM_AVISO);
   },
 };
 

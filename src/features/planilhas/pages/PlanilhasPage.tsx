@@ -979,7 +979,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     if (!nome) return;
 
     try {
-      const link = await PlanilhaService.criarLink(aberta.id, { clienteNome: nome, colunaClienteId: coluna.id });
+      const link = await PlanilhaService.criarLink(aberta.id, { clienteNome: nome, colunaClienteId: coluna.id }, true);
 
       /* Só avisa quando o link é NOVO. Reescrever o nome de quem já tem
          devolveria o mesmo link, e um toast a cada célula viraria o barulho
