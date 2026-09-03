@@ -42,6 +42,12 @@ export type Chatbot = {
   expediente: DiaExpediente[];
   /** Horas sem repetir o recado para a mesma pessoa. */
   silencio_horas: number;
+  /** Com a IA ligada, é ela que responde — o recado fixo não sai. */
+  ia_ativa: boolean;
+  /** O que a loja sabe, em texto corrido. É daqui que a IA responde. */
+  documentacao: string | null;
+  /** Minutos que a IA espera antes de entrar no lugar de uma pessoa. */
+  ia_espera_minutos: number;
   atualizado_em?: string | null;
 };
 
@@ -139,6 +145,9 @@ const CrmService = {
     mensagemFora?: string;
     expediente?: DiaExpediente[];
     silencioHoras?: number;
+    iaAtiva?: boolean;
+    documentacao?: string;
+    iaEsperaMinutos?: number;
   }) {
     await sysgrafix.patch("/crm/chatbot", dados, SEM_AVISO);
   },

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Bot, Clock, Loader2, MessageSquareText, Power, Timer } from "lucide-react";
+import { AlertTriangle, BookOpen, Bot, Clock, Loader2, MessageSquareText, Power, Sparkles, Timer } from "lucide-react";
 
 import CrmService, { type Chatbot, type DiaExpediente } from "@/features/crm/services/crm.service";
 import { SettingsCard, SaveRow } from "@/features/config/components/ConfigUI";
@@ -90,6 +90,9 @@ const ChatbotPage = () => {
         mensagemFora: proximo.mensagem_fora ?? "",
         expediente: proximo.expediente,
         silencioHoras: proximo.silencio_horas,
+        iaAtiva: proximo.ia_ativa,
+        documentacao: proximo.documentacao ?? "",
+        iaEsperaMinutos: proximo.ia_espera_minutos,
       });
 
       setSalvo(true);
@@ -231,6 +234,92 @@ const ChatbotPage = () => {
                 </ListaLinha>
               );
             })}
+          </div>
+        </SettingsCard>
+
+        {/* ---------------- A IA ---------------- */}
+        <SettingsCard
+          icon={<Sparkles size={16} />}
+          title="Atendimento por IA"
+          desc="Responde quando ninguém respondeu — dentro e fora do expediente"
+          footer={<SaveRow saving={salvando} saved={salvo} onSave={() => void salvar()} label="Salvar documentação" />}
+        >
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-fg/[0.06] bg-fg/[0.02] p-3">
+            <div className="min-w-[180px] flex-1">
+              <p className="text-[12.5px] text-ink">{cfg.ia_ativa ? "IA ligada" : "IA desligada"}</p>
+              <p className="mt-0.5 text-[11.5px] leading-relaxed text-mist">
+                {cfg.ia_ativa
+                  ? "Ela substitui a mensagem fixa: responde de madrugada e também no meio do dia, se ninguém pegar a conversa."
+                  : "Só a mensagem fixa de fora de expediente é enviada."}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              disabled={salvando}
+              onClick={() => void salvar({ ia_ativa: !cfg.ia_ativa })}
+              className={`focus-ring flex min-h-[34px] shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-[12px] transition-colors disabled:opacity-50 ${
+                cfg.ia_ativa
+                  ? "border-danger/25 bg-danger/[0.08] text-danger hover:bg-danger/[0.14]"
+                  : "border-accent/30 bg-accent/[0.1] text-accent-soft hover:bg-accent/[0.16]"
+              }`}
+            >
+              <Power size={13} /> {cfg.ia_ativa ? "Desligar IA" : "Ligar IA"}
+            </button>
+          </div>
+
+          <label className="mb-1 block text-[10px] uppercase tracking-[0.7px] text-faint">
+            Esperar antes de responder
+          </label>
+          <div className="mb-4 flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              max={1440}
+              value={cfg.ia_espera_minutos}
+              onChange={(e) => {
+                setSalvo(false);
+                setCfg({ ...cfg, ia_espera_minutos: Number(e.target.value) });
+              }}
+              className="w-24 rounded-lg border border-fg/[0.08] bg-fg/[0.035] px-3 py-2.5 text-[13px] text-ink outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/15"
+            />
+            <span className="text-[12.5px] text-mist">minutos sem ninguém responder</span>
+          </div>
+
+          <label className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.7px] text-faint">
+            <BookOpen size={11} /> O que a empresa faz
+          </label>
+
+          <textarea
+            value={cfg.documentacao ?? ""}
+            onChange={(e) => {
+              setSalvo(false);
+              setCfg({ ...cfg, documentacao: e.target.value });
+            }}
+            rows={12}
+            placeholder={`Escreva como explicaria para um funcionário no primeiro dia. Por exemplo:
+
+O que fazemos: camisas personalizadas, uniformes, canecas, banners.
+Prazo: 5 dias úteis para até 50 peças. Urgência custa 30% a mais.
+Pedido mínimo: 10 peças para camisa.
+Pagamento: Pix, cartão em até 3x, 50% de entrada em encomendas.
+Entrega: retirada na loja ou motoboy dentro de Fortaleza (R$ 15).
+Endereço: Rua X, 123 — Centro.
+Não fazemos: impressão em papel, adesivo de carro.`}
+            className="w-full resize-y rounded-lg border border-fg/[0.08] bg-fg/[0.035] p-3 text-[12.5px] leading-relaxed text-ink outline-none transition-all placeholder:text-faint/70 focus:border-accent focus:ring-2 focus:ring-accent/15"
+          />
+
+          {/* O que a IA NÃO faz importa mais que o que ela faz — é o que evita
+              a loja descobrir na reclamação do cliente. */}
+          <div className="mt-3 rounded-xl border border-fg/[0.06] bg-fg/[0.02] px-3 py-2.5">
+            <p className="text-[11px] leading-relaxed text-mist">
+              A IA só afirma o que está escrito aqui. Quando não souber, ela diz que vai confirmar em vez de chutar — e
+              nunca fecha negócio, não dá desconto e não confirma pedido.
+            </p>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
+              Quanto mais específico o texto, melhor ela responde. Preço, prazo e o que vocês NÃO fazem são o que mais
+              muda o resultado.
+            </p>
           </div>
         </SettingsCard>
       </div>
