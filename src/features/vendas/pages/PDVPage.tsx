@@ -27,7 +27,7 @@ import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler"
 import { formatCurrency } from "@/shared/utils/currency";
 
 import Dica from "@/shared/ui/Dica";
-import MenuFormatoDownload from "@/shared/ui/MenuFormatoDownload";
+import MenuDownloadNota from "@/shared/ui/MenuDownloadNota";
 import NotaResumo from "@/features/vendas/components/NotaResumo";
 import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
@@ -927,8 +927,10 @@ const PontoDeVenda = () => {
                           chega no balcão ("me manda a nota"), e atravessar o
                           modal para responder custava quatro cliques. */}
                       <LinhaAcoes>
-                        <MenuFormatoDownload
-                          label="Baixar nota"
+                        <MenuDownloadNota
+                          variante="linha"
+                          titulo="Baixar nota"
+                          documento="nota"
                           ocupado={ocupado === String(venda.pedido.pedidoId)}
                           onEscolher={(formato) => void baixarNota(venda, formato)}
                         />
@@ -1046,7 +1048,7 @@ const PontoDeVenda = () => {
                             <AcaoLinha icon={<Trash2 size={14} />} label="Apagar" tone="perigo" ocupado={nesteMomento} onClick={() => void excluirOrcamento(o)} />
                           )}
 
-                          <MenuFormatoDownload label="Baixar" ocupado={nesteMomento} onEscolher={(formato) => void baixarOrcamento(o, formato)} />
+                          <MenuDownloadNota variante="linha" titulo="Baixar orçamento" documento="orçamento" ocupado={nesteMomento} onEscolher={(formato) => void baixarOrcamento(o, formato)} />
                         </LinhaAcoes>
                       </div>
                     );

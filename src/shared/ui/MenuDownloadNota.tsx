@@ -1,12 +1,22 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Download, FileImage, FileText, Loader2, Check } from "lucide-react";
 
+import Dica from "@/shared/ui/Dica";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
 import { baixarNotaPdf } from "@/shared/ui/downloadNota";
 
 /**
- * Menu de download de um documento (nota/orçamento).
+ * O ÚNICO botão de download de documento do sistema — nota, recibo, orçamento,
+ * holerite, na tela cheia ou na linha de uma lista.
+ *
+ * Antes existiam quatro botões diferentes para a mesma ação: este, um menu só
+ * de ícone (`MenuFormatoDownload`), a seta da linha da lista de vendas e um
+ * terceiro ícone solto na lista de orçamentos. Além de cada um ter um desenho
+ * próprio, dois deles baixavam PNG direto, sem oferecer PDF — o mesmo clique
+ * dava resultados diferentes dependendo de onde a pessoa estava. Agora todos
+ * são este componente: mesmo ícone, mesmo giro de "gerando", mesmo ✓ de
+ * pronto e a mesma lista PNG/PDF com o nome do documento no topo.
  *
  * Gera o PNG uma única vez e baixa como imagem ou cola no PDF. O nome da
  * empresa aparece no arquivo (ex.: `nota-loja-da-maria.pdf`).
@@ -29,9 +39,27 @@ const LARGURA = 176;
 const ALTURA_ESTIMADA = 140;
 
 type Posicao = { left: number; bottom?: number; top?: number };
+type Formato = "png" | "pdf";
+
 type Props = {
-  /** Ref do nó a rasterizar (a nota em si). */
-  refNota: React.RefObject<HTMLDivElement>;
+  /**
+   * Ref do nó a rasterizar (o documento em si).
+   *
+   * Obrigatório no modo normal. Em `onEscolher` quem baixa é a tela, e este
+   * ref não é usado.
+   */
+  refNota?: RefObject<HTMLDivElement>;
+  /**
+   * Quem baixa, quando não é o componente.
+   *
+   * As listas mantêm UM nó de documento escondido e o preenchem com a linha
+   * escolhida antes de fotografar; esse preparo é da tela, não daqui. Nesse
+   * modo o botão só oferece o formato e mostra o estado que a tela informa em
+   * `ocupado`.
+   */
+  onEscolher?: (formato: Formato) => void | Promise<void>;
+  /** Estado de "gerando" quando quem baixa é a tela (`onEscolher`). */
+  ocupado?: boolean;
   /** Nome da empresa, para o nome do arquivo. */
   nomeEmpresa?: string;
   /** Rótulo do documento (ex.: "nota", "orcamento"). */
@@ -48,15 +76,61 @@ type Props = {
    * errado para o cliente é o tipo de engano que volta como discussão.
    */
   documento?: string;
+  /**
+   * `completo` (padrão) é o botão do rodapé do documento aberto — alto, com o
+   * nome do documento escrito. `linha` é o mesmo botão encolhido para caber na
+   * fileira de ações de uma lista: mesmo ícone, mesmas cores, mesmo menu, só
+   * na altura dos outros ícones da linha.
+   */
+  variante?: "completo" | "linha";
 };
 
-const MenuDownloadNota = ({ refNota, nomeEmpresa = "nota", prefixo = "nota", titulo = "Baixar documento", documento = "documento" }: Props) => {
+const MenuDownloadNota = ({
+  refNota,
+  onEscolher,
+  ocupado: ocupadoExterno = false,
+  nomeEmpresa = "nota",
+  prefixo = "nota",
+  titulo = "Baixar documento",
+  documento = "documento",
+  variante = "completo",
+}: Props) => {
   const [aberto, setAberto] = useState(false);
-  const [ocupado, setOcupado] = useState<null | "png" | "pdf">(null);
+  const [ocupadoInterno, setOcupadoInterno] = useState<null | Formato>(null);
   const [sucesso, setSucesso] = useState(false);
   const [posicao, setPosicao] = useState<Posicao | null>(null);
   const botaoRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const delegado = typeof onEscolher === "function";
+  const ocupado = delegado ? ocupadoExterno : ocupadoInterno !== null;
+  const naLinha = variante === "linha";
+
+  /*
+   * O ✓ de "pronto" também quando quem baixa é a tela.
+   *
+   * No modo delegado o componente não vê o fim do download — só o `ocupado`
+   * que a tela informa. Sem observar essa virada, o botão da linha piscava o
+   * giro e voltava ao ícone normal, enquanto o do rodapé confirmava com o ✓:
+   * a mesma ação dando dois retornos diferentes. O arquivo do navegador não
+   * aparece na tela em todo aparelho, e sem confirmação alguma a pessoa clica
+   * de novo achando que falhou.
+   */
+  const ocupadoAntes = useRef(false);
+
+  useEffect(() => {
+    if (!delegado) return;
+
+    const terminou = ocupadoAntes.current && !ocupadoExterno;
+    ocupadoAntes.current = ocupadoExterno;
+
+    if (!terminou) return;
+
+    setSucesso(true);
+    const t = setTimeout(() => setSucesso(false), 2000);
+
+    return () => clearTimeout(t);
+  }, [delegado, ocupadoExterno]);
 
   /*
    * Ancora o menu ao botão. `bottom` em vez de `top` para o caso normal (menu
@@ -126,11 +200,21 @@ const MenuDownloadNota = ({ refNota, nomeEmpresa = "nota", prefixo = "nota", tit
     };
   }, [aberto]);
 
-  const baixar = async (formato: "png" | "pdf") => {
+  const baixar = async (formato: Formato) => {
     if (ocupado) return;
 
-    setOcupado(formato);
     setAberto(false);
+
+    /* Modo delegado: a tela tem o nó escondido e o próprio estado de
+       "gerando" — aqui só se escolhe o formato. */
+    if (delegado) {
+      await onEscolher(formato);
+      return;
+    }
+
+    if (!refNota) return;
+
+    setOcupadoInterno(formato);
 
     try {
       const blob = await gerarBlobNota(refNota);
@@ -146,27 +230,60 @@ const MenuDownloadNota = ({ refNota, nomeEmpresa = "nota", prefixo = "nota", tit
     } catch (err) {
       console.error("Erro ao baixar", err);
     } finally {
-      setOcupado(null);
+      setOcupadoInterno(null);
     }
   };
 
+  /* O mesmo ícone nas duas variantes — é ele que faz o botão ser reconhecido
+     como "o download" em qualquer tela. */
+  const icone = ocupado ? (
+    <Loader2 size={naLinha ? 14 : 17} className="animate-spin" />
+  ) : sucesso ? (
+    <Check size={naLinha ? 14 : 17} className="text-success" />
+  ) : (
+    <Download size={naLinha ? 14 : 17} />
+  );
+
+  const botao = (
+    <button
+      ref={botaoRef}
+      type="button"
+      title={naLinha ? undefined : titulo}
+      aria-label={titulo}
+      aria-haspopup="menu"
+      aria-expanded={aberto}
+      disabled={ocupado}
+      onClick={(ev) => {
+        /* A linha inteira é clicável (abre o documento): sem barrar aqui,
+           pedir o arquivo abriria o modal por cima do menu. */
+        ev.stopPropagation();
+        setAberto((v) => !v);
+      }}
+      className={
+        naLinha
+          ? "focus-ring flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-fg/[0.08] bg-surface/90 px-2 text-mist transition-colors hover:border-accent/40 hover:bg-fg/[0.08] hover:text-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+          : "flex h-12 shrink-0 items-center gap-2 rounded-xl border border-fg/[0.1] px-3 text-mist transition-colors hover:border-accent/40 hover:text-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+      }
+    >
+      {icone}
+      {/* O nome do documento no próprio botão, e não só no `title`: dica de
+          ferramenta não existe no celular, que é onde a nota é mandada.
+          Na linha o rótulo é curto e some no celular — ali a fileira de ações
+          divide poucos pixels com o valor da venda. */}
+      {naLinha ? (
+        <span className="hidden whitespace-nowrap text-[11.5px] sm:inline">{ocupado ? "Gerando..." : "Baixar"}</span>
+      ) : (
+        <span className="hidden whitespace-nowrap text-[13px] sm:inline">{ocupado ? "Gerando..." : `Baixar ${documento}`}</span>
+      )}
+    </button>
+  );
+
   return (
     <>
-      <button
-        ref={botaoRef}
-        type="button"
-        title={titulo}
-        aria-label={titulo}
-        aria-haspopup="menu"
-        aria-expanded={aberto}
-        onClick={() => setAberto((v) => !v)}
-        className="flex h-12 shrink-0 items-center gap-2 rounded-xl border border-fg/[0.1] px-3 text-mist transition-colors hover:border-accent/40 hover:text-accent-soft"
-      >
-        {ocupado ? <Loader2 size={17} className="animate-spin" /> : sucesso ? <Check size={17} className="text-success" /> : <Download size={17} />}
-        {/* O nome do documento no próprio botão, e não só no `title`: dica de
-            ferramenta não existe no celular, que é onde a nota é mandada. */}
-        <span className="hidden whitespace-nowrap text-[13px] sm:inline">{ocupado ? "Gerando..." : `Baixar ${documento}`}</span>
-      </button>
+      {/* `Dica` só na linha: lá o rótulo some no celular e encolhe no desktop,
+          então é a bolha que diz QUAL documento sai. No rodapé o nome do
+          documento já está escrito no botão. */}
+      {naLinha ? <Dica texto={titulo}>{botao}</Dica> : botao}
 
       {/* z-[300] fica acima do modal (z-[200]) — e, por estar no portal, fora
           do `overflow` que recortava a lista. */}
@@ -185,7 +302,10 @@ const MenuDownloadNota = ({ refNota, nomeEmpresa = "nota", prefixo = "nota", tit
           <button
             type="button"
             role="menuitem"
-            onClick={() => void baixar("png")}
+            onClick={(ev) => {
+              ev.stopPropagation();
+              void baixar("png");
+            }}
             className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left text-[13px] text-ink transition-colors hover:bg-fg/[0.06]"
           >
             <FileImage size={16} className="text-accent-soft" /> Imagem (PNG)
@@ -193,7 +313,10 @@ const MenuDownloadNota = ({ refNota, nomeEmpresa = "nota", prefixo = "nota", tit
           <button
             type="button"
             role="menuitem"
-            onClick={() => void baixar("pdf")}
+            onClick={(ev) => {
+              ev.stopPropagation();
+              void baixar("pdf");
+            }}
             className="flex w-full items-center gap-2.5 border-t border-fg/[0.06] px-3.5 py-3 text-left text-[13px] text-ink transition-colors hover:bg-fg/[0.06]"
           >
             <FileText size={16} className="text-danger/80" /> PDF

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileText, Search, Check, X, Trash2, Loader2, Info, ShoppingCart, Download } from "lucide-react";
+import { FileText, Search, Check, X, Trash2, Info, ShoppingCart } from "lucide-react";
 
 import OrcamentoService, { type Orcamento, type StatusOrcamento } from "@/features/orcamentos/services/orcamento.service";
 import { useAlert } from "@/shared/ui/Alert";
@@ -9,7 +9,8 @@ import { formatCurrency } from "@/shared/utils/currency";
 import { formatDate } from "@/shared/utils/date";
 import { SkeletonListaPainel } from "@/shared/ui/skeleton";
 import { PageScreen } from "@/shared/ui/PageShell";
-import { handleDownload } from "@/shared/ui/DownloadButton";
+import { gerarBlobNota } from "@/shared/ui/DownloadButton";
+import { baixarNotaPdf } from "@/shared/ui/downloadNota";
 import MenuDownloadNota from "@/shared/ui/MenuDownloadNota";
 import { Modal } from "@/shared/ui/Modal";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
@@ -41,6 +42,20 @@ const FILTROS: { id: "todos" | StatusOrcamento; label: string }[] = [
  * quantas propostas estão paradas esperando resposta, e essa contagem fica no
  * próprio filtro.
  */
+
+/** Baixa o PNG já rasterizado com o nome do orçamento. */
+const baixarPng = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.download = filename;
+  link.href = url;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
 const OrcamentosPage = () => {
   const alert = useAlert();
   const navigate = useNavigate();
@@ -104,13 +119,22 @@ const OrcamentosPage = () => {
    */
   const orcamentoAlvo = filtrados.find((o) => o.id === baixandoId) ?? visualizando;
 
-  const baixar = async (o: Orcamento) => {
+  const baixar = async (o: Orcamento, formato: "png" | "pdf" = "png") => {
     setBaixandoId(o.id);
 
     try {
       /* Espera o render do nó com o orçamento certo antes de fotografar. */
       await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-      await handleDownload(refNotaBaixada, `orcamento-${o.codigo}.png`);
+
+      const blob = await gerarBlobNota(refNotaBaixada);
+
+      /* O PDF sai do MESMO PNG que o download de imagem — uma página A4 com a
+         imagem colada —, então o documento é idêntico nos dois caminhos. */
+      if (formato === "pdf") {
+        await baixarNotaPdf(blob, enterprise?.nomeFantasia ?? "orcamento");
+      } else {
+        baixarPng(blob, `orcamento-${o.codigo}.png`);
+      }
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível baixar o orçamento."));
     } finally {
@@ -233,15 +257,15 @@ const OrcamentosPage = () => {
                     <span className="shrink-0 text-right text-[13px] tabular-nums text-ink">{formatCurrency(o.total)}</span>
                   </button>
 
-                  <button
-                    title="Baixar orçamento"
-                    aria-label={`Baixar orçamento ${o.codigo}`}
-                    disabled={baixandoId === o.id}
-                    onClick={() => baixar(o)}
-                    className="mr-2 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-faint transition-colors hover:bg-accent/[0.12] hover:text-accent-soft disabled:opacity-50"
-                  >
-                    {baixandoId === o.id ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                  </button>
+                  <span className="mr-2 shrink-0">
+                    <MenuDownloadNota
+                      variante="linha"
+                      titulo="Baixar orçamento"
+                      documento="orçamento"
+                      ocupado={baixandoId === o.id}
+                      onEscolher={(formato) => void baixar(o, formato)}
+                    />
+                  </span>
                 </div>
               </div>
             );

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type LegacyRef } from "react";
-import { ShoppingCart, UserRound, Download, Loader2, AlertTriangle, ListFilter, FileText, CalendarClock, LayoutDashboard } from "lucide-react";
+import { ShoppingCart, UserRound, AlertTriangle, ListFilter, FileText, CalendarClock, LayoutDashboard } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { Modal } from "@/shared/ui/Modal";
 import Invoice from "@/features/vendas/components/Invoice";
 import NotaResumo from "@/features/vendas/components/NotaResumo";
-import { ControlesPagina, ListaAcao, ListaCabecalho, ListaFantasmas, ListaLinha, TabelaCard, TabelaVazia } from "@/shared/ui/DataTable";
+import { ControlesPagina, ListaCabecalho, ListaFantasmas, ListaLinha, TabelaCard, TabelaVazia } from "@/shared/ui/DataTable";
 import { AbasTabela } from "@/shared/ui/AbasTabela";
 import ListaContas from "@/features/financeiro/components/ListaContas";
 import ContaForm from "@/features/financeiro/components/ContaForm";
@@ -26,6 +26,7 @@ import SeletorPeriodo, { PERIODO_TUDO, type Periodo } from "@/shared/ui/SeletorP
 import { mesesComMovimento, vendasAtivas } from "@/shared/domain/serieVendas";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
 import { baixarNotaPdf } from "@/shared/ui/downloadNota";
+import MenuDownloadNota from "@/shared/ui/MenuDownloadNota";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import ContaService, { type NovaConta, type PrazoVenda } from "@/features/financeiro/services/conta.service";
 import { dataBr, prazo } from "@/shared/utils/parcelas";
@@ -592,10 +593,12 @@ const SalesList = () => {
                   destaque={atrasada ? "danger" : undefined}
                   onClick={() => abrirNota({ id: v.pedido.pedidoId, clienteId: v.clienteId, nome: v.nomeCliente })}
                   acoes={
-                    <ListaAcao
-                      icon={baixandoEsta ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                      label="Baixar nota"
-                      onClick={() => void baixarNota(v)}
+                    <MenuDownloadNota
+                      variante="linha"
+                      titulo="Baixar nota"
+                      documento="nota"
+                      ocupado={baixandoEsta}
+                      onEscolher={(formato) => void baixarNota(v, formato)}
                     />
                   }
                 >
