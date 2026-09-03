@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Link2, Loader2, Search, ShoppingCart, UserPlus, UserRound } from "lucide-react";
 
 import CrmService, { type Conversa } from "@/features/crm/services/crm.service";
@@ -30,9 +29,20 @@ import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler"
  *
  *   • **sem cadastro** — "Cadastrar" (com o nome e o telefone já preenchidos) e
  *     "Vincular" (para quem JÁ está no cadastro com outro número);
- *   • **com cadastro** — "Ficha", que leva ao histórico de compras dele.
+ *   • **com cadastro** — "Ficha", que abre o painel do cliente AO LADO.
  *
- * "Nova venda" aparece sempre: é o desfecho que o atendimento persegue.
+ * "Vender" aparece sempre: é o desfecho que o atendimento persegue.
+ *
+ * ---------------------------------------------------------------------------
+ * Nenhum destes botões TIRA a pessoa da conversa
+ * ---------------------------------------------------------------------------
+ * Cadastro e vínculo abrem em cima; a ficha abre ao lado; a venda abre a nota
+ * por cima. Foi assim desde o começo para cadastrar e vincular, e a primeira
+ * versão errava nos outros dois — mandava para `/clientes` e `/pdv`.
+ *
+ * Sair da tela custa o atendimento: quem navega perde a conversa de vista,
+ * volta pelo menu, procura de novo na lista e recomeça a ler. O cliente do
+ * outro lado só vê o silêncio.
  */
 
 /**
@@ -56,15 +66,56 @@ function telefoneBr(digitos: string): string | null {
   return null;
 }
 
+/**
+ * O nome do WhatsApp em estado de virar cadastro.
+ *
+ * O pushname é o que a pessoa escreveu no perfil dela, e vem como ela quis:
+ * "Maria 💅", "😎🤓L.JUNIOR🤓😎", "Cauan | Conceito Imobiliária". Isso é ótimo na
+ * lista de conversas — é como ela se apresenta — e péssimo no cadastro, que
+ * alimenta nota fiscal, relatório e busca. Um emoji gravado ali reaparece no
+ * papel que o cliente leva para a contabilidade dele.
+ *
+ * Fica o que é NOME: letras (com acento — `\p{L}` cobre "ç" e "ã"), números
+ * (razões sociais os têm), espaço, hífen e apóstrofo ("D'Ávila", "Ana-Clara").
+ * O ponto entra por causa das abreviações ("Cia.", "L.JUNIOR").
+ *
+ * Dois detalhes que vieram de olhar os nomes reais desta base:
+ *
+ *   • **o que sai vira ESPAÇO, não nada.** "Ana|Maria" apagando o "|" viraria
+ *     "AnaMaria" — duas pessoas coladas num nome que não existe.
+ *
+ *   • **nome sem nenhuma letra é descartado.** Um terço dos contatos aqui tem
+ *     como "nome" o próprio telefone ("+55 85 9202-5544"), que é o que o
+ *     WhatsApp mostra quando a pessoa não pôs pushname. Gravar isso no campo
+ *     Nome deixaria o cadastro com um número onde deveria estar gente — e o
+ *     telefone já vai no campo dele.
+ *
+ * Vazio é resposta legítima: o formulário abre com o campo em branco, que é
+ * honesto quando não sabemos como a pessoa se chama.
+ */
+function nomeLimpo(bruto: string): string {
+  const limpo = String(bruto ?? "")
+    .replace(/[^\p{L}\p{N}\s'\-.]/gu, " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s'\-.]+|[\s'\-.]+$/g, "")
+    .trim();
+
+  return /\p{L}/u.test(limpo) ? limpo : "";
+}
+
 type Props = {
   conversa: Conversa;
   /** A lista precisa recarregar quando o vínculo muda — o nome exibido muda junto. */
   aoMudar: () => void;
+  /** Abre e fecha o painel do cliente, que vive ao lado da conversa. */
+  onAlternarPainel: () => void;
+  painelAberto: boolean;
+  /** Abre a nota — nova para este cliente — por cima da conversa. */
+  onNovaVenda: () => void;
 };
 
-const AtalhosContato = ({ conversa, aoMudar }: Props) => {
+const AtalhosContato = ({ conversa, aoMudar, onAlternarPainel, painelAberto, onNovaVenda }: Props) => {
   const alert = useAlert();
-  const navegar = useNavigate();
 
   const [cadastrando, setCadastrando] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -91,10 +142,11 @@ const AtalhosContato = ({ conversa, aoMudar }: Props) => {
 
   const telefone = telefoneBr(conversa.telefone);
 
-  /* O nome do WhatsApp vira o nome do cadastro. É um palpite, e um bom: é como
-     a pessoa se apresenta. O formulário abre com ele escrito e editável. */
+  /* O nome do WhatsApp vira o nome do cadastro, depois de limpo — ver
+     `nomeLimpo`. É um palpite, e um bom: é como a pessoa se apresenta. O
+     formulário abre com ele escrito e editável. */
   const prefill = {
-    nome: conversa.nome && conversa.nome !== conversa.telefone ? conversa.nome : "",
+    nome: conversa.nome && conversa.nome !== conversa.telefone ? nomeLimpo(conversa.nome) : "",
     contato: telefone ? { whatsapp: telefone } : undefined,
   };
 
@@ -152,14 +204,21 @@ const AtalhosContato = ({ conversa, aoMudar }: Props) => {
   return (
     <>
       <div className="flex shrink-0 items-center gap-1.5">
-        {conversa.cliente_fk ? (
-          <Dica texto="Abrir a ficha: compras, orçamentos e histórico">
-            <button type="button" onClick={() => navegar(`/clientes/${conversa.cliente_fk}`)} className={botao}>
-              <UserRound size={13} />
-              <span className="hidden md:inline">Ficha</span>
-            </button>
-          </Dica>
-        ) : (
+        {/* A ficha aparece mesmo sem cadastro: o painel mostra a PRODUÇÃO, que
+            existe para quem mandou fazer antes de virar cliente. */}
+        <Dica texto="Ver cadastro, produção e compras — ao lado da conversa">
+          <button
+            type="button"
+            onClick={onAlternarPainel}
+            aria-pressed={painelAberto}
+            className={`${botao} ${painelAberto ? "border-accent/40 text-accent-soft" : ""}`}
+          >
+            <UserRound size={13} />
+            <span className="hidden md:inline">Ficha</span>
+          </button>
+        </Dica>
+
+        {!conversa.cliente_fk && (
           <>
             <Dica texto="Cadastrar esta pessoa como cliente">
               <button type="button" onClick={() => setCadastrando(true)} className={botao}>
@@ -179,8 +238,8 @@ const AtalhosContato = ({ conversa, aoMudar }: Props) => {
           </>
         )}
 
-        <Dica texto="Começar uma venda no PDV">
-          <button type="button" onClick={() => navegar("/pdv")} className={botao}>
+        <Dica texto="Abrir uma nota para este cliente, sem sair da conversa">
+          <button type="button" onClick={onNovaVenda} className={botao}>
             <ShoppingCart size={13} />
             <span className="hidden lg:inline">Vender</span>
           </button>

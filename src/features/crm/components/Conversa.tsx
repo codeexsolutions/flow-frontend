@@ -4,6 +4,9 @@ import { AlertTriangle, ArrowLeft, Loader2, Send, UserRound } from "lucide-react
 import CrmService, { type Conversa as ConversaTipo, type Mensagem } from "@/features/crm/services/crm.service";
 import MidiaMensagem from "@/features/crm/components/MidiaMensagem";
 import AtalhosContato from "@/features/crm/components/AtalhosContato";
+import PainelCliente from "@/features/crm/components/PainelCliente";
+import Invoice from "@/features/vendas/components/Invoice";
+import { Modal } from "@/shared/ui/Modal";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 
@@ -63,6 +66,12 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
   const [enviando, setEnviando] = useState(false);
 
   const fim = useRef<HTMLDivElement>(null);
+
+  /* O painel do cliente e a nota vivem AQUI, e não em `AtalhosContato`: os
+     dois ocupam a tela toda ou a coluna ao lado, e um componente de botões não
+     deve mandar no layout de quem o contém. */
+  const [painel, setPainel] = useState(false);
+  const [nota, setNota] = useState<null | { id?: string }>(null);
 
   const carregar = async (silencioso = false) => {
     if (!silencioso) setCarregando(true);
@@ -146,7 +155,8 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0">
+      <div className="flex min-h-0 flex-1 flex-col">
       {/* Cabeçalho */}
       <div className="flex shrink-0 items-center gap-3 border-b border-fg/[0.06] px-4 py-3">
         {aoVoltar && (
@@ -177,7 +187,13 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
         {/* Os atalhos do lado oposto ao nome: cadastrar, vincular, ficha,
             vender. Ver a nota no topo de `AtalhosContato` — atendimento e
             cadastro são o mesmo momento, e estavam em telas diferentes. */}
-        <AtalhosContato conversa={conversa} aoMudar={aoMudar} />
+        <AtalhosContato
+          conversa={conversa}
+          aoMudar={aoMudar}
+          painelAberto={painel}
+          onAlternarPainel={() => setPainel((v) => !v)}
+          onNovaVenda={() => setNota({})}
+        />
       </div>
 
       {/* Histórico */}
@@ -283,6 +299,48 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
           </div>
         )}
       </div>
+      </div>
+
+      {/*
+        O painel do cliente, ao LADO da conversa.
+        No celular ele toma a tela: 360px divididos entre conversa e painel não
+        servem a nenhum dos dois. No desktop os dois convivem, que é o ponto —
+        ler a produção e responder viram o mesmo gesto.
+      */}
+      {painel && (
+        <div className="absolute inset-0 z-20 bg-surface lg:static lg:z-auto lg:w-auto lg:bg-transparent">
+          <PainelCliente
+            conversa={conversa}
+            onFechar={() => setPainel(false)}
+            onAbrirNota={(pedidoId) => setNota({ id: pedidoId })}
+          />
+        </div>
+      )}
+
+      {/*
+        A nota, por cima — nova para este cliente, ou uma compra antiga aberta
+        pelo painel. `clienteId` só é passado quando há vínculo: sem cadastro a
+        nota abre em branco, e é o próprio fluxo dela que pede o cliente.
+      */}
+      <Modal
+        open={!!nota}
+        onClose={() => setNota(null)}
+        title={nota?.id ? "Venda" : "Nova venda"}
+        subtitle={conversa.nome}
+        size="full"
+      >
+        {nota && (
+          <Invoice
+            id={nota.id}
+            clienteId={conversa.cliente_fk ?? undefined}
+            nome={conversa.cliente_fk ? conversa.nome : undefined}
+            onSaved={() => {
+              setNota(null);
+              aoMudar();
+            }}
+          />
+        )}
+      </Modal>
     </div>
   );
 };
