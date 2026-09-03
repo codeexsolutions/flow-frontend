@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, BookOpen, Bot, Clock, Loader2, MessageSquareText, Power, Sparkles, Timer } from "lucide-react";
+import { AlertTriangle, BookOpen, Bot, Clock, FlaskConical, Loader2, MessageSquareText, Power, Sparkles, Timer } from "lucide-react";
 
 import CrmService, { type Chatbot, type DiaExpediente } from "@/features/crm/services/crm.service";
 import { SettingsCard, SaveRow } from "@/features/config/components/ConfigUI";
@@ -93,6 +93,7 @@ const ChatbotPage = () => {
         iaAtiva: proximo.ia_ativa,
         documentacao: proximo.documentacao ?? "",
         iaEsperaMinutos: proximo.ia_espera_minutos,
+        iaNumeroTeste: proximo.ia_numero_teste ?? "",
       });
 
       setSalvo(true);
@@ -268,6 +269,61 @@ const ChatbotPage = () => {
             </button>
           </div>
 
+          {/*
+            O modo de teste vem ANTES de tudo, e não escondido no fim.
+
+            A falta dele foi o que transformou a primeira ativação em 32
+            mensagens para 29 clientes reais: não havia como experimentar. Quem
+            chega aqui para ligar a IA precisa ver a saída segura antes de ver
+            a chave.
+          */}
+          <div
+            className={`mb-4 rounded-xl border p-3 ${
+              cfg.ia_numero_teste ? "border-warning/30 bg-warning/[0.07]" : "border-fg/[0.06] bg-fg/[0.02]"
+            }`}
+          >
+            <label className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.7px] text-faint">
+              <FlaskConical size={11} /> Modo de teste
+            </label>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={cfg.ia_numero_teste ?? ""}
+                onChange={(e) => {
+                  setSalvo(false);
+                  setCfg({ ...cfg, ia_numero_teste: e.target.value });
+                }}
+                placeholder="Seu número, ex: 85988849894"
+                inputMode="tel"
+                className="w-56 rounded-lg border border-fg/[0.08] bg-fg/[0.035] px-3 py-2 text-[13px] text-ink outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/15"
+              />
+
+              {cfg.ia_numero_teste && (
+                <button
+                  type="button"
+                  onClick={() => void salvar({ ia_numero_teste: "" })}
+                  className="focus-ring cursor-pointer rounded-lg border border-fg/[0.08] px-2.5 py-2 text-[11.5px] text-mist transition-colors hover:text-ink"
+                >
+                  Liberar para todos
+                </button>
+              )}
+            </div>
+
+            <p className="mt-1.5 text-[11px] leading-relaxed text-mist">
+              {cfg.ia_numero_teste ? (
+                <>
+                  <span className="text-warning">Só este número recebe resposta da IA.</span> Mande mensagem para o
+                  WhatsApp da loja por ele e converse com o robô à vontade — nenhum cliente recebe nada.
+                </>
+              ) : (
+                <>
+                  Preencha com o seu número para conversar com o robô sem que nenhum cliente receba. Em branco, a IA
+                  responde todo mundo.
+                </>
+              )}
+            </p>
+          </div>
+
           <label className="mb-1 block text-[10px] uppercase tracking-[0.7px] text-faint">
             Esperar antes de responder
           </label>
@@ -319,6 +375,12 @@ Não fazemos: impressão em papel, adesivo de carro.`}
             <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
               Quanto mais específico o texto, melhor ela responde. Preço, prazo e o que vocês NÃO fazem são o que mais
               muda o resultado.
+            </p>
+            {/* Dito na tela porque é a garantia que faltava — quem liga a
+                chave precisa saber que ela não vale para trás. */}
+            <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
+              Ao ligar, a IA passa a valer só para mensagens que chegarem daí em diante. Conversas antigas não recebem
+              nada.
             </p>
           </div>
         </SettingsCard>

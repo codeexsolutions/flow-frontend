@@ -48,6 +48,16 @@ export type Chatbot = {
   documentacao: string | null;
   /** Minutos que a IA espera antes de entrar no lugar de uma pessoa. */
   ia_espera_minutos: number;
+  /**
+   * Modo de teste: só este número recebe resposta da IA.
+   *
+   * Existe para dar como experimentar o robô sem soltá-lo na base inteira —
+   * a falta disso é o que fez a primeira ativação virar 32 mensagens para 29
+   * clientes reais.
+   */
+  ia_numero_teste: string | null;
+  /** Quando a IA foi ligada. A IA só responde ao que chegou depois disto. */
+  ia_ligada_em?: string | null;
   atualizado_em?: string | null;
 };
 
@@ -148,6 +158,7 @@ const CrmService = {
     iaAtiva?: boolean;
     documentacao?: string;
     iaEsperaMinutos?: number;
+    iaNumeroTeste?: string;
   }) {
     await sysgrafix.patch("/crm/chatbot", dados, SEM_AVISO);
   },
