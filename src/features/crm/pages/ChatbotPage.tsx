@@ -327,7 +327,7 @@ const ChatbotPage = () => {
           <label className="mb-1 block text-[10px] uppercase tracking-[0.7px] text-faint">
             Esperar antes de responder
           </label>
-          <div className="mb-4 flex items-center gap-2">
+          <div className="mb-1.5 flex flex-wrap items-center gap-2">
             <input
               type="number"
               min={0}
@@ -340,7 +340,24 @@ const ChatbotPage = () => {
               className="w-24 rounded-lg border border-fg/[0.08] bg-fg/[0.035] px-3 py-2.5 text-[13px] text-ink outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/15"
             />
             <span className="text-[12.5px] text-mist">minutos sem ninguém responder</span>
+
+            {/* O atalho para testar: zero é o modo "responde na hora". */}
+            {cfg.ia_espera_minutos !== 0 && (
+              <button
+                type="button"
+                onClick={() => void salvar({ ia_espera_minutos: 0 })}
+                className="focus-ring cursor-pointer rounded-lg border border-fg/[0.08] px-2.5 py-1.5 text-[11.5px] text-mist transition-colors hover:border-accent/40 hover:text-accent-soft"
+              >
+                Responder na hora
+              </button>
+            )}
           </div>
+
+          <p className="mb-4 text-[11px] leading-relaxed text-faint">
+            {cfg.ia_espera_minutos === 0
+              ? "Zero: ela responde no instante em que a mensagem chega, sem dar tempo de alguém pegar a conversa. É o certo para testar."
+              : "A IA espera esse tempo para ver se alguém da equipe responde. Só entra se ninguém entrar."}
+          </p>
 
           <label className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.7px] text-faint">
             <BookOpen size={11} /> O que a empresa faz
