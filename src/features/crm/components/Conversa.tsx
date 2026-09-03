@@ -7,6 +7,7 @@ import AtalhosContato from "@/features/crm/components/AtalhosContato";
 import PainelCliente from "@/features/crm/components/PainelCliente";
 import Invoice from "@/features/vendas/components/Invoice";
 import { Modal } from "@/shared/ui/Modal";
+import Dica from "@/shared/ui/Dica";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 
@@ -47,6 +48,69 @@ function diaDe(iso: string): string {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long" });
 }
 
+
+/**
+ * As cores da conversa são FIXAS, e não os tokens do tema.
+ *
+ * O resto do Flow segue claro/escuro conforme a preferência. Aqui não: a
+ * conversa é a reprodução de um WhatsApp, e quem atende passa o dia lendo
+ * transcrição — o pareamento verde/branco é o que o olho dele já decodifica
+ * sem pensar. Trocar o significado das cores por causa do tema faria a mesma
+ * bolha querer dizer coisas diferentes de manhã e à noite.
+ *
+ * É a mesma decisão do QR, logo ao lado: fundo branco fixo porque o que
+ * importa ali é o contraste real, não a preferência da tela.
+ *
+ * O que continua seguindo o tema: tudo FORA do quadro da conversa — a lista,
+ * o cabeçalho, o painel do cliente, os botões.
+ */
+const FUNDO = "#efeae2";
+const BOLHA_SAIDA = "#d9fdd3";
+const BOLHA_ENTRADA = "#ffffff";
+const TEXTO = "#111b21";
+const TEXTO_FRACO = "#667781";
+const AZUL_LIDA = "#53bdeb";
+
+/**
+ * A confirmação de leitura, em tiques — o que o WhatsApp mostra.
+ *
+ * ---------------------------------------------------------------------------
+ * O que a tela pode e o que NÃO pode afirmar
+ * ---------------------------------------------------------------------------
+ * Quando a pessoa desliga a confirmação de leitura no WhatsApp dela, o aviso
+ * simplesmente para em "entregue" para sempre. Não existe um sinal de "leitura
+ * desligada": daqui, **"não leu" e "leu mas não conta" são o mesmo dado**.
+ *
+ * Por isso o ✓✓ cinza nunca diz "não leu". O texto da dica é o que separa o
+ * que sabemos ("chegou no celular") do que não sabemos ("se abriu"), e cita a
+ * possibilidade de a confirmação estar desligada.
+ *
+ * Afirmar o que não se sabe seria pior que não mostrar nada: o atendente
+ * cobraria de novo um cliente que já leu, achando que a mensagem nem chegou.
+ */
+const CONFIRMACAO: Record<string, { tiques: 1 | 2; azul: boolean; dica: string }> = {
+  ENVIADA:  { tiques: 1, azul: false, dica: "Enviada — o WhatsApp recebeu" },
+  ENTREGUE: { tiques: 2, azul: false, dica: "Entregue no celular. Não dá para saber se abriu: ela pode estar com a confirmação de leitura desligada." },
+  LIDA:     { tiques: 2, azul: true,  dica: "Lida" },
+};
+
+/** Os dois tiques do WhatsApp, desenhados — não há ícone pronto com essa forma. */
+const Tiques = ({ tiques, azul }: { tiques: 1 | 2; azul: boolean }) => (
+  <svg
+    viewBox="0 0 18 12"
+    aria-hidden
+    style={{ color: azul ? AZUL_LIDA : TEXTO_FRACO }}
+    className="h-3 w-[18px] shrink-0"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M1 6.5 L4.2 9.8 L10.2 2.4" />
+    {tiques === 2 && <path d="M7.4 6.5 L10.6 9.8 L16.6 2.4" />}
+  </svg>
+);
 
 type Props = {
   conversa: ConversaTipo;
@@ -197,13 +261,13 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
       </div>
 
       {/* Histórico */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" style={{ background: FUNDO }}>
         {carregando ? (
-          <div className="flex h-full items-center justify-center text-faint">
+          <div className="flex h-full items-center justify-center" style={{ color: TEXTO_FRACO }}>
             <Loader2 size={18} className="animate-spin" />
           </div>
         ) : mensagens.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-center text-[12px] text-faint">
+          <div className="flex h-full items-center justify-center text-center text-[12px]" style={{ color: TEXTO_FRACO }}>
             Nenhuma mensagem ainda. Escreva abaixo para começar.
           </div>
         ) : (
@@ -217,18 +281,23 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
               return (
                 <div key={m.id}>
                   {novoDia && (
-                    <p className="my-3 text-center text-[10.5px] uppercase tracking-[0.1em] text-faint">{diaDe(m.criado_em)}</p>
+                    <p className="my-3 text-center">
+                      <span
+                        className="rounded-full px-2.5 py-1 text-[10.5px] uppercase tracking-[0.1em] shadow-[0_1px_1px_rgba(0,0,0,0.08)]"
+                        style={{ background: BOLHA_ENTRADA, color: TEXTO_FRACO }}
+                      >
+                        {diaDe(m.criado_em)}
+                      </span>
+                    </p>
                   )}
 
                   <div className={`flex ${saiu ? "justify-end" : "justify-start"}`}>
                     <div
-                      className={`max-w-[78%] rounded-2xl px-3 py-2 text-[12.5px] leading-relaxed ${
-                        falhou
-                          ? "border border-danger/30 bg-danger/[0.08] text-ink"
-                          : saiu
-                            ? "bg-accent/[0.16] text-ink"
-                            : "border border-fg/[0.07] bg-fg/[0.03] text-ink"
-                      }`}
+                      style={{
+                        background: falhou ? "#ffdcdc" : saiu ? BOLHA_SAIDA : BOLHA_ENTRADA,
+                        color: TEXTO,
+                      }}
+                      className="max-w-[78%] rounded-2xl px-3 py-2 text-[12.5px] leading-relaxed shadow-[0_1px_1px_rgba(0,0,0,0.08)]"
                     >
                       {/*
                         O arquivo é buscado no WhatsApp na hora de mostrar — não
@@ -239,7 +308,7 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
 
                       {m.corpo && <p className="whitespace-pre-wrap break-words">{m.corpo}</p>}
 
-                      <p className="mt-1 flex items-center justify-end gap-1.5 text-[10px] text-faint">
+                      <p className="mt-1 flex items-center justify-end gap-1.5 text-[10px]" style={{ color: TEXTO_FRACO }}>
                         {/* Quem respondeu, quando três pessoas atendem pelo
                             mesmo número. Só na saída: na entrada o autor é o
                             cliente, e o nome dele já está no cabeçalho. */}
@@ -247,9 +316,20 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
                         {m.status === "PENDENTE" && <Loader2 size={10} className="animate-spin" />}
                         {falhou && <AlertTriangle size={10} className="text-danger" />}
                         {hora(m.criado_em)}
+
+                        {/* A confirmação só existe no que SAIU: na entrada ela
+                            seria o aviso que nós demos ao cliente, que não
+                            interessa a ninguém desta tela. */}
+                        {saiu && CONFIRMACAO[m.status] && (
+                          <Dica texto={CONFIRMACAO[m.status].dica}>
+                            <span className="flex items-center">
+                              <Tiques tiques={CONFIRMACAO[m.status].tiques} azul={CONFIRMACAO[m.status].azul} />
+                            </span>
+                          </Dica>
+                        )}
                       </p>
 
-                      {falhou && m.erro && <p className="mt-1 text-[10.5px] text-danger">{m.erro}</p>}
+                      {falhou && m.erro && <p className="mt-1 text-[10.5px]" style={{ color: "#b42318" }}>{m.erro}</p>}
                     </div>
                   </div>
                 </div>

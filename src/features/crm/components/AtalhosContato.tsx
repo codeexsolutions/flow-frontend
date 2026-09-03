@@ -77,7 +77,9 @@ function telefoneBr(digitos: string): string | null {
  *
  * Fica o que é NOME: letras (com acento — `\p{L}` cobre "ç" e "ã"), números
  * (razões sociais os têm), espaço, hífen e apóstrofo ("D'Ávila", "Ana-Clara").
- * O ponto entra por causa das abreviações ("Cia.", "L.JUNIOR").
+ * O ponto entra por causa das abreviações ("Cia.", "L.JUNIOR") e os dois
+ * pontos porque muita gente se apresenta com rótulo — "Vendedor: Allef Melo".
+ * Tirá-los emendava as duas partes numa frase só.
  *
  * Dois detalhes que vieram de olhar os nomes reais desta base:
  *
@@ -95,9 +97,9 @@ function telefoneBr(digitos: string): string | null {
  */
 function nomeLimpo(bruto: string): string {
   const limpo = String(bruto ?? "")
-    .replace(/[^\p{L}\p{N}\s'\-.]/gu, " ")
+    .replace(/[^\p{L}\p{N}\s'\-.:]/gu, " ")
     .replace(/\s{2,}/g, " ")
-    .replace(/^[\s'\-.]+|[\s'\-.]+$/g, "")
+    .replace(/^[\s'\-.:]+|[\s'\-.:]+$/g, "")
     .trim();
 
   return /\p{L}/u.test(limpo) ? limpo : "";
@@ -263,18 +265,22 @@ const AtalhosContato = ({ conversa, aoMudar, onAlternarPainel, painelAberto, onN
         size="sm"
       >
         <div className="flex flex-col gap-3">
-          <div className="flex h-[38px] items-center gap-2 rounded-xl border border-fg/[0.08] bg-fg/[0.03] px-3">
-            <Search className="h-4 w-4 shrink-0 text-muted" />
-            <input
-              autoFocus
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar cliente pelo nome"
-              className="w-full flex-1 bg-transparent text-[12.5px] text-ink outline-none placeholder:text-faint"
-            />
-          </div>
+          <div className="overflow-hidden rounded-xl border border-fg/[0.06]">
+            {/* A busca DENTRO da lista, grudada no topo: ela filtra o que está
+                logo abaixo, e fora da caixa parecia buscar outra coisa. Mesma
+                decisão da busca de contatos, em `CrmPage`. */}
+            <div className="sticky top-0 z-10 flex h-[38px] items-center gap-2 border-b border-fg/[0.06] bg-surface px-3">
+              <Search className="h-4 w-4 shrink-0 text-muted" />
+              <input
+                autoFocus
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar cliente pelo nome"
+                className="w-full flex-1 bg-transparent text-[12.5px] text-ink outline-none placeholder:text-faint"
+              />
+            </div>
 
-          <div className="max-h-72 overflow-y-auto rounded-xl border border-fg/[0.06]">
+            <div className="max-h-72 overflow-y-auto">
             {encontrados.length === 0 ? (
               <p className="px-3 py-6 text-center text-[12px] text-faint">
                 {busca.trim() ? "Nenhum cliente com esse nome." : "Nenhum cliente cadastrado ainda."}
@@ -301,6 +307,7 @@ const AtalhosContato = ({ conversa, aoMudar, onAlternarPainel, painelAberto, onN
                 </button>
               ))
             )}
+            </div>
           </div>
 
           {/* A saída para quem abriu o seletor e percebeu que a pessoa não tem

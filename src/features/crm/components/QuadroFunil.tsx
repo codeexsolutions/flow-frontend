@@ -165,7 +165,11 @@ const QuadroFunil = ({ etapas, conversas, onMover, onAbrir }: Props) => {
                   </div>
 
                   {c.ultima_mensagem && (
-                    <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-mist">{c.ultima_mensagem}</p>
+                    <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-mist">
+                      {/* Mesma pista da lista — ver a nota em `CrmPage`. */}
+                      {c.ultima_direcao === "SAIDA" && <span className="text-faint">Você: </span>}
+                      {c.ultima_mensagem}
+                    </p>
                   )}
 
                   <p className="mt-1.5 flex items-center gap-1 text-[10px] text-faint">

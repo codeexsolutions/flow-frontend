@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, ImageOff, Loader2, Paperclip, Play } from "lucide-react";
+import { FileText, Image as ImageIcon, ImageOff, Loader2, Paperclip, Play } from "lucide-react";
 
 import sysgrafix from "@/shared/api/sysgrafix";
 import type { Mensagem } from "@/features/crm/services/crm.service";
@@ -33,6 +33,17 @@ import type { Mensagem } from "@/features/crm/services/crm.service";
  * Falhar é normal e não é erro: mensagem antiga sai do cache do WhatsApp Web e
  * o arquivo não vem mais. A bolha volta a mostrar o rótulo, como antes.
  */
+
+/*
+ * Cores fixas, como na bolha que envolve este componente.
+ *
+ * Os tokens do tema (`text-mist`, `text-faint`) mudam com claro/escuro — e a
+ * bolha da conversa NÃO muda: ela é branca ou verde sempre (ver a nota de
+ * cores em `Conversa`). No tema escuro, um `text-mist` claro sobre bolha
+ * branca ficava invisível: o rótulo "📷 Imagem" simplesmente sumia.
+ */
+const TEXTO_FRACO = "#667781";
+const LINK = "#027eb5";
 
 /**
  * O que já foi baixado nesta aba, por id de mensagem.
@@ -75,9 +86,18 @@ const MidiaMensagem = ({ mensagem }: Props) => {
           observador.disconnect();
         }
       },
-      /* Margem generosa: começa a buscar um pouco antes de entrar na tela,
-         para a foto já estar lá quando a pessoa chegar nela. */
-      { rootMargin: "300px" },
+      /*
+       * Margem larga de propósito.
+       *
+       * A conversa abre rolada até o fim, e o que a pessoa faz em seguida é
+       * subir para ler o que veio antes. Com uma margem curta, cada foto só
+       * começava a carregar quando já estava na tela — e a rolagem virava uma
+       * sequência de retângulos cinza que iam aparecendo atrasados.
+       *
+       * O servidor aguenta: oito pedidos simultâneos voltaram em milissegundos
+       * (o arquivo já está decifrado no cache do WhatsApp Web).
+       */
+      { rootMargin: "1200px" },
     );
 
     observador.observe(no);
@@ -135,33 +155,59 @@ const MidiaMensagem = ({ mensagem }: Props) => {
      tela, nunca — a conversa tem de mostrar que houve uma foto ali. */
   if (falhou) {
     return (
-      <p className="mb-0.5 flex items-center gap-1.5 text-[11.5px] text-mist">
-        <ImageOff size={12} className="shrink-0 text-faint" />
+      <p className="mb-0.5 flex items-center gap-1.5 text-[11.5px]" style={{ color: TEXTO_FRACO }}>
+        <ImageOff size={12} className="shrink-0" />
         {rotulo}
-        <span className="text-faint">· indisponível</span>
+        <span className="opacity-70">· indisponível</span>
       </p>
+    );
+  }
+
+  /*
+   * Imagem sem arquivo ainda: um retângulo, nunca um botão.
+   *
+   * Este era o defeito que aparecia como "muitas imagens não carregam". A
+   * imagem caía no mesmo ramo do áudio e mostrava "📷 Imagem · tocar" — quem
+   * olhava via um rótulo onde esperava a foto e concluía, com razão, que ela
+   * não tinha vindo. O arquivo estava bem: era a tela que pedia um clique que
+   * ninguém devia precisar dar.
+   *
+   * O retângulo também dá ao observador algo com ALTURA para observar. Um
+   * `<p>` de uma linha no fim da conversa entra e sai da margem conforme o
+   * texto ao redor, e a foto ficava esperando um cruzamento que demorava.
+   */
+  if (mensagem.tipo === "IMAGEM" && !url) {
+    return (
+      <div
+        ref={caixa}
+        className="mb-1 flex h-32 w-44 items-center justify-center rounded-xl"
+        style={{ background: "rgba(0,0,0,0.05)", color: TEXTO_FRACO }}
+      >
+        {carregando ? <Loader2 size={16} className="animate-spin" /> : <ImageIcon size={16} className="opacity-60" />}
+      </div>
     );
   }
 
   if (carregando) {
     return (
-      <p className="mb-0.5 flex items-center gap-1.5 text-[11.5px] text-mist">
+      <p className="mb-0.5 flex items-center gap-1.5 text-[11.5px]" style={{ color: TEXTO_FRACO }}>
         <Loader2 size={12} className="animate-spin" /> {rotulo}
       </p>
     );
   }
 
-  /* Ainda não pedido (áudio/vídeo/documento): o botão que traz o arquivo. */
+  /* Áudio, vídeo e documento ainda não pedidos: o botão que traz o arquivo. */
   if (!url) {
     return (
       <div ref={caixa}>
         <button
           type="button"
           onClick={() => setPedido(true)}
-          className="mb-0.5 flex cursor-pointer items-center gap-1.5 text-[11.5px] text-accent-soft transition-colors hover:text-accent"
+          style={{ color: LINK }}
+          className="mb-0.5 flex cursor-pointer items-center gap-1.5 text-[11.5px] transition-opacity hover:opacity-75"
         >
           {mensagem.tipo === "AUDIO" || mensagem.tipo === "VIDEO" ? <Play size={12} /> : <Paperclip size={12} />}
-          {rotulo} <span className="text-faint">· tocar</span>
+          {rotulo} <span style={{ color: TEXTO_FRACO }}>· tocar</span>
         </button>
       </div>
     );
@@ -201,7 +247,8 @@ const MidiaMensagem = ({ mensagem }: Props) => {
         href={url}
         target="_blank"
         rel="noreferrer"
-        className="mb-1 flex items-center gap-1.5 text-[12px] text-accent-soft underline underline-offset-2"
+        style={{ color: LINK }}
+        className="mb-1 flex items-center gap-1.5 text-[12px] underline underline-offset-2"
       >
         <FileText size={12} /> Abrir arquivo
       </a>

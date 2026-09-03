@@ -318,6 +318,12 @@ const CrmPage = () => {
                         )}
                       </span>
                       <span className="mt-0.5 block truncate text-[11px] text-mist">
+                        {/* "Você:" quando quem falou por último foi a loja.
+                            A mesma prévia significa coisas opostas conforme
+                            quem escreveu: "beleza, obrigado" vindo do cliente
+                            é conversa que talvez peça resposta; escrito por
+                            nós é conversa encerrada. */}
+                        {c.ultima_direcao === "SAIDA" && <span className="text-faint">Você: </span>}
                         {c.ultima_mensagem ?? "Sem mensagens"}
                       </span>
                     </span>

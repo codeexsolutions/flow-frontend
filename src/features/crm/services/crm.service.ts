@@ -47,6 +47,8 @@ export type Conversa = {
   ordem: number;
   ultima_mensagem: string | null;
   ultima_mensagem_em: string | null;
+  /** Quem falou por último. `SAIDA` = a loja — a lista escreve "Você:". */
+  ultima_direcao: "ENTRADA" | "SAIDA" | null;
   contato_id: string;
   telefone: string;
   foto: string | null;
