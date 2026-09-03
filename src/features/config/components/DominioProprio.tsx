@@ -46,7 +46,7 @@ const ehRaiz = (host: string): boolean => {
  * domínio. Por dentro a página já é dela — logo, cor, wallpaper —, mas o
  * endereço é a primeira coisa que se lê num link colado numa conversa, e ali
  * ainda aparece o nome do sistema. Quem tem `joseanfardamentos.com` quer mandar
- * `joseanfardamentos.com/p/...`.
+ * `joseanfardamentos.com/...`.
  *
  * ---------------------------------------------------------------------
  * Por que a tela mostra o passo a passo, e não só um campo
@@ -214,7 +214,7 @@ const DominioProprio = () => {
             <div className="rounded-xl border border-fg/[0.07] bg-fg/[0.02] px-3.5 py-2.5">
               <p className="text-[10px] uppercase tracking-[0.7px] text-faint">Os links ficarão assim</p>
               <p className="mt-1 break-all text-[12px] text-ink">
-                https://{dominio.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "")}/p/abc123…
+                https://{dominio.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "")}/abc123…
               </p>
             </div>
           )}

@@ -60,7 +60,7 @@ import AparenciaTab from "@/features/config/pages/AparenciaPage";
 const PUBLIC_PATHS = ["/login", "/cadastro", "/planos", "/page"];
 
 /**
- * O acompanhamento do cliente — `/p/<token>`.
+ * O acompanhamento do cliente — `/<token>`, na raiz.
  *
  * Fica fora de `PUBLIC_PATHS` porque aquela lista é de caminhos exatos e este
  * tem token variável. E não basta acrescentar: `PUBLIC_PATHS` só livra da
@@ -69,8 +69,25 @@ const PUBLIC_PATHS = ["/login", "/cadastro", "/planos", "/page"];
  * cliente cairia no `/checkout` se a empresa dele estivesse inadimplente, e
  * veria a tela de espera enquanto a empresa carregasse. Nos dois casos, o link
  * pareceria quebrado para quem só queria conferi-lo.
+ *
+ * ---------------------------------------------------------------------------
+ * Por que dá para largar o token na raiz
+ * ---------------------------------------------------------------------------
+ * O prefixo `/p/` existia para separar o token dos caminhos do sistema. Ele
+ * só seria necessário se o token pudesse ser confundido com uma rota — e ele
+ * não pode: é `base64url` de 24 bytes, exatamente 32 caracteres de
+ * `[A-Za-z0-9_-]` (ver `gerarToken`). Nenhuma rota do sistema tem esse
+ * formato, e nenhuma vai ter por acaso. O regex abaixo é o contrato: o que
+ * não casa com ele segue o fluxo normal e termina no 404 de sempre, em vez de
+ * abrir uma página de acompanhamento vazia para quem digitou errado.
+ *
+ * O `/p/<token>` continua valendo. Link de acompanhamento vive 30 dias e já
+ * está em conversas de WhatsApp que ninguém vai reenviar — derrubar o formato
+ * antigo quebraria, hoje, links que a empresa entregou ontem.
  */
-const ehAcompanhamento = (path: string) => path.startsWith("/p/");
+const TOKEN_PUBLICO = /^\/[A-Za-z0-9_-]{32}$/;
+
+const ehAcompanhamento = (path: string) => TOKEN_PUBLICO.test(path) || path.startsWith("/p/");
 
 /**
  * O link de ponto também não é do sistema.
@@ -154,6 +171,8 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
   if (ehAcompanhamento(path) || ehPonto(path)) {
     return (
       <Routes>
+        <Route path="/:token" element={<AcompanharProducaoPage />} />
+        {/* O endereço antigo, mantido vivo pelos links já entregues. */}
         <Route path="/p/:token" element={<AcompanharProducaoPage />} />
         <Route path="/ponto" element={<AbrirPontoPage />} />
         <Route path="/ponto/:token" element={<BaterPontoPage />} />
@@ -383,7 +402,7 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
             <Route path="*" element={<NotFoundPage />} />
           </Route>
 
-          {/* Panorama e lista na mesma tela — ver `VendasPage`. */}
+          {/* Panorama, notas e a prazo em ABAS do mesmo cartão — ver `VendasPage`. */}
           <Route path="vendas" element={<VendasPage />} />
 
           <Route path="*" element={<NotFoundPage />} />

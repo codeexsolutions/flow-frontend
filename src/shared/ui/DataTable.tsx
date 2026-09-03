@@ -102,6 +102,7 @@ export const TabelaCard = ({
   footer,
   bodyRef,
   minWidth = MIN_TABLE_WIDTH,
+  corpoLivre = false,
 }: {
   title: string;
   icon?: ReactNode;
@@ -146,6 +147,19 @@ export const TabelaCard = ({
    */
   bodyRef?: Ref<HTMLDivElement>;
   minWidth?: number;
+  /**
+   * O corpo tem a altura do CONTEÚDO no celular, em vez de rolar por dentro.
+   *
+   * O padrão (`false`) é o certo para lista paginada: o corpo é uma janela de
+   * altura fixa e a paginação existe justamente para o que não cabe nela.
+   *
+   * Aba que mostra um bloco alto e não paginável — o panorama de vendas, com
+   * seus painéis empilhados — precisa do contrário no telefone: presa aos
+   * 460px do piso do cartão, ela vira um visor rolando dentro de uma página
+   * que também rola, e o polegar nunca sabe qual das duas vai se mexer. No
+   * computador nada muda: lá o cartão ocupa a janela de propósito.
+   */
+  corpoLivre?: boolean;
 }) => (
   /*
    * No celular a tabela tem ALTURA PRÓPRIA; no computador ela estica.
@@ -156,7 +170,7 @@ export const TabelaCard = ({
    * curto, e a lista aparecia com uma linha e meia, com o rodapé por cima
    * dela. 460px são ~7 linhas — uma tela de trabalho de verdade.
    */
-  <section className="card glass-sheen flex min-h-[460px] min-w-0 flex-col overflow-hidden sm:min-h-[220px] sm:flex-1">
+  <section className={`card glass-sheen flex min-w-0 flex-col overflow-hidden sm:min-h-[220px] sm:flex-1 ${corpoLivre ? "min-h-0" : "min-h-[460px]"}`}>
     <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2.5 border-b border-fg/[0.07] px-4 py-3">
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
         {icon && <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/[0.14] text-accent-soft ring-1 ring-inset ring-accent/20">{icon}</span>}
@@ -196,7 +210,7 @@ export const TabelaCard = ({
       </BarraFiltros>
     )}
 
-    <div ref={bodyRef} className="min-h-0 flex-1 overflow-auto">
+    <div ref={bodyRef} className={`min-h-0 flex-1 overflow-auto ${corpoLivre ? "max-sm:flex-none max-sm:overflow-visible" : ""}`}>
       <div className="min-w-0 sm:[min-width:var(--tabela-min)]" style={{ "--tabela-min": `${minWidth}px` } as CSSProperties}>
         {children}
       </div>

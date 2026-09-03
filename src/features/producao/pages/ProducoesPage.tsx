@@ -167,7 +167,11 @@ const ProducoesPage = () => {
    * nome do sistema depois que a empresa passou a ter o dela.
    */
   const enderecoDe = (token: string) =>
-    `${marca?.dominio ? `https://${marca.dominio}` : window.location.origin}/p/${token}`;
+    /* Sem o `/p/`: o token já é inconfundível sozinho (32 caracteres
+       base64url), e o link entregue ao cliente fica mais curto de ler em voz
+       alta e de caber numa mensagem. O endereço antigo continua abrindo — ver
+       `TOKEN_PUBLICO`, em `AppRoutes`. */
+    `${marca?.dominio ? `https://${marca.dominio}` : window.location.origin}/${token}`;
 
   const planilhas = useMemo(() => {
     const mapa = new Map<string, string>();

@@ -38,9 +38,10 @@ import useProdutoStore, { stockLevel } from "@/features/estoque/store/produto.st
 import { ehVendavel } from "@/shared/domain/produto";
 
 import { estaAberto, estaFechado, estaCancelado, totalDoPedido } from "@/shared/domain/pedido";
+import { mesesComMovimento as mesesComVenda, serieDeVendas } from "@/shared/domain/serieVendas";
 import { formatCurrency } from "@/shared/utils/currency";
 import { formatNumber, getInitials } from "@/shared/utils/format";
-import { MONTHS, formatDateShort, toDate } from "@/shared/utils/date";
+import { formatDateShort, toDate } from "@/shared/utils/date";
 
 /* ─────────────────────────────── Componentes ─────────────────────────────── */
 
@@ -296,11 +297,9 @@ const Barras = ({
 
 /* ──────────────────────────────── Página ────────────────────────────────── */
 
-/** Meia-noite do dia — comparar datas com hora dentro nunca bate. */
-const soODia = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
-/** O primeiro dia do mês da data — o eixo do gráfico anda de mês em mês. */
-const primeiroDoMes = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+/* Meia-noite do dia e primeiro-do-mês saíram daqui junto com o eixo do
+   gráfico — vivem em `serieVendas`, com o resto do recorte. O que sobra abaixo
+   é da janela de COMPARAÇÃO, que é leitura desta tela e de mais nenhuma. */
 
 /** Quantos meses de calendário o intervalo toca. */
 const mesesDoIntervalo = (de: Date, ate: Date) =>
@@ -447,133 +446,17 @@ const DashboardPage = () => {
     const ticketAnterior = noAnterior.length ? faturadoAnterior / noAnterior.length : 0;
 
     /*
-     * Os meses que têm venda, do mais recente para o mais antigo.
+     * Os meses do seletor e a curva do gráfico.
      *
-     * É o que alimenta o seletor do cabeçalho: a lista de recortes é feita do
-     * que EXISTE, não de atalhos fixos que caem em meses vazios. Serve também
-     * ao gráfico, que precisa saber onde a história começa.
+     * As duas coisas eram montadas à mão aqui — uns noventa linhas de baldes,
+     * pontos do eixo e rótulos. Quando o panorama de Vendas ganhou o mesmo
+     * seletor de período, manter uma segunda cópia significaria ver as duas
+     * telas divergirem na primeira correção feita só de um lado. Agora as
+     * duas chamam `serieDeVendas`, e as notas sobre granularidade, baldes e
+     * rótulos do eixo moram lá.
      */
-    const chavesDeMes = new Set<string>();
-
-    for (const v of ativas) {
-      const d = toDate(v.pedido.dataPedido);
-      if (d) chavesDeMes.add(`${d.getFullYear()}-${d.getMonth()}`);
-    }
-
-    const mesesComMovimento = [...chavesDeMes]
-      .map((chave) => {
-        const [ano, mes] = chave.split("-").map(Number);
-        return new Date(ano, mes, 1);
-      })
-      .sort((a, b) => +b - +a);
-
-    const primeira = mesesComMovimento.length ? mesesComMovimento[mesesComMovimento.length - 1] : null;
-
-    /*
-     * O gráfico, na granularidade que o recorte pede.
-     *
-     * -----------------------------------------------------------------------
-     * Por que a barra não é sempre o mês
-     * -----------------------------------------------------------------------
-     * Um mês escolhido no seletor virava UMA barra. O gráfico ficava com um
-     * traço solitário no meio da caixa, sem dizer nada que o KPI ao lado já
-     * não dissesse — e escondia justamente o que se quer saber ao abrir um mês
-     * fechado: em que dias a loja vendeu. Sábado puxa o mês? A primeira semana
-     * carrega o resto? A resposta estava no dado e não aparecia em lugar
-     * nenhum.
-     *
-     * Recorte curto (até dois meses) desce para o DIA; daí para cima, mês. O
-     * corte é pelo tamanho e não pelo tipo de escolha, então um intervalo
-     * livre de dez dias ganha a mesma leitura fina que um mês do seletor.
-     *
-     * Dia sem venda entra na série com zero, e é informação: buraco no meio da
-     * curva é a segunda-feira em que a loja não abriu. Pular o dia faria duas
-     * segundas seguidas parecerem dias consecutivos.
-     */
-    const inicioBruto = soODia(periodo.de ?? primeira ?? agora);
-
-    /* O fim é cortado em HOJE: a cauda de dias (ou meses) futuros zerados
-       achatava a curva inteira contra a base por metade da largura. */
-    const fimCandidato = soODia(periodo.ate && periodo.ate < agora ? periodo.ate : agora);
-    const fimBruto = fimCandidato < inicioBruto ? inicioBruto : fimCandidato;
-
-    const DIA_MS = 24 * 60 * 60 * 1000;
-    const diasNoRecorte = Math.round((+fimBruto - +inicioBruto) / DIA_MS) + 1;
-    const porDia = diasNoRecorte <= 62;
-
-    /*
-     * Um balde por dia (ou por mês), preenchido numa passada só.
-     *
-     * Filtrar a lista inteira dentro do laço das barras seria varrer todas as
-     * vendas trinta vezes para montar um mês.
-     */
-    const chaveDia = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    const chaveMes = (d: Date) => `${d.getFullYear()}-${d.getMonth()}`;
-    const chaveDe = porDia ? chaveDia : chaveMes;
-
-    const baldes = new Map<string, { faturado: number; recebido: number }>();
-
-    for (const v of ativas) {
-      const d = toDate(v.pedido.dataPedido);
-
-      if (!d) continue;
-
-      const chave = chaveDe(d);
-      const balde = baldes.get(chave) ?? { faturado: 0, recebido: 0 };
-      const valor = totalDoPedido(v);
-
-      balde.faturado += valor;
-      if (estaFechado(v)) balde.recebido += valor;
-
-      baldes.set(chave, balde);
-    }
-
-    /* Os pontos do eixo, do começo ao fim do recorte, sem furos. */
-    const pontos: Date[] = [];
-
-    if (porDia) {
-      for (let d = inicioBruto; d <= fimBruto; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
-        pontos.push(d);
-      }
-    } else {
-      const primeiroMes = primeiroDoMes(inicioBruto);
-      const ultimoMes = primeiroDoMes(fimBruto);
-
-      for (let m = primeiroMes; m <= ultimoMes; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
-        pontos.push(m);
-
-        /* Trava de sanidade: data corrompida no banco poderia render um laço
-           de milhares de barras e travar a aba. */
-        if (pontos.length >= 120) break;
-      }
-    }
-
-    /*
-     * O rótulo do eixo diz o mínimo que basta para não confundir.
-     *
-     * Em dias dentro de um mês só, o número do dia — "01/09" trinta vezes é
-     * a mesma informação repetida com o dobro dos caracteres. Atravessando
-     * meses, entra o mês. Em meses dentro de um ano só, o nome do mês;
-     * atravessando anos, entra o ano.
-     */
-    const cruzaMes = pontos.length > 0 && chaveMes(pontos[0]) !== chaveMes(pontos[pontos.length - 1]);
-    const cruzaAno = pontos.length > 0 && pontos[0].getFullYear() !== pontos[pontos.length - 1].getFullYear();
-
-    const rotularPonto = (d: Date) => {
-      if (porDia) return cruzaMes ? `${d.getDate()}/${MONTHS[d.getMonth()]}` : String(d.getDate());
-
-      return cruzaAno ? `${MONTHS[d.getMonth()]}/${String(d.getFullYear()).slice(2)}` : MONTHS[d.getMonth()];
-    };
-
-    const serie = pontos.map((d) => {
-      const balde = baldes.get(chaveDe(d));
-
-      return {
-        name: rotularPonto(d),
-        faturado: balde?.faturado ?? 0,
-        recebido: balde?.recebido ?? 0,
-      };
-    });
+    const mesesComMovimento = mesesComVenda(ativas);
+    const { serie, porDia } = serieDeVendas(vendas, periodo);
 
     const recentes = [...ativas].sort((a, b) => +new Date(b.pedido.dataPedido) - +new Date(a.pedido.dataPedido)).slice(0, 6);
 

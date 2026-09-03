@@ -50,7 +50,14 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
       </div>
 
       {/*
-        Identificação — quem é o cliente, quem fez e até quando vale.
+        Identificação — quem é o cliente e até quando a proposta vale.
+
+        O vendedor SAIU daqui. A proposta é da empresa, não da pessoa que a
+        digitou: o nome do funcionário no papel que vai para o cliente convida
+        a cobrar aquele nome depois ("me atende só o João"), envelhece na hora
+        em que ele sai da loja e expõe a equipe para fora sem necessidade.
+        Quem vendeu continua gravado e visível por DENTRO — na lista de
+        orçamentos e nos relatórios —, que é onde a informação serve.
 
         Aqui havia, à direita, uma caixa tracejada de 176px com a situação da
         proposta: mesma posição, mesmo tamanho e mesma moldura do QR da nota de
@@ -66,7 +73,6 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
         {[
           { rotulo: "Cliente", valor: o.clienteNome || "—" },
           { rotulo: "Telefone", valor: telefone || "Não informado" },
-          { rotulo: "Vendedor", valor: o.vendedorNome || "—" },
           { rotulo: "Validade", valor: o.validade ? formatDate(o.validade) : "—" },
         ].map((linha) => (
           <div key={linha.rotulo} className="min-w-0">

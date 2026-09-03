@@ -12,7 +12,8 @@ import { ChartTip, Kpi, Legenda, Painel, PainelVazio, type Tom, KpiFaixa } from 
 import { usePainelCores } from "@/shared/ui/painelCores";
 import { formatCurrency } from "@/shared/utils/currency";
 import { estaAberto, estaCancelado, estaFechado, totalDoPedido, valorPagoDoPedido, valorPendenteDoPedido } from "@/shared/domain/pedido";
-import { MONTHS, isSameMonth, toDate } from "@/shared/utils/date";
+import { noPeriodo, serieDeVendas, vendasAtivas } from "@/shared/domain/serieVendas";
+import { PERIODO_TUDO, type Periodo } from "@/shared/ui/SeletorPeriodo";
 import useVendaStore from "@/features/vendas/store/venda.store";
 import useFinanceiroStore from "@/features/financeiro/store/financeiro.store";
 import useContasStore from "@/features/financeiro/store/contas.store";
@@ -41,7 +42,17 @@ type TopCliente = {
 
 type NotaAberta = { id?: string; clienteId: string; nome?: string };
 
-const SalesOverviewPage = () => {
+/**
+ * O recorte vem de FORA.
+ *
+ * O seletor mora na barra do cartão de vendas (`SalesListPage`), junto das
+ * abas — é lá que ele governa o que está abaixo, e um controle desses dentro
+ * de um dos painéis diria, pela posição, que vale só para aquele painel.
+ * Sem prop, o panorama mostra a loja inteira, que é o padrão do Início.
+ */
+type Props = { periodo?: Periodo };
+
+const SalesOverviewPage = ({ periodo = PERIODO_TUDO }: Props) => {
   const navigate = useNavigate();
   const C = usePainelCores();
 
@@ -80,35 +91,37 @@ const SalesOverviewPage = () => {
   };
 
   const dados = useMemo(() => {
-    const agora = new Date();
-    const anoAtual = agora.getFullYear();
-    const naoCanceladas = vendas.filter((v) => !estaCancelado(v));
-    const doMes = naoCanceladas.filter((v) => isSameMonth(v.pedido.dataPedido, agora));
+    const naoCanceladas = vendasAtivas(vendas);
 
-    const faturadoMes = doMes.reduce((acc, v) => acc + totalDoPedido(v), 0);
-    const recebidoMes = doMes.reduce((acc, v) => acc + valorPagoDoPedido(v), 0);
-    const aReceberTotal = naoCanceladas.reduce((acc, v) => acc + valorPendenteDoPedido(v), 0);
+    /*
+     * Tudo abaixo fala do RECORTE, e não do mês corrente.
+     *
+     * Os números eram fixos no mês em curso e a curva, nos doze meses do ano
+     * atual — o painel só sabia responder "como está indo o mês?". Com o
+     * seletor na barra, quem pergunta "como foi março" ou "quanto a loja
+     * faturou desde que abriu" recebe a resposta na mesma tela, e os rótulos
+     * dos cartões passam a dizer de qual período estão falando.
+     */
+    const doPeriodo = noPeriodo(naoCanceladas, periodo);
+
+    const faturadoMes = doPeriodo.reduce((acc, v) => acc + totalDoPedido(v), 0);
+    const recebidoMes = doPeriodo.reduce((acc, v) => acc + valorPagoDoPedido(v), 0);
     const percentualRecebido = faturadoMes ? (recebidoMes / faturadoMes) * 100 : 0;
 
-    const porMes = MONTHS.map((name, i) => {
-      const doMesI = naoCanceladas.filter((v) => {
-        const d = toDate(v.pedido.dataPedido);
-        return !!d && d.getFullYear() === anoAtual && d.getMonth() === i;
-      });
-      return {
-        name,
-        faturado: doMesI.reduce((acc, v) => acc + totalDoPedido(v), 0),
-        recebido: doMesI.reduce((acc, v) => acc + valorPagoDoPedido(v), 0),
-      };
-    });
+    /* A receber ignora o recorte de propósito: dívida é do AGORA. Quem deve
+       de março continua devendo enquanto a tela mostra junho — mesma regra do
+       painel de Início. */
+    const aReceberTotal = naoCanceladas.reduce((acc, v) => acc + valorPendenteDoPedido(v), 0);
 
-    const pagas = naoCanceladas.filter(estaFechado).length;
-    const pendentes = naoCanceladas.filter(estaAberto).length;
-    const canceladas = vendas.filter(estaCancelado).length;
+    const { serie: porMes, porDia } = serieDeVendas(vendas, periodo);
+
+    const pagas = doPeriodo.filter(estaFechado).length;
+    const pendentes = doPeriodo.filter(estaAberto).length;
+    const canceladas = noPeriodo(vendas.filter(estaCancelado), periodo).length;
 
     // Top clientes
     const porCliente = new Map<string, TopCliente>();
-    naoCanceladas.forEach((v) => {
+    doPeriodo.forEach((v) => {
       const atual = porCliente.get(v.clienteId) ?? {
         clienteId: v.clienteId,
         nome: v.nomeCliente,
@@ -128,15 +141,16 @@ const SalesOverviewPage = () => {
       recebidoMes,
       aReceberTotal,
       totalVendas: naoCanceladas.length,
-      vendasNoMes: doMes.length,
+      vendasNoMes: doPeriodo.length,
       percentualRecebido,
       porMes,
+      porDia,
       pagas,
       pendentes,
       canceladas,
       topClientes,
     };
-  }, [vendas]);
+  }, [vendas, periodo]);
 
   const abrirPorCliente = (c: TopCliente) => {
     const doCliente = vendas.filter((v) => v.clienteId === c.clienteId).sort((a, b) => +new Date(b.pedido.dataPedido) - +new Date(a.pedido.dataPedido));
@@ -193,8 +207,11 @@ const SalesOverviewPage = () => {
     <div className="flex shrink-0 flex-col gap-3">
       {/* ---------- Os quatro números do mês ---------- */}
       <KpiFaixa className="stagger shrink-0 xl:grid-cols-4">
-        <Kpi tone="accent" icon={<DollarSign size={17} />} label="Faturado este mês" value={formatCurrency(dados.faturadoMes)} hint={`${dados.vendasNoMes} ${dados.vendasNoMes === 1 ? "venda" : "vendas"}`} />
-        <Kpi tone="success" icon={<CheckCircle size={17} />} label="Recebido este mês" value={formatCurrency(dados.recebidoMes)} hint={`${dados.percentualRecebido.toFixed(0)}% do faturado`} />
+        {/* O rótulo diz de QUE período o número fala — mesma fórmula do Início.
+            Sem isso, quem abriu março no seletor lê "faturado este mês" com o
+            valor de março e leva o número errado para a conversa. */}
+        <Kpi tone="accent" icon={<DollarSign size={17} />} label={`Faturado · ${periodo.rotulo.toLowerCase()}`} value={formatCurrency(dados.faturadoMes)} hint={`${dados.vendasNoMes} ${dados.vendasNoMes === 1 ? "venda" : "vendas"}`} />
+        <Kpi tone="success" icon={<CheckCircle size={17} />} label={`Recebido · ${periodo.rotulo.toLowerCase()}`} value={formatCurrency(dados.recebidoMes)} hint={`${dados.percentualRecebido.toFixed(0)}% do faturado`} />
         <Kpi tone="danger" icon={<AlertCircle size={17} />} label="A receber de clientes" value={formatCurrency(dados.aReceberTotal)} hint={`${dados.pendentes} ${dados.pendentes === 1 ? "nota aberta" : "notas abertas"}`} onClick={() => navigate("/vendas")} />
 
         {/* O quarto cartão muda com o plano: com o módulo, o número que o dono
@@ -202,7 +219,7 @@ const SalesOverviewPage = () => {
         {temFinanceiro ? (
           <Kpi tone="warning" icon={<Wallet size={17} />} label="Saldo em caixa" value={formatCurrency(resumoCaixa?.saldoCaixa ?? 0)} hint="Acumulado · abrir o caixa" onClick={() => navigate("/financeiro")} />
         ) : (
-          <Kpi tone="warning" icon={<ShoppingCart size={17} />} label="Total de vendas" value={String(dados.totalVendas)} hint={`${dados.vendasNoMes} neste mês`} />
+          <Kpi tone="warning" icon={<ShoppingCart size={17} />} label="Total de vendas" value={String(dados.totalVendas)} hint={`${dados.vendasNoMes} no período`} />
         )}
       </KpiFaixa>
 
@@ -211,8 +228,11 @@ const SalesOverviewPage = () => {
         <Painel
           icon={<TrendingUp size={15} />}
           tone="accent"
-          title="Faturamento anual"
-          sub="Faturado vs recebido, mês a mês"
+          title="Faturamento"
+          /* A granularidade muda com o recorte (ver `serieDeVendas`), e o
+             subtítulo precisa dizer qual saiu — senão "12" no eixo tanto pode
+             ser dezembro quanto o dia 12. */
+          sub={`${dados.porDia ? "Dia a dia" : "Mês a mês"} · ${periodo.rotulo.toLowerCase()}`}
           className="min-h-[300px]"
           footer={<Legenda itens={[{ color: C.accent, label: "Faturado" }, { color: C.green, label: "Recebido" }]} />}
         >
@@ -242,7 +262,7 @@ const SalesOverviewPage = () => {
           </div>
         </Painel>
 
-        <Painel icon={<CheckCircle size={15} />} tone="success" title="Status das vendas" sub={`${dados.pagas + dados.pendentes + dados.canceladas} notas no total`}>
+        <Painel icon={<CheckCircle size={15} />} tone="success" title="Status das vendas" sub={`${dados.pagas + dados.pendentes + dados.canceladas} ${dados.pagas + dados.pendentes + dados.canceladas === 1 ? "nota" : "notas"} · ${periodo.rotulo.toLowerCase()}`}>
           {statusData.length === 0 ? (
             <PainelVazio icon={<CheckCircle size={19} />} title="Nenhuma venda ainda" />
           ) : (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type LegacyRef } from "react";
-import { ShoppingCart, UserRound, Download, Loader2, AlertTriangle, ListFilter, FileText, CalendarClock } from "lucide-react";
+import { ShoppingCart, UserRound, Download, Loader2, AlertTriangle, ListFilter, FileText, CalendarClock, LayoutDashboard } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { Modal } from "@/shared/ui/Modal";
@@ -19,8 +19,11 @@ import { type PedidoClienteType, estaAberto, estaCancelado, estaFechado, totalDo
 import { formatDateShort } from "@/shared/utils/date";
 import { PedidoStatusBadge } from "@/shared/ui/StatusBadge";
 import useAuth from "@/features/auth/store/auth.store";
-import { ehGestor } from "@/features/vendas/components/TabsVendas";
+import { ehGestor, veVendasDeTodos } from "@/features/vendas/components/TabsVendas";
 import useVendaStore from "@/features/vendas/store/venda.store";
+import SalesOverviewPage from "@/features/vendas/pages/SalesOverviewPage";
+import SeletorPeriodo, { PERIODO_TUDO, type Periodo } from "@/shared/ui/SeletorPeriodo";
+import { mesesComMovimento, vendasAtivas } from "@/shared/domain/serieVendas";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
 import { baixarNotaPdf } from "@/shared/ui/downloadNota";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
@@ -56,6 +59,13 @@ const ROTULO_FILTRO: Record<StatusFiltro, string> = {
 
 const ORDEM_FILTRO: StatusFiltro[] = ["todos", "pago", "pendente", "vencida", "cancelado"];
 
+/** O nome do cartão segue a aba — é o título da página, que aqui é o cartão. */
+const TITULO_ABA: Record<AbaVenda, string> = {
+  "visao-geral": "Visão geral",
+  vendas: "Todas as vendas",
+  "a-prazo": "Vendas a prazo",
+};
+
 /**
  * As colunas. A do cliente é a que estica; as de dinheiro têm largura fixa
  * para que os valores fiquem alinhados entre si de linha em linha.
@@ -78,7 +88,7 @@ const ALTURA_CABECALHO = 40;
 
 /* ======================= Sales / Outlet Page ======================= */
 /**
- * As três listas da seção.
+ * As três listas da seção — e o panorama.
  *
  * "A prazo" veio do Financeiro, onde se chamava "A receber". Ela nunca foi
  * assunto de caixa: é o pedaço não pago das notas que estão logo acima, e a
@@ -88,12 +98,35 @@ const ALTURA_CABECALHO = 40;
  *
  * Orçamento troca de rota (a lista inteira mora em `/pdv/orcamentos`), por
  * isso não entra na barra animada: a pílula não desliza entre telas.
+ *
+ * ---------------------------------------------------------------------------
+ * "Visão geral" é uma ABA, não um bloco acima da tabela
+ * ---------------------------------------------------------------------------
+ * O panorama (KPIs do mês, faturamento anual, status das notas, top clientes,
+ * compromissos) ficava empilhado ACIMA do cartão, e os dois disputavam a
+ * altura da janela: o dono abria Vendas e via meia tabela, com a lista começando
+ * abaixo da dobra. São duas escalas da MESMA pergunta — quanto a loja vendeu e
+ * quais notas somam esse quanto —, e ler uma de cada vez é o gesto real; o que
+ * não dá é pagar a altura das duas o tempo todo.
+ *
+ * Como aba, o cartão inteiro é a página: o cabeçalho, a barra e o rodapé
+ * ficam de pé e só o CORPO troca — os gráficos rolam dentro do mesmo corpo
+ * onde as linhas rolariam. A página não se remonta ao alternar.
+ *
+ * A aba só existe para o master: o panorama soma a loja inteira, e quem recebe
+ * apenas as próprias vendas veria o próprio número com cara de total da loja.
+ * Ver `veVendasDeTodos`.
  */
-type AbaVenda = "vendas" | "a-prazo";
+type AbaVenda = "visao-geral" | "vendas" | "a-prazo";
 
 const SalesList = () => {
   const navigate = useNavigate();
   const [aba, setAba] = useState<AbaVenda>("vendas");
+
+  /* O recorte do panorama. Abre em "todo o período" — a loja inteira é a
+     primeira leitura, e o mês fica a um clique no seletor. Mora aqui, e não
+     dentro do panorama, porque quem o desenha na barra é este cartão. */
+  const [periodo, setPeriodo] = useState<Periodo>(PERIODO_TUDO);
   const [novaConta, setNovaConta] = useState(false);
   const [salvandoConta, setSalvandoConta] = useState(false);
 
@@ -107,7 +140,11 @@ const SalesList = () => {
   const [notaAberta, setNotaAberta] = useState<NotaAberta | null>(null);
   const [search, setSearch] = useState("");
   const { user } = useAuth();
+  /* Duas perguntas diferentes: `gestor` é quem pode ver o DINHEIRO da loja
+     (os prazos e o que está a receber); `veTudo` é quem recebe as vendas de
+     toda a equipe — só o master. Ver `veVendasDeTodos`. */
   const gestor = ehGestor(user);
+  const veTudo = veVendasDeTodos(user);
 
   /* Download rápido na linha: um único nó de nota fora da tela, cujo conteúdo
      é preenchido com a venda escolhida antes de rasterizar. Assim não há N
@@ -147,7 +184,7 @@ const SalesList = () => {
   };
 
   const [status, setStatus] = useState<StatusFiltro>("todos");
-  /** "" = todos. Só o gestor vê este filtro — o vendedor já recebe só as dele. */
+  /** "" = todos. Só o master vê este filtro — os demais já recebem só as próprias. */
   const [vendedor, setVendedor] = useState("");
 
   /*
@@ -245,6 +282,10 @@ const SalesList = () => {
    * leva a zero linhas. O número ao lado é quantas notas a pessoa tem, que é o
    * que ajuda a escolher entre dois nomes parecidos.
    */
+  /* Os meses que o seletor oferece: feitos do que EXISTE, para que nenhuma
+     opção da lista caia num mês sem venda. Ver `mesesComMovimento`. */
+  const mesesDoSeletor = useMemo(() => mesesComMovimento(vendasAtivas(vendas)), [vendas]);
+
   const clientesSugeridos = useMemo(() => {
     const mapa = new Map<string, { id: string; label: string; notas: number }>();
 
@@ -354,18 +395,25 @@ const SalesList = () => {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <TabelaCard
-        title={aba === "vendas" ? "Todas as vendas" : "Vendas a prazo"}
-        icon={aba === "vendas" ? <ShoppingCart size={15} /> : <CalendarClock size={15} />}
-        count={aba === "vendas" ? vendasFiltradas.length : parcelasEmAberto}
+        title={TITULO_ABA[aba]}
+        icon={aba === "visao-geral" ? <LayoutDashboard size={15} /> : aba === "vendas" ? <ShoppingCart size={15} /> : <CalendarClock size={15} />}
+        /* O panorama não tem contagem: os quatro cartões do topo já são os
+           números, e "N registros" sobre eles não diria de quê. */
+        count={aba === "visao-geral" ? undefined : aba === "vendas" ? vendasFiltradas.length : parcelasEmAberto}
         countLabel={
           aba === "vendas"
             ? `${vendasFiltradas.length === 1 ? "nota" : "notas"}${vendasFiltradas.length !== vendas.length ? ` de ${vendas.length}` : ""}`
             : "parcelas em aberto"
         }
+        /* A largura mínima de 980px é das COLUNAS. Os painéis são fluidos e
+           herdariam dela uma barra de rolagem horizontal no notebook. */
         minWidth={aba === "vendas" ? 980 : 0}
+        /* No celular os painéis empurram o cartão em vez de rolar por dentro
+           dele — ver `corpoLivre`. As listas continuam paginando. */
+        corpoLivre={aba === "visao-geral"}
         bodyRef={bodyRef}
-        onAdd={aba === "vendas" ? () => navigate("/pdv", { state: { abrir: "venda" } }) : () => setNovaConta(true)}
-        addLabel={aba === "vendas" ? "Nova venda" : "Novo acordo"}
+        onAdd={aba === "a-prazo" ? () => setNovaConta(true) : () => navigate("/pdv", { state: { abrir: "venda" } })}
+        addLabel={aba === "a-prazo" ? "Novo acordo" : "Nova venda"}
         /*
          * Duas abas com a pílula que desliza (a mesma peça do estoque e do
          * PDV) e uma terceira porta que TROCA DE ROTA — a lista completa de
@@ -379,6 +427,9 @@ const SalesList = () => {
               valor={aba}
               onValor={setAba}
               abas={[
+                /* Visão geral primeiro e sem contagem: é a leitura de cima,
+                   não mais uma lista com N itens. */
+                ...(veTudo ? [{ id: "visao-geral" as const, label: "Visão geral", icone: <LayoutDashboard size={13} /> }] : []),
                 { id: "vendas", label: "Vendas", icone: <ShoppingCart size={13} />, contagem: vendasFiltradas.length },
                 { id: "a-prazo", label: "A prazo", icone: <CalendarClock size={13} />, contagem: parcelasEmAberto },
               ]}
@@ -404,7 +455,12 @@ const SalesList = () => {
             Novo orçamento
           </button>
         }
-        controles={aba === "a-prazo" ? undefined : (
+        controles={aba === "visao-geral" ? (
+          /* O período governa TUDO o que está abaixo dele — os cartões, a curva
+             e o ranking falam todos do mesmo recorte —, por isso fica na barra
+             do cartão e não dentro de um dos painéis. */
+          <SeletorPeriodo valor={periodo} onChange={setPeriodo} meses={mesesDoSeletor} comHoje />
+        ) : aba !== "vendas" ? undefined : (
           <>
             {/* Busca e filtros no mesmo grupo: as três coisas restringem a
                 mesma lista, e separá-las pelas duas pontas da barra fazia o
@@ -421,7 +477,7 @@ const SalesList = () => {
 
             {/* O seletor de vendedor só aparece quando há mais de um vendedor
                 com venda: com um só, ele não filtra nada e vira ruído. */}
-            {gestor && vendedores.length > 1 && (
+            {veTudo && vendedores.length > 1 && (
               <Select
                 valor={vendedor}
                 onChange={setVendedor}
@@ -445,7 +501,10 @@ const SalesList = () => {
             />
           </>
         )}
-        footer={
+        /* Sem rodapé no panorama: "total em aberto" já é um dos cartões lá
+           dentro, e a paginação não tem o que paginar — a faixa só tiraria
+           altura dos gráficos. */
+        footer={aba === "visao-geral" ? undefined : (
           <>
             <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span className="flex items-center gap-1.5">
@@ -475,9 +534,17 @@ const SalesList = () => {
               </span>
             )}
           </>
-        }
+        )}
       >
-        {aba === "a-prazo" ? (
+        {aba === "visao-geral" ? (
+          /* O panorama entra SEM moldura própria — a moldura é a do cartão.
+             O corpo do `TabelaCard` já é `overflow-auto`, então os painéis
+             rolam exatamente onde as linhas rolariam. O padding é daqui: a
+             lista encosta nas bordas de propósito, os painéis não. */
+          <div className="p-3">
+            <SalesOverviewPage periodo={periodo} />
+          </div>
+        ) : aba === "a-prazo" ? (
           /* A parcela tem botão de receber, de recibo e de cancelar, e essa
              lógica já mora na `ListaContas`. Aqui ela entra sem moldura. */
           <ListaContas
