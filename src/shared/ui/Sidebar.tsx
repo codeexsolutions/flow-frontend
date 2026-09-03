@@ -496,10 +496,9 @@ const Sidebar = () => {
             "CRM — as pessoas do outro lado do balcão: quem compra de você, o histórico de cada uma e os canais para falar com elas.",
           )}
           {item("clientes", <Users size={16} />, "Clientes")}
-          {/* Sem tela ainda. Fica visível e cinza em vez de escondido: quem não
-              sabe que existe não pergunta, e o item apagado é o que faz o dono
-              querer saber quando chegar. */}
-          {item("whatsapp", <MessageCircle size={16} />, "WhatsApp", true)}
+          {/* Deixou de ser "Em breve": a caixa de entrada, o funil e a
+              conexão do número da loja moram em `/whatsapp` (ver `CrmPage`). */}
+          {item("whatsapp", <MessageCircle size={16} />, "WhatsApp")}
 
           {grupo(
             "Entregas",

@@ -47,6 +47,7 @@ import PostagemPage from "@/features/correios/pages/PostagemPage";
 import RastrearPage from "@/features/correios/pages/RastrearPage";
 
 import ClientesPage from "@/features/clientes/pages/ClientesPage";
+import CrmPage from "@/features/crm/pages/CrmPage";
 import CustomerDetailPage from "@/features/clientes/pages/ClienteDetailPage";
 
 import TableStock from "@/features/estoque/pages/StockPage";
@@ -255,6 +256,19 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
           <Route path="checkout" element={<CheckoutPage />} />
 
           <Route path="clientes" element={<ClientesPage />} />
+          {/*
+            CRM de WhatsApp — vive ao lado de Clientes porque é o mesmo
+            assunto: as pessoas do outro lado do balcão. Sem trava de
+            plano, pelo mesmo motivo de orçamento e produção — o pacote
+            comercial ainda vai ser reorganizado, e travar agora só
+            criaria porta para destrancar depois.
+
+            `/whatsapp` e não `/crm`: é o nome que o menu já usava
+            ("Em breve") e o nome pelo qual o lojista procura. "CRM" é
+            vocabulário nosso, não dele.
+          */}
+          <Route path="whatsapp" element={<CrmPage />} />
+          <Route path="crm" element={<Navigate to="/whatsapp" replace />} />
           <Route path="clientes/:clienteId" element={<CustomerDetailPage />} />
 
           <Route path="estoque" element={<TableStock />} />

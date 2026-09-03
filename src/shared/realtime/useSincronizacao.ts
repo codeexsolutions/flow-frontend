@@ -5,7 +5,10 @@ import { API_ORIGEM } from "@/shared/api/apiUrl";
 import useAuth from "@/features/auth/store/auth.store";
 import { lerToken } from "@/shared/api/sessao";
 
-export type Colecao = "clientes" | "produtos" | "pedidos" | "producao" | "planilhas";
+/* `crm` é a única coleção em que o dado chega por um caminho que a tela não
+   provocou: o cliente mandou mensagem no WhatsApp e o serviço gravou. Sem
+   ela, a conversa ficaria esperando alguém apertar F5. */
+export type Colecao = "clientes" | "produtos" | "pedidos" | "producao" | "planilhas" | "crm";
 
 type Aviso = { colecao: Colecao; porUsuarioId: string | null; em: string };
 
