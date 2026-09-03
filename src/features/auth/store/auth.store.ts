@@ -21,6 +21,7 @@ import { lerToken, limparSessao, salvarSessao } from "@/shared/api/sessao";
 const deSessaoParaUsuario = (sessao: UsuarioSessao) => ({
   id: sessao.id,
   nome: sessao.nome ?? undefined,
+  nomeExibicao: sessao.nomeExibicao ?? undefined,
   email: sessao.email,
   cargo: sessao.cargo,
   /* `UserType` sempre declarou `image`, e este mapeamento nunca o preencheu:
@@ -50,7 +51,7 @@ type AuthStore = useAuthProps & {
    * prévia trocar no cartão do perfil e continuava com a foto antiga na barra
    * lateral — o que parece, com toda razão, que a gravação não funcionou.
    */
-  atualizarPerfil: (dados: { nome?: string; cargo?: string; image?: string }) => void;
+  atualizarPerfil: (dados: { nome?: string; cargo?: string; image?: string; nomeExibicao?: string }) => void;
 };
 
 const useAuth = create<AuthStore>((set, get) => ({
@@ -85,6 +86,7 @@ const useAuth = create<AuthStore>((set, get) => ({
       user: {
         ...atual,
         ...(dados.nome !== undefined ? { nome: dados.nome } : {}),
+        ...(dados.nomeExibicao !== undefined ? { nomeExibicao: dados.nomeExibicao } : {}),
         ...(dados.cargo !== undefined ? { cargo: dados.cargo } : {}),
         ...(dados.image !== undefined ? { image: dados.image || undefined } : {}),
       },

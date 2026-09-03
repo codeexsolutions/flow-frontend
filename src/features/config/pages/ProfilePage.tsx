@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { User, Mail, Phone, Briefcase, Camera, Trash2, Lock, Shield, CalendarDays, Loader2, RefreshCw } from "lucide-react";
+import { User, Mail, Phone, Briefcase, Camera, Trash2, Lock, Shield, CalendarDays, Loader2, RefreshCw, Signature } from "lucide-react";
 import useAuth from "@/features/auth/store/auth.store";
 import { useAlert } from "@/shared/ui/Alert";
 import Field from "@/shared/ui/inputs/Field";
@@ -9,6 +9,7 @@ import Field from "@/shared/ui/inputs/Field";
 import { maskPhone } from "@/shared/validation/masks";
 import sysgrafix from "@/shared/api/sysgrafix";
 import { SettingsCard, SaveRow, PasswordField, useSaver } from "@/features/config/components/ConfigUI";
+import CorporateBadge from "@/features/config/components/CorporateBadge";
 import { profileSchema, type ProfileData, type ProfileInput, passwordSchema, type PasswordData } from "@/features/config/schema/profile.schema";
 import ProfileService from "@/features/config/services/profile.service";
 import { BUILD_ID, forcarAtualizacao } from "@/shared/pwa/versao";
@@ -48,6 +49,9 @@ const ProfilePage = () => {
     await ProfileService.updateProfile({
       nome: data.name,
       cargo,
+      /* Sempre enviado, mesmo vazio: campo em branco significa "volte a me
+         chamar pelo nome do cadastro", e omitir diria "não mexi". */
+      nomeExibicao: data.nomeExibicao ?? "",
       /* `""` e não `undefined` ao remover: `undefined` some no
          `JSON.stringify` e o servidor só sobrescreve o que chega — a foto
          antiga voltaria na próxima carga da tela. */
@@ -58,7 +62,7 @@ const ProfilePage = () => {
        este aviso a foto nova ficava só no estado local desta tela: a barra
        lateral seguia com a antiga até o próximo login, e a impressão era de
        que salvar não tinha funcionado. */
-    atualizarPerfil({ nome: data.name, cargo, image: photo ?? "" });
+    atualizarPerfil({ nome: data.name, cargo, image: photo ?? "", nomeExibicao: data.nomeExibicao ?? "" });
   });
   const pwdSaver = useSaver();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -77,6 +81,7 @@ const ProfilePage = () => {
       email: user?.email ?? "",
       phone: maskPhone(String(user?.phone ?? "")),
       role: user?.cargo ?? "",
+      nomeExibicao: user?.nomeExibicao ?? "",
     },
   });
 
@@ -194,9 +199,25 @@ const ProfilePage = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-y-auto xl:grid-cols-2">
+      {/*
+        Duas colunas: o que se PREENCHE à esquerda, a empresa à direita.
+
+        À esquerda o cartão único do perfil — dados, senha e conta, cada um em
+        sua seção. À direita a empresa, em leitura.
+
+        Sem `items-start`: as duas colunas ESTICAM até o fim da tela. Alinhadas
+        ao topo, a mais curta terminava no meio e deixava um vazio embaixo que
+        fazia a coluna parecer um resto — algo que ficou ali por falta de lugar
+        melhor. Preenchendo, as duas são metade da tela cada.
+      */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-y-auto xl:grid-cols-2 xl:overflow-hidden">
         {/* Perfil */}
-        <SettingsCard icon={<User className="h-4 w-4" />} title="Meu perfil" desc="Foto e informações pessoais." footer={<SaveRow {...profileSaver} onSave={submitProfile(onProfileValid, onInvalid)} savedLabel="Perfil atualizado" />}>
+        <SettingsCard corpoRolavel icon={<User className="h-4 w-4" />} title="Meu perfil" desc="Foto e informações pessoais." footer={
+            <div className="flex flex-wrap items-center gap-2">
+              <SaveRow {...profileSaver} onSave={submitProfile(onProfileValid, onInvalid)} savedLabel="Perfil atualizado" />
+              <SaveRow {...pwdSaver} onSave={submitPwd(onPwdValid, onInvalid)} label="Atualizar senha" savedLabel="Senha atualizada" icon={<Shield className="h-4 w-4" />} variant="secondary" disabled={!canUpdatePwd} />
+            </div>
+          }>
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
             <div className="flex shrink-0 flex-col items-center gap-2">
               <div className="relative h-24 w-24 shrink-0">
@@ -250,27 +271,80 @@ const ProfilePage = () => {
                 }}
               />
               <Field label="Cargo" icon={<Briefcase size={15} />} hint="Definido pela empresa" disabled readOnly {...regProfile("role")} />
+
+              {/*
+                Como a pessoa quer ser chamada POR FORA.
+                Ocupa a linha inteira (`sm:col-span-2`) porque a dica embaixo é
+                mais comprida que a dos outros campos — espremida em meia
+                largura ela quebra em três linhas e desalinha a grade.
+              */}
+              <div className="sm:col-span-2">
+                <Field
+                  label="Como quer ser chamado"
+                  icon={<Signature size={15} />}
+                  placeholder={user?.nome?.split(" ")[0] || "Seu primeiro nome"}
+                  maxLength={24}
+                  hint="Aparece no campo Vendedor da nota e assina suas mensagens no WhatsApp. Em branco, usamos seu primeiro nome."
+                  {...regProfile("nomeExibicao")}
+                />
+              </div>
             </div>
           </div>
-        </SettingsCard>
 
-        {/* Senha + Info da conta */}
-        <div className="flex min-w-0 flex-col gap-5">
-          <SettingsCard
-            icon={<Lock className="h-4 w-4" />}
-            title="Alterar senha"
-            desc="Use uma senha forte e única."
-            footer={<SaveRow {...pwdSaver} onSave={submitPwd(onPwdValid, onInvalid)} label="Atualizar senha" savedLabel="Senha atualizada" icon={<Shield className="h-4 w-4" />} variant="secondary" disabled={!canUpdatePwd} />}
-          >
-            <div className="grid grid-cols-1 gap-4">
+          {/*
+            A senha mora DENTRO do perfil, e não num cartão ao lado.
+
+            Eram duas caixas com o mesmo peso visual, e a segunda respondia a
+            uma pergunta que ninguém faz separado: trocar a senha é mexer no
+            próprio cadastro, no mesmo minuto em que se corrige o telefone ou a
+            foto. Como seção abaixo dos dados, ela fica no lugar onde a pessoa
+            já está — e o cartão de Conta, que é leitura e não formulário, deixa
+            de dividir a coluna com um formulário.
+
+            As duas ações continuam SEPARADAS no rodapé: são duas requisições
+            e dois resultados, e um botão só obrigaria a mandar a senha atual
+            toda vez que alguém troca a foto.
+          */}
+          <div className="mt-6 border-t border-fg/[0.06] pt-5">
+            <div className="mb-4 flex items-center gap-2.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/[0.12] text-accent-soft">
+                <Lock className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-[13px] text-ink">Alterar senha</h3>
+                <p className="truncate text-[11px] text-faint">Use uma senha forte e única.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Controller control={control} name="current" render={({ field }) => <PasswordField label="Senha atual" {...field} show={showPwd} onToggle={() => setShowPwd((v) => !v)} error={pwdErrors.current?.message} />} />
               <Controller control={control} name="next" render={({ field }) => <PasswordField label="Nova senha" {...field} show={showPwd} onToggle={() => setShowPwd((v) => !v)} error={pwdErrors.next?.message} />} />
               <Controller control={control} name="confirm" render={({ field }) => <PasswordField label="Confirmar nova senha" {...field} show={showPwd} onToggle={() => setShowPwd((v) => !v)} error={pwdErrors.confirm?.message} />} />
             </div>
-          </SettingsCard>
+          </div>
 
-          <SettingsCard icon={<CalendarDays className="h-4 w-4" />} title="Conta" desc="Informações da sua conta no CodeEx Flow">
-            <div className="flex flex-col gap-3">
+          {/*
+            A conta — também dentro do perfil.
+
+            Era o terceiro cartão da tela, e o único que não é formulário: diz
+            que a conta está ativa e qual versão do sistema está instalada. Com
+            peso de cartão próprio ele parecia oferecer algo para configurar, e
+            não oferece — são duas leituras e um botão de emergência. Como
+            seção no pé do perfil, fica onde se procura o que é sobre a
+            INSTALAÇÃO e não sobre o trabalho.
+          */}
+          <div className="mt-6 border-t border-fg/[0.06] pt-5">
+            <div className="mb-4 flex items-center gap-2.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/[0.12] text-accent-soft">
+                <CalendarDays className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-[13px] text-ink">Conta</h3>
+                <p className="truncate text-[11px] text-faint">Informações da sua conta no CodeEx Flow</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="flex items-center gap-3 rounded-xl border border-success/20 bg-success/[0.08] px-4 py-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/25">
                   <Shield size={15} className="text-success" />
@@ -314,8 +388,11 @@ const ProfilePage = () => {
                 </button>
               </div>
             </div>
-          </SettingsCard>
-        </div>
+          </div>
+        </SettingsCard>
+
+
+        <CorporateBadge />
       </div>
     </div>
   );

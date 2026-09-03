@@ -113,8 +113,15 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   const clientes = useClientes((s) => s.clientes);
   const enterprise = useEnterprise((s) => s.enterprise);
 
-  /** O vendedor da nota é quem está logado emitindo-a. */
-  const vendedor = user?.nome || user?.email || "—";
+  /**
+   * O vendedor da nota é quem está logado emitindo-a.
+   *
+   * O apelido escolhido em Perfil ganha do nome do cadastro: este campo é lido
+   * pelo CLIENTE, e o cadastro guarda o nome completo — que estoura a largura
+   * da coluna e não é como a pessoa se apresenta no balcão. Vazio cai no nome
+   * de sempre, então quem não preencheu nada não vê diferença nenhuma.
+   */
+  const vendedor = user?.nomeExibicao || user?.nome || user?.email || "—";
 
   /**
    * O pedido só traz o nome do cliente; o telefone mora no cadastro. Pega do

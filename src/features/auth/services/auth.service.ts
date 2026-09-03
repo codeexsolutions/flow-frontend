@@ -4,6 +4,14 @@ import sysgrafix from "@/shared/api/sysgrafix";
 export type UsuarioSessao = {
   id: string;
   nome?: string | null;
+  /**
+   * Como a pessoa quer ser chamada por FORA — na nota e no WhatsApp.
+   *
+   * Vem do banco, não do JWT: o token é assinado no login e não mudaria até o
+   * próximo, então trocar o apelido só valeria depois de deslogar. Ver `Me` no
+   * controller da API.
+   */
+  nomeExibicao?: string | null;
   email: string;
   cargo: string;
   /** URL da foto de perfil. Vem na resposta do login/refresh, não no JWT. */

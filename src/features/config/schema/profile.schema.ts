@@ -6,6 +6,9 @@ export const profileSchema = z.object({
   email: requiredEmail,
   phone: optionalPhone,
   role: z.string().optional().default(""),
+  /* 24 é o mesmo teto do CHECK da migração 059. É assinatura, não biografia:
+     o campo aparece no rodapé da nota e antes de cada mensagem de WhatsApp. */
+  nomeExibicao: z.string().max(24, "Máximo de 24 caracteres").optional().default(""),
 });
 
 export type ProfileInput = z.input<typeof profileSchema>;
