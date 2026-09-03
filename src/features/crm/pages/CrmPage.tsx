@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Inbox, KanbanSquare, Loader2, MessageCircle, Search, Settings2, UserRound } from "lucide-react";
+import { Inbox, KanbanSquare, Loader2, MessageCircle, Search, Settings2, UserRound, X } from "lucide-react";
 
 import CrmService, { type Conexao, type Conversa, type Etapa } from "@/features/crm/services/crm.service";
 import ConexaoWhatsapp from "@/features/crm/components/ConexaoWhatsapp";
@@ -173,15 +173,14 @@ const CrmPage = () => {
     <div className="flex h-full min-h-0 flex-col">
       {/* Barra de controles */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-fg/[0.06] px-3 py-2.5">
-        <div className="flex h-[38px] min-w-[180px] flex-1 items-center gap-2 rounded-xl border border-fg/[0.08] bg-fg/[0.03] px-3">
-          <Search className="h-4 w-4 shrink-0 text-muted" />
-          <input
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome ou telefone"
-            className="w-full flex-1 bg-transparent text-[12.5px] text-ink outline-none placeholder:text-faint"
-          />
-        </div>
+        {/*
+          A busca saiu daqui e foi para dentro da lista de contatos.
+          Ela procura CONVERSA — nome e telefone —, e na barra de cima parecia
+          buscar a tela inteira: quem estava no funil digitava ali esperando
+          filtrar cartão, e quem estava lendo uma conversa esperava achar
+          mensagem. Junto da lista, o que ela faz fica óbvio.
+        */}
+        <div className="flex-1" />
 
         {/* Caixa ⇄ Funil: as MESMAS conversas, em duas leituras. Mesma
             decisão do Tabela ⇄ Backlog das planilhas — é forma de olhar o que
@@ -237,7 +236,11 @@ const CrmPage = () => {
         <div className="min-h-0 flex-1">
           <QuadroFunil
             etapas={etapas}
-            conversas={filtradas}
+            /* O quadro mostra TODAS: a busca agora é da lista de contatos, e
+               esconder cartão por causa do que ficou escrito numa caixa de
+               outra visão faria o funil mentir sobre o que a loja tem em
+               andamento. */
+            conversas={conversas}
             onMover={(id, etapa) => void mover(id, etapa)}
             onAbrir={(c) => {
               setAbertaId(c.id);
@@ -259,6 +262,29 @@ const CrmPage = () => {
               celular && aberta ? "hidden" : ""
             }`}
           >
+            {/* A busca da lista, dentro da lista. */}
+            <div className="shrink-0 border-b border-fg/[0.06] p-2">
+              <div className="flex h-[34px] items-center gap-2 rounded-lg border border-fg/[0.08] bg-fg/[0.03] px-2.5">
+                <Search className="h-3.5 w-3.5 shrink-0 text-muted" />
+                <input
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder="Buscar contato"
+                  className="w-full flex-1 bg-transparent text-[12px] text-ink outline-none placeholder:text-faint"
+                />
+                {busca && (
+                  <button
+                    type="button"
+                    onClick={() => setBusca("")}
+                    aria-label="Limpar busca"
+                    className="shrink-0 cursor-pointer text-faint transition-colors hover:text-ink"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="min-h-0 flex-1 overflow-y-auto">
               {filtradas.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-faint">

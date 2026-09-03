@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowLeft, Loader2, Send, UserRound } from "lucide-react
 
 import CrmService, { type Conversa as ConversaTipo, type Mensagem } from "@/features/crm/services/crm.service";
 import MidiaMensagem from "@/features/crm/components/MidiaMensagem";
+import AtalhosContato from "@/features/crm/components/AtalhosContato";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 
@@ -168,10 +169,15 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
           <p className="truncate font-mono text-[10.5px] text-faint">
             {conversa.telefone}
             {/* Contato sem cadastro é oportunidade, não erro — a tela diz isso
-                sem alarde, e o vínculo se faz no painel lateral. */}
+                sem alarde, e o botão de cadastrar está logo ao lado. */}
             {!conversa.cliente_fk && " · sem cadastro"}
           </p>
         </div>
+
+        {/* Os atalhos do lado oposto ao nome: cadastrar, vincular, ficha,
+            vender. Ver a nota no topo de `AtalhosContato` — atendimento e
+            cadastro são o mesmo momento, e estavam em telas diferentes. */}
+        <AtalhosContato conversa={conversa} aoMudar={aoMudar} />
       </div>
 
       {/* Histórico */}
