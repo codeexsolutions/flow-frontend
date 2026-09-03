@@ -28,6 +28,23 @@ export type Conexao = {
   configurado: boolean;
 };
 
+/** Um dia do expediente. `dia` 0 = domingo, como o `getDay()` do JavaScript. */
+export type DiaExpediente = {
+  dia: number;
+  fechado?: boolean;
+  abre?: string;
+  fecha?: string;
+};
+
+export type Chatbot = {
+  ativo: boolean;
+  mensagem_fora: string | null;
+  expediente: DiaExpediente[];
+  /** Horas sem repetir o recado para a mesma pessoa. */
+  silencio_horas: number;
+  atualizado_em?: string | null;
+};
+
 export type Etapa = {
   id: string;
   nome: string;
@@ -67,6 +84,8 @@ export type Mensagem = {
   erro: string | null;
   criado_em: string;
   autor_nome: string | null;
+  /** Saiu do robô, não de uma pessoa — a bolha diz isso. */
+  automatica?: boolean;
 };
 
 const dados = <T>(r: { data?: { data?: T[] } }): T[] => r.data?.data ?? [];
@@ -107,6 +126,21 @@ const CrmService = {
    */
   async importar() {
     await sysgrafix.post("/crm/conexao/importar", {});
+  },
+
+  /* ------------------------------ Chatbot ----------------------------- */
+
+  async chatbot() {
+    return um<Chatbot>(await sysgrafix.get("/crm/chatbot"));
+  },
+
+  async salvarChatbot(dados: {
+    ativo?: boolean;
+    mensagemFora?: string;
+    expediente?: DiaExpediente[];
+    silencioHoras?: number;
+  }) {
+    await sysgrafix.patch("/crm/chatbot", dados, SEM_AVISO);
   },
 
   /* ------------------------------- Funil ------------------------------ */

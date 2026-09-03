@@ -312,7 +312,13 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
                         {/* Quem respondeu, quando três pessoas atendem pelo
                             mesmo número. Só na saída: na entrada o autor é o
                             cliente, e o nome dele já está no cabeçalho. */}
-                        {saiu && m.autor_nome && <span className="truncate">{m.autor_nome}</span>}
+                        {/* Quem escreveu. O robô é dito com essas palavras: sem
+                            isso a mensagem dele apareceria como SAIDA sem
+                            autor — igual às que a loja manda pelo celular — e
+                            quem lesse o histórico concluiria que alguém da
+                            equipe respondeu de madrugada. */}
+                        {saiu && m.automatica && <span className="truncate">resposta automática</span>}
+                        {saiu && !m.automatica && m.autor_nome && <span className="truncate">{m.autor_nome}</span>}
                         {m.status === "PENDENTE" && <Loader2 size={10} className="animate-spin" />}
                         {falhou && <AlertTriangle size={10} className="text-danger" />}
                         {hora(m.criado_em)}

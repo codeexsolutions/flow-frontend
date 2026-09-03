@@ -48,6 +48,7 @@ import RastrearPage from "@/features/correios/pages/RastrearPage";
 
 import ClientesPage from "@/features/clientes/pages/ClientesPage";
 import CrmPage from "@/features/crm/pages/CrmPage";
+import ChatbotPage from "@/features/crm/pages/ChatbotPage";
 import CustomerDetailPage from "@/features/clientes/pages/ClienteDetailPage";
 
 import TableStock from "@/features/estoque/pages/StockPage";
@@ -268,6 +269,10 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
             vocabulário nosso, não dele.
           */}
           <Route path="whatsapp" element={<CrmPage />} />
+          {/* O robô é configuração do WhatsApp, mas tem destino próprio: quem
+              vem desligar às pressas não deve ter de achar uma aba dentro da
+              caixa de entrada. */}
+          <Route path="chatbot" element={<ChatbotPage />} />
           <Route path="crm" element={<Navigate to="/whatsapp" replace />} />
           <Route path="clientes/:clienteId" element={<CustomerDetailPage />} />
 

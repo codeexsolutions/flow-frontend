@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
-import { Package, Users, DollarSign, Settings, LogOut, ShoppingCart, BarChart3, LayoutDashboard, Truck, UserCog, Wallet, LifeBuoy, Lock, MessageCircle, Factory } from "lucide-react";
+import { Package, Users, DollarSign, Settings, LogOut, ShoppingCart, BarChart3, LayoutDashboard, Truck, UserCog, Wallet, LifeBuoy, Lock, MessageCircle, Factory, Bot } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import useAuth from "@/features/auth/store/auth.store";
@@ -499,6 +499,10 @@ const Sidebar = () => {
           {/* Deixou de ser "Em breve": a caixa de entrada, o funil e a
               conexão do número da loja moram em `/whatsapp` (ver `CrmPage`). */}
           {item("whatsapp", <MessageCircle size={16} />, "WhatsApp")}
+          {/* O robô ao lado do WhatsApp, e não dentro dele: é o que a pessoa
+              procura quando quer DESLIGAR a resposta automática, e nessa hora
+              ninguém quer caçar uma aba dentro da caixa de entrada. */}
+          {item("chatbot", <Bot size={16} />, "Chatbot")}
 
           {grupo(
             "Entregas",
