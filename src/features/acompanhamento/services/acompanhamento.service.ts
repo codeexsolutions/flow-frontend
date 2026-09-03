@@ -37,6 +37,13 @@ export type MarcaEmpresa = {
    */
   wallpaper: string | null;
   whatsapp: string | null;
+  /**
+   * O mascote da empresa — PNG recortado, já validado pelo servidor.
+   *
+   * `null` é o normal: a página não reserva espaço nem desenha silhueta
+   * nenhuma quando ele falta.
+   */
+  mascote: string | null;
 };
 
 export type ProducaoPublica = {

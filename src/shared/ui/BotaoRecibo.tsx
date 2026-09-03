@@ -26,6 +26,7 @@ const BotaoRecibo = ({ dados }: { dados: DadosRecibo }) => {
         nomeEmpresa={empresa?.nomeFantasia ?? "recibo"}
         prefixo={`recibo-${dados.numero}`}
         titulo="Baixar recibo"
+        documento="recibo"
       />
 
       <div className="fixed -left-[9999px] top-0" aria-hidden>

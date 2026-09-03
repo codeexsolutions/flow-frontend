@@ -105,6 +105,22 @@ const NotaResumo = ({ venda: v, refNota }: Props) => {
         </div>
       </div>
 
+      {/* As fotos do serviço — as mesmas que a nota completa mostra.
+          Sem elas aqui, a nota baixada pela LISTA sairia diferente da baixada
+          pela tela da venda, e a diferença apareceria justo no que o cliente
+          guarda como prova do serviço. */}
+      {(v.pedido.imagensServico ?? []).length > 0 && (
+        <div className="px-6 pt-6">
+          <span className="text-[10.5px] uppercase tracking-[0.1em] text-faint">Fotos do serviço</span>
+
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            {(v.pedido.imagensServico ?? []).map((url, i) => (
+              <img key={url} src={url} alt={`Foto ${i + 1} do serviço`} className="aspect-square w-full rounded-xl border border-fg/[0.06] object-cover" />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Resumo — total, pago e pendente */}
       <div className="flex flex-wrap justify-end gap-2 p-6">
         <div className="min-w-[150px] rounded-xl border border-fg/[0.06] bg-fg/[0.03] p-4 text-right">

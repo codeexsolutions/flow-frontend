@@ -37,7 +37,7 @@ import useClienteStore from "@/features/clientes/store/cliente.store";
 import useProdutoStore, { stockLevel } from "@/features/estoque/store/produto.store";
 import { ehVendavel } from "@/shared/domain/produto";
 
-import { estaAberto, estaFechado, estaCancelado, totalDoPedido } from "@/shared/domain/pedido";
+import { estaAberto, estaQuitado, estaCancelado, totalDoPedido } from "@/shared/domain/pedido";
 import { mesesComMovimento as mesesComVenda, serieDeVendas } from "@/shared/domain/serieVendas";
 import { formatCurrency } from "@/shared/utils/currency";
 import { formatNumber, getInitials } from "@/shared/utils/format";
@@ -423,7 +423,7 @@ const DashboardPage = () => {
     const soma = (lista: typeof ativas) => lista.reduce((acc, v) => acc + totalDoPedido(v), 0);
 
     const faturado = soma(noPeriodo);
-    const recebido = soma(noPeriodo.filter(estaFechado));
+    const recebido = soma(noPeriodo.filter(estaQuitado));
 
     /* A receber e notas em aberto ignoram o período de propósito: dívida é do
        AGORA, não do recorte. Quem deve de março continua devendo quando a tela
@@ -431,7 +431,7 @@ const DashboardPage = () => {
     const aReceber = soma(ativas.filter(estaAberto));
 
     const faturadoAnterior = soma(noAnterior);
-    const recebidoAnterior = soma(noAnterior.filter(estaFechado));
+    const recebidoAnterior = soma(noAnterior.filter(estaQuitado));
 
     /* Hoje: o recorte que responde "como está indo o dia", que o período
        esconde. Fica fora do filtro pelo mesmo motivo — é o subtítulo da tela,
@@ -496,7 +496,7 @@ const DashboardPage = () => {
     /* Mix de recebimento. `formaPagamento` é a do último pagamento da nota — o
        subtítulo do painel diz isso, para ninguém ler como rateio exato. */
     const porForma = new Map<string, { total: number; notas: number }>();
-    noPeriodo.filter(estaFechado).forEach((v) => {
+    noPeriodo.filter(estaQuitado).forEach((v) => {
       const f = v.pedido.formaPagamento?.trim() || "Não informado";
       const atual = porForma.get(f) ?? { total: 0, notas: 0 };
       atual.total += totalDoPedido(v);

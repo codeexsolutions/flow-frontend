@@ -51,6 +51,15 @@ export type PedidoType = {
   /** Forma do último pagamento registrado. Vem do backend. */
   formaPagamento?: string | null;
   itensPedido: ItemPedidoType[];
+  /**
+   * Até duas fotos do serviço prestado — da VENDA, não do catálogo.
+   *
+   * A foto do produto continua no produto: esta é a estampa aplicada, o
+   * bordado aprovado, o antes e depois do conserto. Sai impressa na nota.
+   */
+  imagensServico?: string[];
+  /** A nota sai com o QR do Pix? `true` é o padrão; falso na venda já quitada. */
+  mostrarQr?: boolean;
 };
 
 /** Uma venda: o cliente e o pedido dele. */
@@ -78,6 +87,8 @@ export type ItemPedidoDto = {
 export type NovoPedidoDto = {
   clienteId: string | undefined;
   itensPedido: ItemPedidoDto[];
+  imagensServico?: string[];
+  mostrarQr?: boolean;
 };
 
 /**
@@ -88,6 +99,9 @@ export type NovoPedidoDto = {
 export type PedidoUpdateDto = {
   clienteId: string | undefined;
   produtosPedido: ItemPedidoDto[];
+  /* Ausentes = a tela não mexeu; `[]` limpa. Ver `pedidoUpdate`, na API. */
+  imagensServico?: string[];
+  mostrarQr?: boolean;
 };
 
 /* ─────────────────────────── Regras de negócio ─────────────────────────── */
@@ -99,6 +113,24 @@ export const estaPendente = (v: PedidoClienteType): boolean => v.pedido.pedidoSt
 export const estaFechado = (v: PedidoClienteType): boolean => v.pedido.pedidoStatus === PEDIDO_STATUS.FECHADO;
 
 export const estaPago = (v: PedidoClienteType): boolean => v.pedido.pedidoStatus === PEDIDO_STATUS.PAGO;
+
+/**
+ * A venda foi RECEBIDA — em qualquer um dos dois nomes que isso tem no banco.
+ *
+ * `FECHADO` e `PAGO` significam a mesma coisa para quem lê a tela ("essa já
+ * entrou"), e ambos existem porque dois caminhos diferentes gravam o
+ * fechamento da nota. Hoje a base tem 28 numa e 22 na outra.
+ *
+ * Enquanto cada tela perguntava `estaFechado`, as 22 notas em `PAGO` sumiam de
+ * TUDO que conta dinheiro recebido: do "recebido no mês" do Início, da linha
+ * verde do gráfico, do relatório por vendedor, do filtro "Pagas" da lista e da
+ * contagem do panorama. A venda estava paga, o dinheiro no caixa, e o painel
+ * dizia que não.
+ *
+ * `estaFechado` e `estaPago` continuam existindo para quem precisa do status
+ * exato. Para "já recebi?", a pergunta é esta.
+ */
+export const estaQuitado = (v: PedidoClienteType): boolean => estaFechado(v) || estaPago(v);
 
 export const estaCancelado = (v: PedidoClienteType): boolean => v.pedido.pedidoStatus === PEDIDO_STATUS.CANCELADO;
 

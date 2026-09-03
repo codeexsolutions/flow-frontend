@@ -265,7 +265,7 @@ const ProducoesPage = () => {
    * arrasta — gravar ali seria uma requisição por pixel de gradiente. O estado
    * local acompanha o arraste (a prévia responde), a rede só no fim.
    */
-  const salvarMarca = async (mudanca: Partial<Pick<MarcaEmpresa, "cor" | "tema" | "capa">>) => {
+  const salvarMarca = async (mudanca: Partial<Pick<MarcaEmpresa, "cor" | "tema" | "capa" | "mascote">>) => {
     const antes = marca;
 
     setMarca((m) => (m ? { ...m, ...mudanca } : m));

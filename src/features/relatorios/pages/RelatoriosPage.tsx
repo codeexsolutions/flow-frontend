@@ -11,7 +11,7 @@ import useClienteStore from "@/features/clientes/store/cliente.store";
 import useProdutoStore, { stockLevel } from "@/features/estoque/store/produto.store";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 
-import { estaAberto, estaCancelado, estaFechado, totalDoPedido, valorPagoDoPedido, type PedidoClienteType } from "@/shared/domain/pedido";
+import { estaAberto, estaCancelado, estaQuitado, totalDoPedido, valorPagoDoPedido, type PedidoClienteType } from "@/shared/domain/pedido";
 import { formatCurrency } from "@/shared/utils/currency";
 import { MESES_EXTENSO, formatDate, formatDateTime, toDate } from "@/shared/utils/date";
 import { formatDocument, formatNumber } from "@/shared/utils/format";
@@ -236,7 +236,7 @@ const RelatoriosPage = () => {
   const porForma = useMemo(() => {
     const mapa = new Map<string, { forma: string; notas: number; total: number }>();
 
-    noRecorte.filter(estaFechado).forEach((v) => {
+    noRecorte.filter(estaQuitado).forEach((v) => {
       const forma = v.pedido.formaPagamento?.trim() || "Não informado";
       const atual = mapa.get(forma) ?? { forma, notas: 0, total: 0 };
 

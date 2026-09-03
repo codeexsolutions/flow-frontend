@@ -111,6 +111,8 @@ export type MarcaEmpresa = {
    */
   wallpaper: string | null;
   whatsapp: string | null;
+  /** O PNG do mascote que entra deslizando na página do cliente. */
+  mascote: string | null;
   /**
    * O endereço próprio da empresa, quando ela tem um — `joseanfardamentos.com`.
    *
@@ -198,7 +200,7 @@ const PlanilhaService = {
    * Campo omitido não é tocado; campo vazio limpa. Mandar `{ cor }` sozinho
    * não apaga o tema nem a capa.
    */
-  async salvarMarca(dados: { cor?: string | null; tema?: TemaMarca | null; capa?: string | null }) {
+  async salvarMarca(dados: { cor?: string | null; tema?: TemaMarca | null; capa?: string | null; mascote?: string | null }) {
     await sysgrafix.patch("/planilhas/marca", dados);
   },
 

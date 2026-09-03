@@ -38,9 +38,19 @@ type Props = {
   prefixo?: string;
   /** Título do arquivo (ex.: "nota"). */
   titulo?: string;
+  /**
+   * O NOME do documento — "nota", "recibo", "orçamento".
+   *
+   * Existe porque numa venda quitada há DOIS destes botões lado a lado, e
+   * ambos diziam "Baixar" com o mesmo ícone: não havia como saber qual saía
+   * com a nota e qual com o comprovante sem clicar e conferir o arquivo. Um
+   * deles é o documento da venda, o outro é a prova de quitação — mandar o
+   * errado para o cliente é o tipo de engano que volta como discussão.
+   */
+  documento?: string;
 };
 
-const MenuDownloadNota = ({ refNota, nomeEmpresa = "nota", prefixo = "nota", titulo = "Baixar documento" }: Props) => {
+const MenuDownloadNota = ({ refNota, nomeEmpresa = "nota", prefixo = "nota", titulo = "Baixar documento", documento = "documento" }: Props) => {
   const [aberto, setAberto] = useState(false);
   const [ocupado, setOcupado] = useState<null | "png" | "pdf">(null);
   const [sucesso, setSucesso] = useState(false);
@@ -153,7 +163,9 @@ const MenuDownloadNota = ({ refNota, nomeEmpresa = "nota", prefixo = "nota", tit
         className="flex h-12 shrink-0 items-center gap-2 rounded-xl border border-fg/[0.1] px-3 text-mist transition-colors hover:border-accent/40 hover:text-accent-soft"
       >
         {ocupado ? <Loader2 size={17} className="animate-spin" /> : sucesso ? <Check size={17} className="text-success" /> : <Download size={17} />}
-        <span className="hidden text-[13px] sm:inline">{ocupado ? "Gerando..." : "Baixar"}</span>
+        {/* O nome do documento no próprio botão, e não só no `title`: dica de
+            ferramenta não existe no celular, que é onde a nota é mandada. */}
+        <span className="hidden whitespace-nowrap text-[13px] sm:inline">{ocupado ? "Gerando..." : `Baixar ${documento}`}</span>
       </button>
 
       {/* z-[300] fica acima do modal (z-[200]) — e, por estar no portal, fora
@@ -165,6 +177,11 @@ const MenuDownloadNota = ({ refNota, nomeEmpresa = "nota", prefixo = "nota", tit
           style={{ position: "fixed", left: posicao.left, top: posicao.top, bottom: posicao.bottom, width: LARGURA }}
           className="z-[300] overflow-hidden rounded-xl border border-fg/[0.1] bg-surface shadow-[0_24px_60px_-20px_rgba(0,0,0,0.5)]"
         >
+          {/* O cabeçalho repete o documento dentro do menu: quem abriu os dois
+              botões em sequência perde de vista qual deles está aberto — a
+              lista é idêntica nos dois. */}
+          <p className="border-b border-fg/[0.06] bg-fg/[0.03] px-3.5 py-2 text-[10.5px] uppercase tracking-[0.1em] text-faint">{documento}</p>
+
           <button
             type="button"
             role="menuitem"

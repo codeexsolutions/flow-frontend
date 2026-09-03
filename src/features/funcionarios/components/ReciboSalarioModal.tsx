@@ -378,6 +378,7 @@ const ReciboSalarioModal = ({ funcionario, open, onClose }: Props) => {
               nomeEmpresa={empregadorNome || "empresa"}
               prefixo={`recibo-salario-${onlyDigits(competencia)}`}
               titulo="Baixar o recibo"
+              documento="recibo"
             />
           )}
         </div>

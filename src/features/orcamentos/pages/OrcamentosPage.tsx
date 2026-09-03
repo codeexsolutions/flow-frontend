@@ -272,7 +272,7 @@ const OrcamentosPage = () => {
 
             {/* Rodapé de ações */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-fg/[0.06] pt-3">
-              <MenuDownloadNota refNota={refNotaBaixada} nomeEmpresa={enterprise?.nomeFantasia ?? "orcamento"} prefixo="orcamento" titulo="Baixar orçamento" />
+              <MenuDownloadNota refNota={refNotaBaixada} nomeEmpresa={enterprise?.nomeFantasia ?? "orcamento"} prefixo="orcamento" titulo="Baixar orçamento" documento="orçamento" />
 
               <div className="flex flex-wrap items-center gap-2">
                 {/* Um botão só, como no balcão: aprovar já é começar a venda.

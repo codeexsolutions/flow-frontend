@@ -1,5 +1,5 @@
 import type { Periodo } from "@/shared/ui/SeletorPeriodo";
-import { type PedidoClienteType, estaCancelado, estaFechado, totalDoPedido } from "@/shared/domain/pedido";
+import { type PedidoClienteType, estaCancelado, estaQuitado, totalDoPedido } from "@/shared/domain/pedido";
 import { MONTHS, toDate } from "@/shared/utils/date";
 
 /**
@@ -124,7 +124,7 @@ export const serieDeVendas = (vendas: PedidoClienteType[], periodo: Periodo): { 
     const valor = totalDoPedido(v);
 
     balde.faturado += valor;
-    if (estaFechado(v)) balde.recebido += valor;
+    if (estaQuitado(v)) balde.recebido += valor;
 
     baldes.set(chave, balde);
   }

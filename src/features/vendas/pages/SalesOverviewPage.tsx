@@ -11,7 +11,7 @@ import Invoice from "@/features/vendas/components/Invoice";
 import { ChartTip, Kpi, Legenda, Painel, PainelVazio, type Tom, KpiFaixa } from "@/shared/ui/Painel";
 import { usePainelCores } from "@/shared/ui/painelCores";
 import { formatCurrency } from "@/shared/utils/currency";
-import { estaAberto, estaCancelado, estaFechado, totalDoPedido, valorPagoDoPedido, valorPendenteDoPedido } from "@/shared/domain/pedido";
+import { estaAberto, estaCancelado, estaQuitado, totalDoPedido, valorPagoDoPedido, valorPendenteDoPedido } from "@/shared/domain/pedido";
 import { noPeriodo, serieDeVendas, vendasAtivas } from "@/shared/domain/serieVendas";
 import { PERIODO_TUDO, type Periodo } from "@/shared/ui/SeletorPeriodo";
 import useVendaStore from "@/features/vendas/store/venda.store";
@@ -115,7 +115,7 @@ const SalesOverviewPage = ({ periodo = PERIODO_TUDO }: Props) => {
 
     const { serie: porMes, porDia } = serieDeVendas(vendas, periodo);
 
-    const pagas = doPeriodo.filter(estaFechado).length;
+    const pagas = doPeriodo.filter(estaQuitado).length;
     const pendentes = doPeriodo.filter(estaAberto).length;
     const canceladas = noPeriodo(vendas.filter(estaCancelado), periodo).length;
 

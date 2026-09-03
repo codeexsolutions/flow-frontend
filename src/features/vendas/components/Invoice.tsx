@@ -21,6 +21,7 @@ import BuscaProduto from "@/features/vendas/components/BuscaProduto";
 import { ProdutoForm } from "@/features/estoque/components/ProdutoForm";
 import type { ProductFormData } from "@/features/estoque/schema/product.schema";
 import MenuDownloadNota from "@/shared/ui/MenuDownloadNota";
+import UploadImagem from "@/shared/ui/UploadImagem";
 import BotaoRecibo from "@/shared/ui/BotaoRecibo";
 import FundoNota from "@/shared/ui/FundoNota";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
@@ -38,6 +39,8 @@ import { formatDocument } from "@/shared/utils/format";
 import { podeMostrarDocumento } from "@/shared/utils/documento";
 import PrazoNota from "@/features/vendas/components/PrazoNota";
 import PainelPagamento from "@/features/vendas/components/PainelPagamento";
+import PagamentoForm from "@/shared/ui/PagamentoForm";
+import RecebimentosNota from "@/features/financeiro/components/RecebimentosNota";
 import ContaService, { type AcordoVenda } from "@/features/financeiro/services/conta.service";
 
 const gerarUID = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -185,11 +188,30 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
      pronta e o que falta é receber. */
   const [focarPagamento, setFocarPagamento] = useState(false);
 
-  /* Quanto do total o QR vai cobrar. 100 = tudo. Serve para entrada/sinal:
-     o cliente paga metade agora e o resto na entrega. */
-  const [percentual, setPercentual] = useState(100);
-  const [percentualLivre, setPercentualLivre] = useState("");
+  /**
+   * Quanto o QR vai cobrar — em REAIS, não em porcentagem.
+   *
+   * Eram atalhos de 100%/50% e um campo de "%" livre. A conta que o balcão faz
+   * não é essa: o combinado com o cliente é "me adianta duzentos", "deixa
+   * cinquenta de sinal" — valor cheio, redondo, dito em dinheiro. Com o campo
+   * em porcentagem, quem atende dividia 200 por 1.437,90 de cabeça para
+   * descobrir que precisava digitar 14%, e o QR saía cobrando R$ 201,31.
+   *
+   * `null` = cobrar o total. Guardado como string porque é o que o campo
+   * edita: "1", "1,", "1,5" são estados válidos de quem está digitando, e
+   * converter a cada tecla apagaria a vírgula no meio da digitação.
+   */
+  const [cobrancaLivre, setCobrancaLivre] = useState("");
   const [qrCodeNota, setQrCodeNota] = useState("");
+
+  /**
+   * As duas fotos do serviço, e a escolha de mostrar o QR — gravadas na venda.
+   *
+   * Começam vazias e são preenchidas quando a nota chega do servidor. Ver a
+   * migration 057 sobre por que as fotos são da venda e não do produto.
+   */
+  const [imagensServico, setImagensServico] = useState<string[]>([]);
+  const [mostrarQr, setMostrarQr] = useState(true);
 
   /* Confirmação do copia-e-cola — volta ao normal sozinha em 2s. */
   const [pixCopiado, setPixCopiado] = useState(false);
@@ -228,6 +250,8 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
         }
         setPedido(pedidoData);
         setValorPagoAnterior(Number(pedidoData.pedido.valorPago ?? 0));
+        setImagensServico(pedidoData.pedido.imagensServico ?? []);
+        setMostrarQr(pedidoData.pedido.mostrarQr !== false);
 
         const itensOriginais = pedidoData.pedido.itensPedido ?? [];
         setItens(itensOriginais.map((item: ItemPedidoType) => ({ ...item })));
@@ -438,8 +462,20 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   const quitada = Boolean(id) && total > 0 && totalPago >= total;
 
   /* ─── PIX payload ─── */
-  /* O QR cobra o percentual escolhido, não necessariamente o total. */
-  const valorCobranca = useMemo(() => Math.round(total * (percentual / 100) * 100) / 100, [total, percentual]);
+  /*
+   * O QR cobra o valor digitado; vazio cobra o total.
+   *
+   * O teto é o próprio total: um QR pedindo mais do que a nota deve é erro de
+   * digitação toda vez ("1500" onde era "150"), e quem paga por QR não confere
+   * o valor — esse zero a mais vira estorno no dia seguinte.
+   */
+  const valorCobranca = useMemo(() => {
+    const digitado = Number(cobrancaLivre.replace(/\./g, "").replace(",", "."));
+
+    if (!cobrancaLivre.trim() || !Number.isFinite(digitado) || digitado <= 0) return total;
+
+    return Math.min(Math.round(digitado * 100) / 100, total);
+  }, [total, cobrancaLivre]);
 
   const pixPayload = useMemo(() => {
     if (!pixConfigurado(configPix) || valorCobranca <= 0) return "";
@@ -681,7 +717,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
       if (id) {
         // UPDATE — usa PedidoUpdateDto. Atenção: esse endpoint lê `produtosPedido`,
         // não `itensPedido`.
-        const payload: PedidoUpdateDto = { clienteId, produtosPedido: montarItens(itensDaNota) };
+        const payload: PedidoUpdateDto = { clienteId, produtosPedido: montarItens(itensDaNota), imagensServico, mostrarQr };
         await NoteService.update(payload, id);
 
         // Não há pagamento pendente a gravar junto: registrar já grava direto
@@ -691,7 +727,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
         // CREATE — usa NovoPedidoDto. A nota criada NÃO fecha a tela: quem
         // paga "depois de salvar" precisa da nota aberta para registrar o
         // pagamento na sequência. O id novo mantém a nota em modo edição.
-        const payload: NovoPedidoDto = { clienteId, itensPedido: montarItens(itensDaNota) };
+        const payload: NovoPedidoDto = { clienteId, itensPedido: montarItens(itensDaNota), imagensServico, mostrarQr };
         const criada = await NoteService.create(payload);
 
         const novoId = criada?.data?.data?.[0] as string | undefined;
@@ -1020,120 +1056,87 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                 ))}
               </dl>
 
-              {/* Orçamento não cobra: a coluna do QR (e os controles de Pix)
-                  só existe na nota de venda. */}
+              {/* ─────────────────── As fotos do serviço ───────────────────
+                  Elas ocupam o lugar que era do QR — e a troca é a resposta a
+                  duas perguntas que estavam na ordem errada.
+
+                  O QR pedia pagamento no alto da nota, antes de o cliente ter
+                  visto o que comprou; desceu para o pé, depois do resumo (ver
+                  "Pagamento via Pix"). No lugar dele entra o que a nota de
+                  serviço precisa mostrar cedo: a foto do que foi feito. É a
+                  mesma lógica da guia no acompanhamento — "é o meu mesmo?"
+                  vem antes de "quanto é?".
+
+                  Grandes de propósito. Como área de upload, um quadrado de
+                  70px é alvo ruim no celular e não deixa conferir nada do que
+                  foi enviado; como parte do documento, miniatura de estampa
+                  não prova coisa nenhuma. Aqui cada uma nasce com a largura da
+                  coluna e cresce até a da nota no celular.
+
+                  Duas, e não uma lista aberta: a nota é documento de página
+                  única e elas dividem a largura. Com três, cada uma vira
+                  miniatura ilegível; com uma só, não dá para mostrar o par
+                  "como estava / como ficou". Ver a migration 057.
+
+                  Os CONTROLES (enviar, remover) são `data-sem-foto` —
+                  ferramenta de quem atende. As imagens em si NÃO: elas são o
+                  documento. */}
               {!modoOrcamento && (
-              <>
-              {/*
-               * A coluna do QR existe sempre.
-               *
-               * Antes ela era condicionada ao `pixPayload`: sem chave Pix
-               * cadastrada o bloco inteiro sumia, e quem abria a nota achava que
-               * o QR tinha quebrado. Agora o espaço fica lá e diz o motivo — que
-               * quase sempre é chave não configurada, coisa que só o usuário
-               * master resolve.
-               */}
-              <div className="flex shrink-0 flex-col items-center gap-2 sm:w-[176px]">
-                {pixPayload ? (
-                  <>
-                    <div className="overflow-hidden rounded-2xl border border-fg/[0.08] bg-white p-2.5">
-                      {qrCodeNota ? <img src={qrCodeNota} alt="QR Code para pagamento via Pix" className="h-[144px] w-[144px] rounded-lg" /> : <div className="h-[144px] w-[144px] animate-pulse rounded-lg bg-fg/[0.06]" />}
-                    </div>
+                <div className="w-full shrink-0 sm:w-[300px]">
+                  {/* Sem foto nenhuma o rótulo fica fora da nota impressa: uma
+                      seção "Fotos do serviço" vazia num PDF que vai para o
+                      cliente parece defeito, não espaço reservado. */}
+                  <span {...(imagensServico.length === 0 ? { "data-sem-foto": true } : {})} className="text-[10.5px] uppercase tracking-[0.1em] text-faint">
+                    Fotos do serviço
+                  </span>
 
-                    <span className="text-[10.5px] text-faint">Pix · {formatCurrency(valorCobranca)}</span>
+                  <div className="mt-2 grid grid-cols-2 gap-2.5">
+                    {[0, 1].map((slot) => {
+                      const url = imagensServico[slot] ?? null;
 
-                    {/*
-                     * Copia e cola do Pix — para quem atende, não para o
-                     * documento.
-                     *
-                     * `data-sem-foto` mantém o botão FORA do PNG e do PDF: na
-                     * nota que o cliente recebe ele não teria o que fazer (a
-                     * imagem não tem onde clicar), e o código inteiro impresso
-                     * ocupava mais altura que o resumo da venda. Aqui é um
-                     * botão só: copia o mesmo código do QR, no mesmo valor
-                     * escolhido, pronto para colar na conversa.
-                     */}
-                    <button
-                      type="button"
-                      data-sem-foto
-                      onClick={() => void copiarPix()}
-                      title="Copiar o código Pix para mandar ao cliente"
-                      className="focus-ring flex w-full items-center justify-center gap-1.5 rounded-lg border border-fg/[0.1] py-1.5 text-[11px] text-mist transition-colors hover:border-accent/40 hover:text-accent-soft"
-                    >
-                      {pixCopiado ? <Check size={13} className="text-success" /> : <Copy size={13} />}
-                      {pixCopiado ? "Copiado!" : "Copiar código Pix"}
-                    </button>
-                  </>
-                ) : (
-                  /* Aviso de configuração é para quem atende, não para o cliente:
-                     fica fora da foto. */
-                  <div data-sem-foto className="flex h-[167px] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-fg/[0.12] px-3 text-center">
-                    <QrCode size={22} className="text-faint" />
-                    <p className="text-[11px] leading-relaxed text-mist">
-                      {pixConfig ? "O QR aparece quando a nota tiver valor." : "Chave Pix não cadastrada."}
-                    </p>
-                    {!pixConfig && <p className="text-[10.5px] leading-relaxed text-faint">Configurações → Empresa (só o usuário master).</p>}
+                      /* Slot vazio só existe para quem edita. Na foto da nota
+                         sobra a imagem que existe — uma ou duas, sem buraco. */
+                      if (!url) {
+                        return (
+                          <div key={slot} data-sem-foto className="aspect-square">
+                            <UploadImagem
+                              tipo="servico"
+                              formato="miniatura"
+                              rotulo={`Foto ${slot + 1}`}
+                              valor={null}
+                              onChange={(nova) => {
+                                if (!nova) return;
+
+                                /* Preenche o primeiro buraco em vez de escrever
+                                   no índice do slot: com a foto 1 vazia e a 2
+                                   preenchida, gravar por índice deixaria um
+                                   `undefined` no meio do array — e ele viraria
+                                   `null` no JSON e um quadrado quebrado na nota. */
+                                setImagensServico((antes) => [...antes, nova].slice(0, 2));
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div key={slot} className="relative aspect-square overflow-hidden rounded-xl border border-fg/[0.08]">
+                          <img src={url} alt={`Foto ${slot + 1} do serviço`} className="h-full w-full object-cover" />
+
+                          <button
+                            type="button"
+                            data-sem-foto
+                            onClick={() => setImagensServico((antes) => antes.filter((_, i) => i !== slot))}
+                            aria-label={`Remover a foto ${slot + 1}`}
+                            className="focus-ring absolute right-1.5 top-1.5 grid h-7 w-7 cursor-pointer place-items-center rounded-lg bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-danger"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
-
-                  {/*
-                   * Atalhos de cobrança parcial.
-                   *
-                   * `data-sem-foto` mantém isto FORA do PNG: é ferramenta de
-                   * quem atende, não informação do cliente. Na foto sai só o QR
-                   * e o valor que ele deve pagar — ver o botão "50%" numa nota
-                   * levantaria a pergunta errada na hora errada.
-                   */}
-                {pixPayload && (
-                  /*
-                   * Uma linha só, não um bloco empilhado.
-                   *
-                   * Eram dois botões numa linha e o campo livre em outra: isso
-                   * esticava a coluna do QR muito além da altura dos detalhes
-                   * ao lado, e a sobra virava o vazio que incomodava. Os três
-                   * controles cabem lado a lado — são curtos por natureza.
-                   *
-                   * `data-sem-foto`: ferramenta de quem atende, fora do PNG.
-                   */
-                  <div data-sem-foto className="flex w-full items-stretch gap-1 text-[11px]">
-                    {[100, 50].map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => {
-                          setPercentual(p);
-                          setPercentualLivre("");
-                        }}
-                        className={`flex-1 rounded-md border py-1 transition-colors ${
-                          percentual === p && !percentualLivre ? "border-accent bg-accent text-white" : "border-fg/[0.1] text-mist hover:text-ink"
-                        }`}
-                      >
-                        {p === 100 ? "Total" : "50%"}
-                      </button>
-                    ))}
-
-                    <div className={`flex w-[52px] shrink-0 items-center rounded-md border px-1 ${percentualLivre ? "border-accent" : "border-fg/[0.1]"}`}>
-                      <input
-                        value={percentualLivre}
-                        onChange={(e) => {
-                          const v = e.target.value.replace(/[^0-9]/g, "").slice(0, 3);
-                          setPercentualLivre(v);
-
-                          const n = Number(v);
-                          if (n > 0 && n <= 100) setPercentual(n);
-                          else if (!v) setPercentual(100);
-                        }}
-                        inputMode="numeric"
-                        placeholder="—"
-                        aria-label="Percentual personalizado"
-                        className="w-full bg-transparent py-1 text-center text-ink outline-none placeholder:text-faint"
-                      />
-                      <span className="text-faint">%</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-              </>
+                </div>
               )}
             </div>
 
@@ -1366,6 +1369,155 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
               )}
             </div>
 
+            {/* ─────────────────────── Pagamento via Pix ───────────────────────
+                O QR morava lá em cima, ao lado do nome do cliente, porque era o
+                único lugar com largura sobrando. Só que ele é a ÚLTIMA coisa da
+                leitura — primeiro o cliente confere o que comprou e quanto deu,
+                depois paga —, e ali ele empurrava a identificação para uma
+                coluna estreita e cobrava 176px de largura em toda nota, inclusive
+                nas já quitadas.
+
+                Aqui embaixo, depois do resumo, ele fecha o documento: o valor
+                que o QR cobra vem logo abaixo do total que o explica. E o
+                copia-e-cola passou a sair IMPRESSO ao lado dele — quem recebe a
+                nota por WhatsApp abre a imagem no próprio celular e não tem como
+                apontar a câmera para o QR que está na tela desse mesmo celular.
+                O código escrito é o único caminho de pagamento para essa pessoa,
+                e ele estava só num botão que a foto não capturava. */}
+            {!modoOrcamento && (
+              <div className="px-5 pb-5">
+                {/* A chave de mostrar/esconder — de quem atende, fora da foto. */}
+                <div data-sem-foto className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setMostrarQr((v) => !v)}
+                    aria-pressed={mostrarQr}
+                    className="focus-ring flex cursor-pointer items-center gap-2 text-[12px] text-mist transition-colors hover:text-ink"
+                  >
+                    <span className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${mostrarQr ? "bg-accent" : "bg-fg/[0.18]"}`}>
+                      <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${mostrarQr ? "left-3.5" : "left-0.5"}`} />
+                    </span>
+                    Mostrar o Pix nesta nota
+                  </button>
+
+                  {/* O valor da cobrança só faz sentido com o Pix ligado. */}
+                  {mostrarQr && pixPayload && (
+                    <label className="flex items-center gap-2 text-[12px] text-mist">
+                      Cobrar
+                      <span className={`flex items-center gap-1 rounded-lg border px-2 py-1 ${cobrancaLivre ? "border-accent" : "border-fg/[0.1]"}`}>
+                        <span className="text-faint">R$</span>
+                        <input
+                          value={cobrancaLivre}
+                          onChange={(e) => setCobrancaLivre(e.target.value.replace(/[^0-9.,]/g, "").slice(0, 12))}
+                          inputMode="decimal"
+                          placeholder={formatCurrency(total).replace("R$", "").trim()}
+                          aria-label="Valor a cobrar no Pix"
+                          className="w-[86px] bg-transparent text-right tabular-nums text-ink outline-none placeholder:text-faint"
+                        />
+                      </span>
+                      {/* Diz o que o vazio significa, em vez de deixar a pessoa
+                          descobrir apagando o campo. */}
+                      <span className="text-[11px] text-faint">{cobrancaLivre ? "entrada / sinal" : "o total"}</span>
+                    </label>
+                  )}
+                </div>
+
+                {mostrarQr && (
+                  pixPayload ? (
+                    <div className="flex flex-col gap-4 rounded-2xl border border-fg/[0.06] bg-fg/[0.02] p-4 sm:flex-row sm:items-center">
+                      <div className="shrink-0 overflow-hidden rounded-2xl border border-fg/[0.08] bg-white p-2.5">
+                        {qrCodeNota ? (
+                          <img src={qrCodeNota} alt="QR Code para pagamento via Pix" className="h-[144px] w-[144px] rounded-lg" />
+                        ) : (
+                          <div className="h-[144px] w-[144px] animate-pulse rounded-lg bg-fg/[0.06]" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] uppercase tracking-[0.08em] text-faint">Pagamento via Pix</p>
+                        <p className="mt-0.5 text-sm text-ink">
+                          Aponte a câmera para o QR ou copie o código abaixo
+                          <span className="ml-1 tabular-nums text-mist">· {formatCurrency(valorCobranca)}</span>
+                        </p>
+
+                        <div className="mt-2.5 rounded-xl border border-fg/[0.08] bg-fg/[0.03] p-2.5">
+                          <code className="block select-all break-all text-[10.5px] leading-relaxed text-mist">{pixPayload}</code>
+                        </div>
+
+                        <button
+                          type="button"
+                          data-sem-foto
+                          onClick={() => void copiarPix()}
+                          title="Copiar o código Pix para mandar ao cliente"
+                          className="focus-ring mt-2 flex cursor-pointer items-center gap-1.5 rounded-lg border border-fg/[0.1] px-3 py-1.5 text-[11px] text-mist transition-colors hover:border-accent/40 hover:text-accent-soft"
+                        >
+                          {pixCopiado ? <Check size={13} className="text-success" /> : <Copy size={13} />}
+                          {pixCopiado ? "Copiado!" : "Copiar código Pix"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Aviso de configuração é para quem atende, não para o
+                       cliente: fica fora da foto. */
+                    <div data-sem-foto className="flex items-center gap-3 rounded-2xl border border-dashed border-fg/[0.12] px-4 py-3">
+                      <QrCode size={20} className="shrink-0 text-faint" />
+                      <p className="text-[11px] leading-relaxed text-mist">
+                        {pixConfig ? "O QR aparece quando a nota tiver valor." : "Chave Pix não cadastrada."}
+                        {!pixConfig && <span className="block text-[10.5px] text-faint">Configurações → Empresa (só o usuário master).</span>}
+                      </p>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+
+            {/* ───────────── Os recebimentos, no celular e no tablet ─────────────
+                A coluna de pagamento (`PainelPagamento`) só existe a partir de
+                `lg`. Abaixo disso não havia caminho NENHUM para o dinheiro da
+                nota: nem registrar, nem — o que dói mais — corrigir. Quem
+                lançou 300 no lugar de 30 no balcão, do celular, ficava sem
+                saída até chegar num computador.
+
+                São os MESMOS componentes da coluna, só que empilhados: o
+                formulário de receber e o extrato linha a linha. Nada de lógica
+                duplicada — se a regra mudar lá, muda aqui junto.
+
+                O extrato aparece mesmo com a nota QUITADA, e é de propósito:
+                é ele que desfaz a quitação por engano. Apagar o recebimento a
+                mais devolve a venda para "em aberto" sozinha, porque o status
+                é recalculado da soma das linhas — não existe (nem precisa
+                existir) um botão de "desquitar".
+
+                `data-sem-foto`: ferramenta de quem atende, fora do PNG. */}
+            {!modoOrcamento && id && (
+              <div data-sem-foto className="px-5 pb-3 lg:hidden">
+                <div className="rounded-2xl border border-fg/[0.08] bg-fg/[0.02] p-4">
+                  <div className="mb-3 flex items-baseline justify-between gap-2">
+                    <span className={lblResumo}>Pagamentos</span>
+                    <span className={`shrink-0 text-[11px] tabular-nums ${pendente > 0 ? "text-warning" : "text-success"}`}>
+                      {pendente > 0 ? `faltam ${formatCurrency(pendente)}` : "nota quitada"}
+                    </span>
+                  </div>
+
+                  {/* Nota quitada não pede valor: o formulário só ofereceria
+                      receber de novo o que já foi recebido. O extrato abaixo
+                      continua, porque é lá que se desfaz o que foi errado. */}
+                  {pendente > 0 && (
+                    <PagamentoForm
+                      total={total}
+                      jaPago={totalPago}
+                      compacto
+                      salvando={confirmandoPagamento}
+                      textoConfirmar="Registrar pagamento"
+                      onConfirmar={(valor, forma) => void handleAdicionarPagamento(valor, forma)}
+                    />
+                  )}
+
+                  <RecebimentosNota pedidoId={id} versao={totalPago} onAlterado={recarregarNotaEPrazo} compacto />
+                </div>
+              </div>
+            )}
+
             {/* Venda a prazo no celular.
                 A coluna de recebimento só existe a partir de `lg`; sem isto,
                 combinar vencimento e dar baixa em parcela seria coisa de
@@ -1425,7 +1577,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
              * sem fechar nada — e o que ele baixa é o documento de verdade.
              */}
             {(modoOrcamento ? Boolean(orcamentoId) : Boolean(id)) && (
-              <MenuDownloadNota refNota={notaRef} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Baixar orçamento" : "Baixar nota"} />
+              <MenuDownloadNota refNota={notaRef} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Baixar orçamento" : "Baixar nota"} documento={modoOrcamento ? "orçamento" : "nota"} />
             )}
 
             {/* Recibo: só depois de quitada. Antes disso não há o que

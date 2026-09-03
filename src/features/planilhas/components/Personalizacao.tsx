@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, ImageIcon, Palette } from "lucide-react";
+import { ChevronDown, ImageIcon, Palette, Sparkles } from "lucide-react";
+
+import UploadImagem from "@/shared/ui/UploadImagem";
 
 import type { MarcaEmpresa, TemaMarca } from "@/features/planilhas/services/planilha.service";
 import { paleta, rgba } from "@/features/acompanhamento/marca";
@@ -9,7 +11,7 @@ type Props = {
   marca: MarcaEmpresa;
   /** Mexe só no estado local — usado durante o arraste do seletor de cor. */
   onMudar: (atualizar: (m: MarcaEmpresa | null) => MarcaEmpresa | null) => void;
-  onSalvar: (mudanca: Partial<Pick<MarcaEmpresa, "cor" | "tema" | "capa">>) => void;
+  onSalvar: (mudanca: Partial<Pick<MarcaEmpresa, "cor" | "tema" | "capa" | "mascote">>) => void;
 };
 
 const TEMAS: { id: TemaMarca; nome: string }[] = [
@@ -102,6 +104,20 @@ const Personalizacao = ({ marca, onMudar, onSalvar }: Props) => {
                 </div>
 
                 <div className="relative z-10 p-3">
+                  {/* O mascote também na prévia: é a decisão em que ver o
+                      resultado importa mais — PNG com fundo, cortado errado ou
+                      grande demais só apareceria ao abrir o próprio link. */}
+                  {marca.mascote && (
+                    <img
+                      src={marca.mascote}
+                      alt=""
+                      className="pointer-events-none absolute bottom-0 right-1 z-20 h-16 w-auto object-contain"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  )}
+
                   <div className="rounded-lg p-2.5" style={{ backgroundColor: p.cartao, border: `1px solid ${p.linha}` }}>
                     <div className="mb-1.5 flex items-baseline justify-between">
                       <span className="text-[9px]" style={{ color: p.apagado }}>
@@ -175,24 +191,43 @@ const Personalizacao = ({ marca, onMudar, onSalvar }: Props) => {
                 })}
               </div>
 
-              {/* Capa */}
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="flex items-center gap-1.5 text-[11.5px] text-mist">
-                  <ImageIcon size={12} />
-                  Capa
-                </span>
+              {/*
+                Capa e mascote: ESCOLHER O ARQUIVO, não colar link.
 
-                <input
-                  defaultValue={marca.capa ?? ""}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim();
+                Os dois eram campos de URL, herdados da época em que não havia
+                upload — e o que se colava ali era link de CDN do WhatsApp e do
+                imgur, que EXPIRA. A imagem some da página do cliente sozinha,
+                semanas depois, e quem descobre é o cliente. Agora o arquivo
+                vira WebP no nosso storage e fica.
+              */}
+              <div className="flex flex-wrap gap-4">
+                <div className="min-w-[150px] flex-1">
+                  <span className="mb-1.5 flex items-center gap-1.5 text-[11.5px] text-mist">
+                    <ImageIcon size={12} />
+                    Capa
+                  </span>
 
-                    if (v !== (marca.capa ?? "")) onSalvar({ capa: v || null });
-                  }}
-                  placeholder="https://… (opcional)"
-                  className="focus-ring min-w-0 flex-1 rounded-lg border border-fg/[0.1] bg-transparent px-2.5 py-1.5 text-[11.5px] text-ink outline-none"
-                />
+                  <UploadImagem tipo="wallpaper" formato="largo" rotulo="Capa" valor={marca.capa} onChange={(url) => onSalvar({ capa: url })} />
+                </div>
+
+                <div className="min-w-[150px] flex-1">
+                  <span className="mb-1.5 flex items-center gap-1.5 text-[11.5px] text-mist">
+                    <Sparkles size={12} />
+                    Mascote
+                  </span>
+
+                  <UploadImagem tipo="mascote" formato="quadrado" rotulo="Mascote" valor={marca.mascote} onChange={(url) => onSalvar({ mascote: url })} />
+                </div>
               </div>
+
+              {/* Dito aqui porque é a dúvida que o campo cria: PNG de fundo
+                  branco vira um retângulo colado no canto da página, e o dono só
+                  descobriria isso abrindo o próprio link. */}
+              <p className="-mt-2 text-[11px] text-faint">
+                O mascote é um boneco <strong className="font-medium text-mist">recortado, em PNG de fundo transparente</strong> — a
+                transparência sobrevive à conversão. Ele entra deslizando pela direita e fica no canto de baixo — no celular,
+                menor e encostado na quina. Passa sempre por TRÁS dos cartões, então nunca cobre o andamento nem o prazo.
+              </p>
 
               {!marca.logo && (
                 <p className="text-[11px] text-faint">

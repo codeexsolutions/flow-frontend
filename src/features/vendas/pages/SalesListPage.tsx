@@ -15,7 +15,7 @@ import BuscaSugestoes from "@/shared/ui/BuscaSugestoes";
 import { useAutoPageSize } from "@/shared/hooks/useAutoPageSize";
 import { getInitials } from "@/shared/utils/format";
 import { formatCurrency } from "@/shared/utils/currency";
-import { type PedidoClienteType, estaAberto, estaCancelado, estaFechado, totalDoPedido, valorPagoDoPedido, valorPendenteDoPedido } from "@/shared/domain/pedido";
+import { type PedidoClienteType, estaAberto, estaCancelado, estaQuitado, totalDoPedido, valorPagoDoPedido, valorPendenteDoPedido } from "@/shared/domain/pedido";
 import { formatDateShort } from "@/shared/utils/date";
 import { PedidoStatusBadge } from "@/shared/ui/StatusBadge";
 import useAuth from "@/features/auth/store/auth.store";
@@ -241,7 +241,7 @@ const SalesList = () => {
   }, [vendas, search, vendedor]);
 
   const porStatus = (lista: PedidoClienteType[], s: StatusFiltro) => {
-    if (s === "pago") return lista.filter(estaFechado);
+    if (s === "pago") return lista.filter(estaQuitado);
     if (s === "pendente") return lista.filter(estaAberto);
     if (s === "cancelado") return lista.filter(estaCancelado);
     if (s === "vencida") return lista.filter(estaVencida);
