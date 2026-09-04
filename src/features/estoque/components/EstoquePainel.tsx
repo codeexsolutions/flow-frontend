@@ -167,6 +167,7 @@ const EstoquePainel = ({
      perguntar "quantas eu tenho", e o extrato é a resposta do "por quê" que
      só se procura depois de estranhar o número. */
   const [aba, setAba] = useState<"itens" | "movimentos">("itens");
+  const [apagandoMov, setApagandoMov] = useState<string | null>(null);
 
   const [rascunho, setRascunho] = useState<Rascunho | null>(null);
   const [movimento, setMovimento] = useState<TipoMov | null>(null);
@@ -375,11 +376,55 @@ const EstoquePainel = ({
 
       await onMudou();
       setMovimento(null);
+
+      /*
+       * Depois de lançar, a tela vai para o extrato.
+       *
+       * Quem acabou de dar baixa quer ver a baixa: conferir a quantidade, o
+       * saldo que ficou e — se errou — apagar ali mesmo. Ficando na aba de
+       * itens, a pessoa via só o número do saldo mudar e tinha de procurar a
+       * aba para conferir o que foi lançado.
+       */
+      setAba("movimentos");
+
       alert.success("Estoque atualizado!", "");
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível movimentar o estoque."));
     } finally {
       setSalvando(false);
+    }
+  };
+
+  /**
+   * Apaga um lançamento e desfaz o saldo dele.
+   *
+   * A confirmação diz o que vai acontecer com o SALDO, não só que a linha
+   * some: apagar uma entrada de 50 tira 50 do estoque, e quem clica precisa
+   * saber disso antes — é o efeito que importa, não a linha.
+   */
+  const apagarMovimento = async (mov: Movimento) => {
+    const quanto = Number(mov.quantidade) || 0;
+    const efeito = quanto > 0 ? `sairão ${formatNumber(quanto)}` : `voltarão ${formatNumber(Math.abs(quanto))}`;
+
+    const { confirmed } = await alert.confirm(
+      "Apagar este lançamento?",
+      `O lançamento sai do extrato e o saldo é desfeito: ${efeito} do estoque.`,
+    );
+
+    if (!confirmed) return;
+
+    setApagandoMov(mov.id);
+
+    try {
+      await EstoqueService.excluirMovimento(mov.id);
+
+      await onMudou();
+
+      alert.toast("success", "Lançamento apagado", "O saldo foi desfeito.", { position: "bottom-right", timer: 3000 });
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível apagar a movimentação."));
+    } finally {
+      setApagandoMov(null);
     }
   };
 
@@ -696,6 +741,33 @@ const EstoquePainel = ({
 
                     <span className="w-[64px] shrink-0 text-right text-[11.5px] tabular-nums text-faint">
                       {mov.saldoApos == null ? "—" : formatNumber(mov.saldoApos)}
+                    </span>
+
+                    {/*
+                      A lixeira só no que foi lançado À MÃO.
+
+                      Movimento de VENDA, CONSUMO e CANCELAMENTO é consequência
+                      de uma nota: apagá-lo aqui devolveria mercadoria ao saldo
+                      sem tocar na venda que a tirou, e o estoque passaria a
+                      discordar do que foi vendido. Quem desfaz esses é o
+                      cancelamento da nota.
+
+                      Sobram ENTRADA, SAIDA e AJUSTE — justamente os que alguém
+                      erra digitando, que é o motivo de este botão existir.
+                    */}
+                    <span className="w-7 shrink-0 text-right">
+                      {podeMovimentar && ["ENTRADA", "SAIDA", "AJUSTE"].includes(mov.tipo) && (
+                        <button
+                          type="button"
+                          disabled={apagandoMov === mov.id}
+                          onClick={() => void apagarMovimento(mov)}
+                          title="Apagar este lançamento e desfazer o saldo"
+                          aria-label="Apagar lançamento"
+                          className="focus-ring cursor-pointer rounded-lg p-1 text-faint transition-colors hover:bg-danger/20 hover:text-danger disabled:opacity-40"
+                        >
+                          {apagandoMov === mov.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                        </button>
+                      )}
                     </span>
                   </div>
                 );

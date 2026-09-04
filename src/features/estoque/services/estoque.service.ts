@@ -98,6 +98,16 @@ const EstoqueService = {
 
   excluirInsumo: async (insumoId: string) => { await sysgrafix.delete(`/estoque/insumos/${insumoId}`, { carregamento: "Removendo o insumo…" }); },
 
+  /**
+   * Apaga um lançamento do extrato e DESFAZ o saldo dele.
+   *
+   * O servidor recusa movimento que veio de venda: aquele se desfaz
+   * cancelando a nota, senão a mercadoria voltaria ao saldo sem tocar na
+   * venda que a tirou. A tela esconde a lixeira nesses casos; a trava de
+   * verdade é a de lá.
+   */
+  excluirMovimento: async (id: string) => { await sysgrafix.delete(`/estoque/movimentos/${id}`, { carregamento: "Apagando a movimentação…" }); },
+
   /* ── Extrato ──────────────────────────────────────────────────────────── */
 
   movimentos: async (produtoId: string, limite = 200): Promise<Movimento[]> =>
