@@ -9,6 +9,7 @@ import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import { useSincronizacao } from "@/shared/realtime/useSincronizacao";
 import { useIsMobile } from "@/shared/hooks/useIsMobile";
+import { PageScreen } from "@/shared/ui/PageShell";
 
 /**
  * O CRM de WhatsApp.
@@ -148,6 +149,7 @@ const CrmPage = () => {
      entrada sem WhatsApp conectado não tem o que mostrar. */
   if (!carregando && !conectado && !mostrarConexao) {
     return (
+      <PageScreen title="WhatsApp" subtitle="Converse com seus clientes pelo número da loja" icon={<MessageCircle />} corpoCheio>
       <div className="flex h-full items-center justify-center p-6">
         <div className="w-full max-w-md">
           <ConexaoWhatsapp conexao={conexao} aoAtualizar={() => void carregarConexao()} />
@@ -166,10 +168,20 @@ const CrmPage = () => {
           )}
         </div>
       </div>
+      </PageScreen>
     );
   }
 
+  /* `corpoCheio`: a caixa de entrada, a conversa e o painel do cliente rolam
+     cada um por dentro. Sem isso a página inteira ganharia uma segunda barra de
+     rolagem por fora, e a roda do mouse pararia no visor errado. */
   return (
+    <PageScreen
+      title="WhatsApp"
+      subtitle={conectado ? "Caixa de entrada e funil" : "Converse com seus clientes pelo número da loja"}
+      icon={<MessageCircle />}
+      corpoCheio
+    >
     <div className="flex h-full min-h-0 flex-col">
       {/* Barra de controles */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-fg/[0.06] px-3 py-2.5">
@@ -352,6 +364,7 @@ const CrmPage = () => {
         </div>
       )}
     </div>
+    </PageScreen>
   );
 };
 

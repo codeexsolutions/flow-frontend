@@ -21,7 +21,31 @@ export const PAGE_GAP = "gap-3";
  * em que tudo por acaso cabia. Em telas altas nada transborda e o resultado é
  * idêntico ao de antes; em telas baixas o que sobra fica acessível.
  */
-export const PageBody = ({ children, className = "" }: { children: ReactNode; className?: string }) => <main className={`relative flex min-h-0 flex-1 flex-col overflow-y-auto ${PAGE_GAP} ${PAGE_PAD} ${className}`}>{children}</main>;
+export const PageBody = ({ children, className = "", cheio = false }: { children: ReactNode; className?: string; cheio?: boolean }) => (
+  /*
+   * `cheio` é a tela que ocupa a altura toda e rola por dentro.
+   *
+   * O padrão (com respiro e rolagem própria) é certo para página que cresce.
+   * Não serve para tela de painéis — a conversa do CRM, um quadro de colunas —,
+   * onde o respiro rouba altura útil e a rolagem de fora briga com a de dentro:
+   * a roda do mouse para no visor errado e o polegar nunca sabe qual dos dois
+   * vai se mexer.
+   *
+   * Existe como OPÇÃO e não como classe passada por fora porque sobrepor
+   * `overflow` e padding por `className` depende da ordem em que o Tailwind
+   * gera o CSS — funciona por acidente, e quebra numa atualização sem ninguém
+   * mexer no arquivo.
+   */
+  <main
+    className={
+      cheio
+        ? `relative flex min-h-0 flex-1 flex-col overflow-hidden ${className}`
+        : `relative flex min-h-0 flex-1 flex-col overflow-y-auto ${PAGE_GAP} ${PAGE_PAD} ${className}`
+    }
+  >
+    {children}
+  </main>
+);
 
 /**
  * Casca canônica de uma tela do sistema: fundo, brilho, cabeçalho e corpo.
@@ -44,6 +68,7 @@ export const PageScreen = ({
   voltarPara,
   children,
   bodyClassName = "",
+  corpoCheio = false,
   headerClassName,
 }: {
   title: string;
@@ -57,6 +82,8 @@ export const PageScreen = ({
   voltarPara?: string;
   children: ReactNode;
   bodyClassName?: string;
+  /** Tela de altura cheia que rola por dentro — ver `PageBody`. */
+  corpoCheio?: boolean;
   /** Envolve o cabeçalho — usado por Relatórios para escondê-lo na impressão. */
   headerClassName?: string;
 }) => (
@@ -79,7 +106,7 @@ export const PageScreen = ({
       <HeaderPage title={title} subtitle={subtitle} icon={icon} tabs={tabs} actions={actions} onVoltar={onVoltar} voltarPara={voltarPara} />
     )}
 
-    <PageBody className={bodyClassName}>{children}</PageBody>
+    <PageBody className={bodyClassName} cheio={corpoCheio}>{children}</PageBody>
   </div>
 );
 
