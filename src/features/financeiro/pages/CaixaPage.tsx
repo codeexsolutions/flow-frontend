@@ -95,6 +95,16 @@ type LinhaCaixa = {
   valor: number;
   tipo: "ENTRADA" | "SAIDA";
   origem: "caixa" | "venda";
+  /**
+   * A nota de onde o recebimento veio.
+   *
+   * Existe só em `origem: "venda"`, e é o que permite abrir o extrato dela —
+   * onde o pagamento pode ser corrigido ou apagado. O `id` da linha já traz o
+   * pedido embutido ("nota-<uuid>"), mas depender de desmontar uma string é
+   * o tipo de acoplamento que quebra em silêncio no dia em que o formato
+   * mudar.
+   */
+  pedidoId?: string;
 };
 
 const ABAS: { id: AbaFinanceiro; label: string; titulo: string; icone: ReactNode }[] = [
@@ -267,6 +277,7 @@ export default function CaixaPage({ abaInicial = "entradas" }: { abaInicial?: Ab
         valor: pago,
         tipo: "ENTRADA",
         origem: "venda",
+        pedidoId: String(n.pedido_id),
       });
     }
 
@@ -417,9 +428,26 @@ export default function CaixaPage({ abaInicial = "entradas" }: { abaInicial?: Ab
             <Trash2 size={14} />
           </button>
         ) : (
-          <span title="Recebimento de venda — abra a nota para ver o extrato" className="inline-flex p-1.5 text-faint">
+          /*
+           * Este ícone ERA um `<span>` — dizia "abra a nota para ver o
+           * extrato" e não abria nada. O modal de recebimento e o
+           * `RecebimentosNota` (que corrige e apaga) existiam no arquivo e
+           * eram inalcançáveis: nada chamava `setDetalheId`.
+           *
+           * Resultado prático: um recebimento de venda lançado errado não
+           * tinha como ser removido por tela nenhuma — a lixeira não aparece
+           * aqui de propósito (apagar por fora desfaria o pagamento pelas
+           * costas do pedido) e o caminho certo estava fechado.
+           */
+          <button
+            type="button"
+            onClick={() => l.pedidoId && setDetalheId(l.pedidoId)}
+            title="Abrir o extrato da nota — é lá que o recebimento se corrige ou se apaga"
+            aria-label="Abrir o extrato da nota"
+            className="focus-ring rounded-lg bg-fg/[0.05] p-1.5 text-faint transition-colors hover:bg-accent/20 hover:text-accent-soft"
+          >
             <Receipt size={14} />
-          </span>
+          </button>
         ),
     },
   ];
@@ -679,7 +707,17 @@ export default function CaixaPage({ abaInicial = "entradas" }: { abaInicial?: Ab
           <>
             <TabelaHead cols={COLS_CAIXA} colunas={colCaixa} />
             {linhasDoCaixa.map((m) => (
-              <TabelaRow key={m.id} cols={COLS_CAIXA} colunas={colCaixa} row={m} />
+              /* A linha inteira abre o extrato quando o dinheiro veio de uma
+                 venda — é o alvo grande para o gesto que o ícone também faz.
+                 Lançamento à mão não abre nada: ele não tem extrato, e a
+                 única ação dele é a lixeira ao lado. */
+              <TabelaRow
+                key={m.id}
+                cols={COLS_CAIXA}
+                colunas={colCaixa}
+                row={m}
+                onClick={m.origem === "venda" && m.pedidoId ? () => setDetalheId(m.pedidoId!) : undefined}
+              />
             ))}
           </>
         )}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CalendarDays, ChevronDown, Loader2, Plus, Trash2, Wallet } from "lucide-react";
+import { CalendarDays, ChevronDown, History, Loader2, Plus, Trash2, Undo2, Wallet } from "lucide-react";
 
 import { Modal } from "@/shared/ui/Modal";
 import BotaoRecibo from "@/shared/ui/BotaoRecibo";
@@ -8,7 +8,7 @@ import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import { formatCurrency } from "@/shared/utils/currency";
 import { dataBr, prazo } from "@/shared/utils/parcelas";
-import ContaService, { type Conta, type Parcela, type Recibo, type SituacaoParcela, type TipoConta } from "@/features/financeiro/services/conta.service";
+import ContaService, { type Conta, type Pagamento, type Parcela, type Recibo, type SituacaoParcela, type TipoConta } from "@/features/financeiro/services/conta.service";
 
 /**
  * A lista de compromissos — a pagar ou a receber.
@@ -61,6 +61,19 @@ const ListaContas = ({ tipo, contas, carregando = false, onRecarregar, onNova, e
   const [recibo, setRecibo] = useState<Recibo | null>(null);
   const [aberta, setAberta] = useState<string | null>(null);
 
+  /*
+   * O histórico de uma parcela, para poder ESTORNAR.
+   *
+   * `ContaService.estornar` existia e nenhuma tela o chamava — era código
+   * morto, e o beco sem saída que ele deixava é concreto: o recebimento que
+   * veio de uma parcela recusa ser apagado na nota ("desfaça a baixa no
+   * financeiro"), e não havia onde desfazer. Quem lançou a baixa errada ficava
+   * com a nota travada, sem poder corrigir nem cancelar.
+   */
+  const [historico, setHistorico] = useState<{ parcela: Parcela; pagamentos: Pagamento[] } | null>(null);
+  const [carregandoHist, setCarregandoHist] = useState(false);
+  const [estornando, setEstornando] = useState<string | null>(null);
+
   const aPagar = tipo === "PAGAR";
 
   /* Parcelas em aberto de todas as contas, a que vence primeiro na frente. */
@@ -75,6 +88,56 @@ const ListaContas = ({ tipo, contas, carregando = false, onRecarregar, onNova, e
 
     return linhas.sort((x, y) => String(x.parcela.vencimento).localeCompare(String(y.parcela.vencimento)));
   }, [contas]);
+
+  /** Abre o histórico da parcela — de onde se estorna uma baixa errada. */
+  const abrirHistorico = async (parcela: Parcela) => {
+    setCarregandoHist(true);
+    setHistorico({ parcela, pagamentos: [] });
+
+    try {
+      setHistorico({ parcela, pagamentos: await ContaService.pagamentos(parcela.id) });
+    } catch (err) {
+      setHistorico(null);
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir o histórico."));
+    } finally {
+      setCarregandoHist(false);
+    }
+  };
+
+  /**
+   * Estorna uma baixa.
+   *
+   * A confirmação diz o efeito, não a ação: o valor VOLTA a ser devido. É isso
+   * que quem clica precisa entender — "estornar" é palavra de contador, e a
+   * pessoa que errou o lançamento quer saber se a dívida reaparece.
+   */
+  const estornar = async (pg: Pagamento) => {
+    const { confirmed } = await alert.confirm(
+      "Estornar este pagamento?",
+      `${formatCurrency(pg.valor)} voltam a ser devidos nesta parcela. O recibo nº ${pg.reciboNumero} deixa de valer.`,
+    );
+
+    if (!confirmed) return;
+
+    setEstornando(pg.id);
+
+    try {
+      await ContaService.estornar(pg.id);
+
+      /* Recarrega o histórico E a lista: o saldo da parcela e o total da conta
+         mudaram, e deixar a tela mostrando o número velho depois de estornar é
+         o tipo de coisa que faz alguém estornar duas vezes. */
+      if (historico) setHistorico({ ...historico, pagamentos: await ContaService.pagamentos(historico.parcela.id) });
+
+      onRecarregar();
+
+      alert.success("Pagamento estornado", `${formatCurrency(pg.valor)} voltaram a ser devidos.`);
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível estornar."));
+    } finally {
+      setEstornando(null);
+    }
+  };
 
   const abrirPagamento = (conta: Conta, parcela: Parcela) => {
     setPagando({ conta, parcela });
@@ -208,6 +271,22 @@ const ListaContas = ({ tipo, contas, carregando = false, onRecarregar, onNova, e
                     {aPagar ? "Pagar" : "Receber"}
                   </button>
 
+                  {/* O histórico só existe quando houve baixa — e é o único
+                      caminho para desfazer uma lançada errado. Sem ele, o
+                      recebimento que veio desta parcela recusa ser apagado na
+                      nota ("desfaça a baixa no financeiro") e não havia onde. */}
+                  {parcela.valorPago > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void abrirHistorico(parcela)}
+                      title="Ver os pagamentos desta parcela — e estornar, se houver engano"
+                      aria-label="Histórico de pagamentos"
+                      className="focus-ring shrink-0 cursor-pointer rounded-lg p-1.5 text-muted transition-colors hover:text-ink"
+                    >
+                      <History size={15} />
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setAberta(aberta === conta.id ? null : conta.id)}
@@ -320,6 +399,55 @@ const ListaContas = ({ tipo, contas, carregando = false, onRecarregar, onNova, e
       </Modal>
 
       {/* ---------- Recibo do pagamento ---------- */}
+      {/* Histórico da parcela — e o estorno, que fechava um beco sem saída. */}
+      <Modal
+        open={!!historico}
+        onClose={() => setHistorico(null)}
+        title="Pagamentos da parcela"
+        subtitle={historico ? `Parcela ${historico.parcela.numero} · ${formatCurrency(historico.parcela.valorPago)} recebidos` : ""}
+        size="sm"
+      >
+        {carregandoHist ? (
+          <div className="flex justify-center py-8 text-faint">
+            <Loader2 size={18} className="animate-spin" />
+          </div>
+        ) : !historico?.pagamentos.length ? (
+          <p className="py-6 text-center text-[12.5px] text-mist">Nenhum pagamento registrado nesta parcela.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {historico.pagamentos.map((pg) => (
+              <div key={pg.id} className="flex items-center gap-3 rounded-xl border border-fg/[0.06] bg-fg/[0.02] px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] tabular-nums text-ink">{formatCurrency(pg.valor)}</p>
+                  <p className="truncate text-[11px] text-faint">
+                    {dataBr(pg.pagoEm)}
+                    {pg.formaPagamento ? ` · ${pg.formaPagamento}` : ""}
+                    {` · recibo nº ${pg.reciboNumero}`}
+                    {pg.usuarioNome ? ` · ${pg.usuarioNome}` : ""}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={estornando === pg.id}
+                  onClick={() => void estornar(pg)}
+                  title="Estornar — o valor volta a ser devido"
+                  className="focus-ring flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-danger/25 px-2.5 py-1.5 text-[11.5px] text-danger transition-colors hover:bg-danger/[0.12] disabled:opacity-50"
+                >
+                  {estornando === pg.id ? <Loader2 size={12} className="animate-spin" /> : <Undo2 size={12} />}
+                  Estornar
+                </button>
+              </div>
+            ))}
+
+            <p className="mt-1 text-[11px] leading-relaxed text-faint">
+              Estornar devolve o valor para a parcela — ela volta a aparecer como devida. É o caminho para desfazer uma
+              baixa lançada por engano, inclusive quando a nota recusa apagar o recebimento.
+            </p>
+          </div>
+        )}
+      </Modal>
+
       <Modal open={!!recibo} onClose={() => setRecibo(null)} title="Pagamento registrado" subtitle={recibo ? `Recibo nº ${recibo.reciboNumero}` : ""} size="sm">
         {recibo && (
           <div className="flex flex-col gap-4">
