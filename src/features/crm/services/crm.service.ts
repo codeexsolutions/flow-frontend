@@ -56,6 +56,13 @@ export type Chatbot = {
    * clientes reais.
    */
   ia_numero_teste: string | null;
+  /**
+   * Para quem o robô liga quando não sabe responder.
+   *
+   * Vazio = ninguém é avisado, e a conversa fica esperando na caixa de
+   * entrada — o comportamento de antes da IA existir.
+   */
+  numero_atendente: string | null;
   /** Quando a IA foi ligada. A IA só responde ao que chegou depois disto. */
   ia_ligada_em?: string | null;
   atualizado_em?: string | null;
@@ -159,6 +166,7 @@ const CrmService = {
     documentacao?: string;
     iaEsperaMinutos?: number;
     iaNumeroTeste?: string;
+    numeroAtendente?: string;
   }) {
     await sysgrafix.patch("/crm/chatbot", dados, SEM_AVISO);
   },
@@ -196,6 +204,17 @@ const CrmService = {
   /** Começa a conversa com quem ainda não escreveu — a loja falando primeiro. */
   async abrirConversa(telefone: string, nome?: string) {
     return um<string>(await sysgrafix.post("/crm/conversas", { telefone, nome }));
+  },
+
+  /**
+   * "Estou com esta conversa aberta."
+   *
+   * Batida em laço enquanto a conversa está na tela: o robô se cala enquanto
+   * tem gente ali. `carregamento: false` porque é a chamada mais frequente do
+   * CRM — a caixa "Salvando…" piscando a cada meio minuto seria intolerável.
+   */
+  async presenca(conversaId: string) {
+    await sysgrafix.post(`/crm/conversas/${conversaId}/presenca`, {}, SEM_AVISO);
   },
 
   /** Abrir a conversa já zera as não lidas no servidor — ler é o próprio gesto. */

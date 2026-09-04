@@ -164,6 +164,34 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
     aoMudar();
   }, [conversa.id]);
 
+  /*
+   * Bate ponto na conversa enquanto ela está aberta.
+   *
+   * É o que faz o robô se calar: com gente lendo, IA respondendo junto são
+   * duas vozes na mesma boca. Ela continua LENDO o histórico — só não fala.
+   *
+   * Meio minuto, e a marca no servidor vale dois: a folga cobre a janela entre
+   * duas batidas, senão o robô voltaria a falar no intervalo, justamente com a
+   * pessoa olhando.
+   *
+   * A primeira batida é imediata — esperar trinta segundos deixaria uma brecha
+   * bem no momento em que alguém acabou de abrir para responder.
+   */
+  useEffect(() => {
+    const bater = () => {
+      CrmService.presenca(conversa.id).catch(() => {
+        /* Falha aqui só faz o robô achar que não tem ninguém — e ele volta a
+           responder, que é o comportamento normal. Não vale um aviso. */
+      });
+    };
+
+    bater();
+
+    const t = setInterval(bater, 30_000);
+
+    return () => clearInterval(t);
+  }, [conversa.id]);
+
   /* Desce para a última mensagem. `auto` e não `smooth` na abertura: uma
      conversa de duzentas mensagens rolando com animação demora mais do que a
      pessoa espera para ver o que acabou de chegar. */

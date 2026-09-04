@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, BookOpen, Bot, Clock, FlaskConical, Loader2, MessageSquareText, Power, Sparkles, Timer } from "lucide-react";
+import { AlertTriangle, BellRing, BookOpen, Bot, Clock, FlaskConical, Loader2, MessageSquareText, Power, Sparkles, Timer } from "lucide-react";
 
 import CrmService, { type Chatbot, type DiaExpediente } from "@/features/crm/services/crm.service";
 import { SettingsCard, SaveRow } from "@/features/config/components/ConfigUI";
@@ -94,6 +94,7 @@ const ChatbotPage = () => {
         documentacao: proximo.documentacao ?? "",
         iaEsperaMinutos: proximo.ia_espera_minutos,
         iaNumeroTeste: proximo.ia_numero_teste ?? "",
+        numeroAtendente: proximo.numero_atendente ?? "",
       });
 
       setSalvo(true);
@@ -359,6 +360,37 @@ const ChatbotPage = () => {
               : "A IA espera esse tempo para ver se alguém da equipe responde. Só entra se ninguém entrar."}
           </p>
 
+          {/*
+            Para quem o robô liga quando não sabe.
+
+            Fica junto da espera e antes da documentação de propósito: é a
+            regra que substitui o "vou passar para um responsável". Sem esse
+            número, a IA que não sabe responder simplesmente não responde, e a
+            conversa espera na caixa de entrada.
+          */}
+          <label className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.7px] text-faint">
+            <BellRing size={11} /> Avisar quem, quando ela não souber
+          </label>
+
+          <div className="mb-1.5 flex flex-wrap items-center gap-2">
+            <input
+              value={cfg.numero_atendente ?? ""}
+              onChange={(e) => {
+                setSalvo(false);
+                setCfg({ ...cfg, numero_atendente: e.target.value });
+              }}
+              placeholder="WhatsApp do atendente, ex: 85988849894"
+              inputMode="tel"
+              className="w-64 rounded-lg border border-fg/[0.08] bg-fg/[0.035] px-3 py-2.5 text-[13px] text-ink outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/15"
+            />
+          </div>
+
+          <p className="mb-4 text-[11px] leading-relaxed text-faint">
+            {cfg.numero_atendente
+              ? "Quando a IA não souber responder, o cliente NÃO recebe nada — quem recebe é este número, com o nome de quem está esperando."
+              : "Sem um número aqui, a IA que não souber responder fica calada e a conversa espera na caixa de entrada."}
+          </p>
+
           <label className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.7px] text-faint">
             <BookOpen size={11} /> O que a empresa faz
           </label>
@@ -398,6 +430,11 @@ Não fazemos: impressão em papel, adesivo de carro.`}
             <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
               Ao ligar, a IA passa a valer só para mensagens que chegarem daí em diante. Conversas antigas não recebem
               nada.
+            </p>
+            {/* A regra que mais muda o dia a dia de quem atende. */}
+            <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
+              Com a conversa aberta na sua tela, ela não responde — mas continua lendo, então entende o que você
+              escreveu quando voltar a atender.
             </p>
           </div>
         </SettingsCard>
