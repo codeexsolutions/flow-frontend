@@ -14,14 +14,16 @@ regras que já custaram bug quando alguém não sabia delas).
 
 **Antes de desenhar qualquer coisa, procure em `src/shared/ui`.**
 
-O sintoma de que isso não vem sendo feito está medido: **22 arquivos desenham
-cartão na mão** (`rounded-2xl border border-fg/...`) contra 11 que usam a
-tabela do sistema, e **6 telas montam `<table>` à mão**. Cada uma dessas é uma
-tela que aprendeu a se comportar sozinha — e que muda de jeito diferente
-quando o tema muda.
-
 Quando a peça existe e você não usa, o custo não é hoje: é no dia em que
-alguém mexe no espaçamento padrão e vinte telas mudam menos uma.
+alguém mexe no espaçamento padrão e vinte telas mudam menos uma. Foi o que
+aconteceu com o botão de download — virou quatro botões diferentes, dois deles
+sem oferecer PDF, e a mesma ação dava resultados diferentes conforme a tela.
+
+**O estado hoje é melhor do que parece de fora.** A casca (`PageScreen`) está
+em todo destino de rota; as telas que não a têm são abas dentro de uma casca
+(Configurações, Vendas, Financeiro, Correios), invólucros de uma linha
+(`KanbanPage`) ou telas públicas fora do sistema (login, ponto, o link do
+cliente). A dívida real está no item 6, medida com método — não com grep.
 
 ---
 
@@ -50,8 +52,14 @@ alguém mexe no espaçamento padrão e vinte telas mudam menos uma.
 | `ControlesPagina` / `TabelaPaginacao` | Paginação. |
 | `TabelaVazia` | O estado vazio, com ícone, título e ação. |
 
-**Nunca escreva `<table>`.** A lista do sistema já resolve responsivo,
-paginação, estado vazio e o cartão do celular.
+**Não use `<table>` para LISTA DE APLICATIVO.** A lista do sistema já resolve
+responsivo, paginação, estado vazio e o cartão do celular.
+
+`<table>` continua certo em **documento**: a nota (`Invoice`), o orçamento
+(`OrcamentoNota`), o resumo (`NotaResumo`) e a folha de relatório (`FolhaA4`)
+são papel — vão para PNG e para impressora, precisam de colunas que se alinham
+sozinhas e não têm nada a ganhar virando cartão no celular. A planilha
+configurável também é grade de verdade.
 
 ### Formulário e configuração
 
@@ -250,21 +258,29 @@ Cores por token (`text-ink`, `bg-surface`, `border-fg/[0.07]`, `text-accent`).
 
 ## 6. Dívida conhecida
 
-Anotada porque some da memória e volta como surpresa:
+Anotada porque some da memória e volta como surpresa. **Medida, não estimada** —
+e o que não deu para medir com confiança está dito como tal.
 
-1. **22 arquivos desenham cartão na mão**, 6 montam `<table>`. Ver a regra de
-   ouro. `ChatbotPage` foi padronizada e serve de exemplo do antes/depois.
-2. **Arquivos grandes demais**: `PlanilhasPage` (2.007 linhas), `Invoice`
-   (1.755), `PDVPage` (1.253), `EstoquePainel` (1.021). São os mais caros de
-   mexer e os que mais quebram.
-3. **Imports renomeados na rota** — ver a nota do índice de telas.
-4. **Funcionalidade escrita e nunca ligada.** Aconteceu três vezes:
+1. **Quatro arquivos passam de mil linhas**: `PlanilhasPage` (2.007),
+   `Invoice` (1.755), `PDVPage` (1.253), `EstoquePainel` (1.021). São os mais
+   caros de mexer e os que mais quebram. Também são o coração da operação —
+   quebrá-los rende a longo prazo e é a mudança de maior risco desta lista.
+
+2. **Imports renomeados na rota** — ver a nota do índice de telas. Custa tempo
+   toda vez que alguém procura pelo nome da rota.
+
+3. **Funcionalidade escrita e nunca ligada.** Aconteceu três vezes:
    `MenuFormatoDownload`, o ícone do caixa que não abria nada, e
-   `ContaService.estornar`. Cada uma virou um beco quando alguém precisou com
-   pressa. **Ao criar um método de service, ligue a tela no mesmo commit.**
-5. **`producao/ProducaoPage`** é código antigo sem rota.
+   `ContaService.estornar`. Os dois últimos formavam um beco: um recebimento
+   lançado errado não tinha como ser removido por tela nenhuma.
+   **Ao criar um método de service, ligue a tela no mesmo commit.**
 
----
+4. **`producao/ProducaoPage`** é o controle de produção antigo, sem rota.
+
+5. **Componentes soltos que talvez devessem estar em `shared/ui`** — não
+   medido. Um levantamento honesto exige abrir os arquivos: um `rounded-2xl
+   border` pode ser um cartão reinventado ou um ícone num quadrado, e o grep
+   não distingue. Quem for fazer isso, faça olhando.
 
 ## 7. Receita: criando uma tela nova
 
