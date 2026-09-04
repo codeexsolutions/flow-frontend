@@ -33,6 +33,7 @@ import { Skeleton, SkeletonInvoiceCard, SkeletonInvoiceHeader, SkeletonInvoiceRo
 import { generatePixPayload, getQrCodeDataUrl } from "@/shared/utils/pix";
 import PixService, { pixConfigurado, type ConfigPix } from "@/features/config/services/pix.service";
 import useAuth from "@/features/auth/store/auth.store";
+import { ehGestor } from "@/features/vendas/components/TabsVendas";
 import useClientes from "@/features/clientes/store/cliente.store";
 import { maskPhone } from "@/shared/validation/masks";
 import { formatDocument } from "@/shared/utils/format";
@@ -223,6 +224,8 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   /* Confirmação do copia-e-cola — volta ao normal sozinha em 2s. */
   const [pixCopiado, setPixCopiado] = useState(false);
   const [modalCancelar, setModalCancelar] = useState(false);
+  const [modalApagar, setModalApagar] = useState(false);
+  const [apagando, setApagando] = useState(false);
   const [cancelando, setCancelando] = useState(false);
 
   /* ─── PIX ───
@@ -810,6 +813,35 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
    * O servidor recusa cancelar nota paga (dinheiro que entrou sai pelo
    * financeiro, com estorno) — a mensagem dele chega pronta para o balcão.
    */
+  /**
+   * Apaga a nota de vez.
+   *
+   * Só aparece depois de cancelada e só para o gestor — cancelar é do balcão,
+   * apagar é de quem responde pelo histórico. O servidor recusa igual se
+   * alguém chamar por fora, inclusive quando há pagamento registrado.
+   */
+  const handleApagar = async () => {
+    if (!id) return;
+
+    setApagando(true);
+
+    try {
+      await NoteService.excluir(id);
+
+      setModalApagar(false);
+      alert.success("Nota apagada", "Ela saiu do histórico para sempre.");
+
+      /* `onSaved` é o mesmo caminho do cancelar: fecha o modal e recarrega a
+         lista. A nota não existe mais — deixar a tela aberta nela mostraria
+         um documento que o servidor já não conhece. */
+      onSaved?.();
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível apagar a nota."));
+    } finally {
+      setApagando(false);
+    }
+  };
+
   const handleCancelar = async () => {
     if (!id) return;
 
@@ -936,6 +968,39 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
       </Modal>
 
       {/* ════════════ MODAL: CANCELAR ════════════ */}
+      {/*
+        Apagar pede uma confirmação mais dura que cancelar, porque é.
+        Cancelar deixa a nota no histórico, riscada; apagar não deixa nada, e
+        não há como desfazer. O texto diz o que some, e o botão diz o que faz.
+      */}
+      <Modal open={modalApagar} onClose={() => setModalApagar(false)} title="Apagar a nota para sempre" subtitle="Não há como desfazer" accent="rgb(var(--danger))" maxWidth="max-w-sm">
+        <div className="flex flex-col gap-4">
+          <p className="text-[13px] leading-relaxed text-mist">
+            A nota sai do histórico junto com os itens e as cobranças geradas por ela. O movimento de estoque fica —
+            ele é o registro do que saiu e voltou da prateleira.
+          </p>
+
+          <p className="rounded-xl border border-warning/25 bg-warning/[0.07] px-3 py-2.5 text-[12px] leading-relaxed text-warning">
+            Se esta nota tiver algum pagamento registrado, o servidor recusa: apagá-la sumiria com dinheiro que passou
+            pelo caixa.
+          </p>
+
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setModalApagar(false)} className="h-10 rounded-xl bg-fg/[0.05] px-4 text-sm text-ink transition-colors hover:bg-fg/[0.1]">
+              Voltar
+            </button>
+            <button
+              disabled={apagando}
+              onClick={handleApagar}
+              className="flex h-10 items-center gap-2 rounded-xl bg-danger px-4 text-sm text-white transition-colors hover:brightness-110 disabled:opacity-50"
+            >
+              {apagando && <Loader2 size={14} className="animate-spin" />}
+              Apagar para sempre
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={modalCancelar} onClose={() => setModalCancelar(false)} title="Cancelar nota" subtitle="A nota sai da operação, mas fica no histórico" accent="rgb(var(--danger))" maxWidth="max-w-sm">
         <p className="text-sm leading-relaxed text-mist">
           A nota deixa de contar como venda ativa e passa a aparecer como <span className="text-danger">cancelada</span>. Itens, valores e data continuam registrados.
@@ -978,7 +1043,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
           {/* Cancelar fica no canto oposto ao status: são as duas pontas da
               vida da nota — em que pé ela está, e como encerrá-la. Longe do
               "Salvar" do rodapé, também, para não errar o alvo com pressa. */}
-          {!modoOrcamento && id && (
+          {!modoOrcamento && id && statusPedido !== "CANCELADO" && (
             <button
               title="Cancelar nota"
               aria-label="Cancelar nota"
@@ -986,6 +1051,24 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
               className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-faint transition-colors hover:bg-danger/20 hover:text-danger"
             >
               <Trash2 size={15} />
+            </button>
+          )}
+
+          {/*
+            Apagar de vez só existe DEPOIS de cancelada, e só para o gestor.
+            Substitui o cancelar no mesmo canto — a nota já está cancelada, não
+            há o que cancelar de novo, e dois botões vermelhos lado a lado num
+            documento seriam um convite a errar o alvo.
+          */}
+          {!modoOrcamento && id && statusPedido === "CANCELADO" && ehGestor(user) && (
+            <button
+              title="Apagar esta nota do histórico, para sempre"
+              aria-label="Apagar a nota definitivamente"
+              onClick={() => setModalApagar(true)}
+              className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11.5px] text-faint transition-colors hover:bg-danger/20 hover:text-danger"
+            >
+              <Trash2 size={15} />
+              <span className="hidden sm:inline">Apagar</span>
             </button>
           )}
         </div>

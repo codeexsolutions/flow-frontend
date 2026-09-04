@@ -34,6 +34,15 @@ const NoteService = {
    * recusada pelo servidor: dinheiro que entrou sai pelo financeiro.
    */
   cancelar: (pedidoId: string) => sysgrafix.patch(`/pedidos/${pedidoId}/cancelar`, undefined, { carregamento: "Cancelando a nota…" }),
+
+  /**
+   * Apaga de vez uma nota JÁ cancelada → DELETE /pedidos/:id
+   *
+   * O servidor recusa se a nota não estiver cancelada, se tiver pagamento
+   * registrado ou se quem pediu não for gestor. A tela esconde o botão nesses
+   * casos; estas são as travas de verdade.
+   */
+  excluir: (pedidoId: string) => sysgrafix.delete(`/pedidos/${pedidoId}`, { carregamento: "Apagando a nota…" }),
 };
 
 export default NoteService;

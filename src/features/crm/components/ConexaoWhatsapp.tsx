@@ -167,7 +167,7 @@ const ConexaoWhatsapp = ({ conexao, aoAtualizar }: Props) => {
         </div>
       )}
 
-      {status === "CONECTADA" && conexao?.numero && (
+      {status === "CONECTADA" && conexao?.numero && ( 
         <p className="flex items-center gap-1.5 rounded-full border border-fg/[0.08] bg-fg/[0.03] px-3 py-1 text-[12px] text-mist">
           <Smartphone size={13} className="text-success" /> {conexao.numero}
         </p>
