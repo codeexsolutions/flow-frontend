@@ -641,7 +641,7 @@ const Clientes = () => {
                                 <ListaAcao
                                   icon={<MessageCircle size={14} />}
                                   label="WhatsApp"
-                                  tone="success"
+                                  tom="sucesso"
                                   onClick={() => abrirWhatsapp(c)}
                                 />
                               )}

@@ -476,7 +476,7 @@ const ProducoesPage = () => {
                           <ListaAcao
                             icon={copiado === l.token ? <Check size={14} /> : <Copy size={14} />}
                             label={copiado === l.token ? "Copiado" : "Copiar link"}
-                            tone={copiado === l.token ? "success" : "neutral"}
+                            tom={copiado === l.token ? "sucesso" : "neutro"}
                             onClick={() => copiar(l.token)}
                           />
 

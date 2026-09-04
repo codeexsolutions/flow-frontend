@@ -1,6 +1,6 @@
 import { Children } from "react";
 import type { CSSProperties, ReactNode, Ref } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
 
 import Dica from "@/shared/ui/Dica";
 
@@ -10,6 +10,14 @@ export type Coluna<T> = {
   cell: (row: T) => ReactNode;
   align?: "left" | "right" | "center";
 };
+
+/** As cores que uma acao de linha pode ter. Mesmo vocabulario do `Selo`. */
+const TONS_ACAO = {
+  neutro: "text-mist hover:text-ink",
+  sucesso: "text-success hover:text-success",
+  aviso: "text-warning hover:text-warning",
+  perigo: "text-muted hover:text-danger",
+} as const;
 
 const MIN_TABLE_WIDTH = 720;
 
@@ -452,37 +460,47 @@ export const ListaLinha = ({
 };
 
 /**
- * Botão de ícone de uma linha de tabela.
+ * Botao de icone de uma linha de tabela.
  *
- * Alvo de 30px com o ícone em 14: menor que isso vira alvo de mira no
- * trackpad. Quem responde "o que este ícone faz" é a `Dica` — tooltip do tema,
+ * Alvo de 30px com o icone em 14: menor que isso vira alvo de mira no
+ * trackpad. Quem responde "o que este icone faz" e a `Dica` - tooltip do tema,
  * imediato, em vez do `title` do navegador (lento, cinza e recortado pelo
  * `overflow` da tabela).
+ *
+ * `tom` segue o vocabulario de cor do sistema, o mesmo do `Selo`. Repare que
+ * `perigo` fica CINZA e so cora de vermelho no hover: uma fileira com um icone
+ * vermelho aceso em cada linha vira um alarme constante, que ninguem mais le.
+ *
+ * `ocupado` troca o icone por um giro e desabilita o botao. Acao de linha quase
+ * sempre e uma ida ao servidor, e sem isso o segundo clique manda tudo de novo.
  */
 export const ListaAcao = ({
   icon,
   label,
   onClick,
-  tone = "neutral",
+  tom = "neutro",
+  ocupado = false,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
-  tone?: "neutral" | "success";
+  tom?: keyof typeof TONS_ACAO;
+  ocupado?: boolean;
 }) => (
   <Dica texto={label}>
     <button
       type="button"
       aria-label={label}
+      disabled={ocupado}
       onClick={(ev) => {
+        /* A linha inteira costuma ser clicavel (abre o detalhe). Sem isto,
+           apagar um item abriria o item apagado no mesmo clique. */
         ev.stopPropagation();
         onClick();
       }}
-      className={`focus-ring flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-lg border border-fg/[0.08] bg-surface/90 transition-colors hover:bg-fg/[0.08] ${
-        tone === "success" ? "text-success hover:text-success" : "text-mist hover:text-ink"
-      }`}
+      className={`focus-ring flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-lg border border-fg/[0.08] bg-surface/90 transition-colors hover:bg-fg/[0.08] disabled:cursor-not-allowed disabled:opacity-50 ${TONS_ACAO[tom]}`}
     >
-      {icon}
+      {ocupado ? <Loader2 size={14} className="animate-spin" /> : icon}
     </button>
   </Dica>
 );

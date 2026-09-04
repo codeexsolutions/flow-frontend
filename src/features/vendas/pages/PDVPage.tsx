@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LegacyRef, ReactNode } from "react";
-import { ShoppingCart, Plus, Receipt, UserCheck, DollarSign, Wallet, AlertCircle, Hash, TrendingUp, ChevronRight, Search, UserPlus, PackagePlus, FileText, Check, X, Trash2, Loader2, CalendarDays } from "lucide-react";
+import { ShoppingCart, Plus, Receipt, UserCheck, DollarSign, Wallet, AlertCircle, Hash, TrendingUp, ChevronRight, Search, UserPlus, PackagePlus, FileText, Check, X, Trash2, CalendarDays } from "lucide-react";
 
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -20,13 +20,12 @@ import type { ProductFormData } from "@/features/estoque/schema/product.schema";
 import type { ClienteFormData } from "@/features/clientes/schema/cliente.schema";
 import { KpiFaixa } from "@/shared/ui/Painel";
 import { Modal } from "@/shared/ui/Modal";
-import { BarraFiltros } from "@/shared/ui/DataTable";
+import { BarraFiltros, ListaAcao } from "@/shared/ui/DataTable";
 import { AbasTabela } from "@/shared/ui/AbasTabela";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import { formatCurrency } from "@/shared/utils/currency";
 
-import Dica from "@/shared/ui/Dica";
 import MenuDownloadNota from "@/shared/ui/MenuDownloadNota";
 import NotaResumo from "@/features/vendas/components/NotaResumo";
 import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
@@ -71,10 +70,11 @@ type NotaAberta = {
  * ----------------------------------------------------------------------------
  * COMO O ARQUIVO ESTÁ DIVIDIDO
  * ----------------------------------------------------------------------------
- *   1. COMPONENTES LOCAIS (aqui até ~160) — `Kpi`, `StatusBadge`, `Avatar`,
- *      `SearchBox`, `LinhaAcoes` e `AcaoLinha`. São desta tela e não subiram
- *      para `shared/ui` porque ainda não tiveram um segundo consumidor; se
- *      você precisar de um deles noutra tela, o certo é subir, não copiar.
+ *   1. COMPONENTES LOCAIS — `Kpi`, `StatusBadge`, `Avatar`, `SearchBox` e
+ *      `LinhaAcoes`. São desta tela e não subiram para `shared/ui` porque ainda
+ *      não tiveram um segundo consumidor; se você precisar de um deles noutra
+ *      tela, o certo é subir, não copiar — foi o que se fez com o `AcaoLinha`
+ *      daqui, que era o `ListaAcao` compartilhado com duas cores a mais.
  *
  *   2. A PÁGINA (~174 em diante) — estado, carga e o render das duas abas.
  *
@@ -161,47 +161,6 @@ const LinhaAcoes = ({ children }: { children: ReactNode }) => (
   </div>
 );
 
-/** Botão de ícone de uma linha — alvo de 30px, com o que faz no `title`. */
-const AcaoLinha = ({
-  icon,
-  label,
-  onClick,
-  tone = "neutro",
-  ocupado = false,
-}: {
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-  tone?: "neutro" | "sucesso" | "aviso" | "perigo";
-  ocupado?: boolean;
-}) => {
-  const tons = {
-    neutro: "text-mist hover:text-ink",
-    sucesso: "text-success hover:text-success",
-    aviso: "text-warning hover:text-warning",
-    perigo: "text-muted hover:text-danger",
-  } as const;
-
-  return (
-    /* `Dica` no lugar do `title`: cinco ícones dividindo 160px precisam dizer o
-       que fazem na hora, com a tipografia do tema — não depois de um segundo,
-       na caixinha cinza do sistema operacional. */
-    <Dica texto={label}>
-      <button
-        type="button"
-        aria-label={label}
-        disabled={ocupado}
-        onClick={(ev) => {
-          ev.stopPropagation();
-          onClick();
-        }}
-        className={`focus-ring flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-lg border border-fg/[0.08] bg-surface/90 transition-colors hover:bg-fg/[0.08] disabled:cursor-not-allowed disabled:opacity-50 ${tons[tone]}`}
-      >
-        {ocupado ? <Loader2 size={14} className="animate-spin" /> : icon}
-      </button>
-    </Dica>
-  );
-};
 
 /* --------------------------------- Página --------------------------------- */
 
@@ -1073,24 +1032,24 @@ const PontoDeVenda = () => {
                            * aprovar de novo, só falta faturar.
                            */}
                           {o.status !== "RECUSADO" && (
-                            <AcaoLinha
+                            <ListaAcao
                               icon={o.status === "APROVADO" ? <ShoppingCart size={14} /> : <Check size={14} />}
                               label={o.status === "APROVADO" ? "Faturar venda" : "Cliente aprovou"}
-                              tone={o.status === "APROVADO" ? "aviso" : "sucesso"}
+                              tom={o.status === "APROVADO" ? "aviso" : "sucesso"}
                               ocupado={nesteMomento}
                               onClick={() => void aprovarOrcamento(o)}
                             />
                           )}
 
                           {o.status !== "RECUSADO" && (
-                            <AcaoLinha icon={<X size={14} />} label="Cliente recusou" ocupado={nesteMomento} onClick={() => void recusarOrcamento(o)} />
+                            <ListaAcao icon={<X size={14} />} label="Cliente recusou" ocupado={nesteMomento} onClick={() => void recusarOrcamento(o)} />
                           )}
 
                           {/* Apagar só depois da recusa: enquanto a proposta
                               está viva, o botão destrutivo fica a um clique de
                               distância das ações que se usam o dia inteiro. */}
                           {o.status === "RECUSADO" && (
-                            <AcaoLinha icon={<Trash2 size={14} />} label="Apagar" tone="perigo" ocupado={nesteMomento} onClick={() => void excluirOrcamento(o)} />
+                            <ListaAcao icon={<Trash2 size={14} />} label="Apagar" tom="perigo" ocupado={nesteMomento} onClick={() => void excluirOrcamento(o)} />
                           )}
 
                           <MenuDownloadNota variante="linha" titulo="Baixar orçamento" documento="orçamento" ocupado={nesteMomento} onEscolher={(formato) => void baixarOrcamento(o, formato)} />
