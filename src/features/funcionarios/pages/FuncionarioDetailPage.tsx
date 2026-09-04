@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Pencil, Loader2, AlertTriangle, RotateCw, Wallet, Percent,
@@ -18,6 +17,7 @@ import FuncionarioService from "@/features/funcionarios/services/funcionario.ser
 import FuncionarioForm from "@/features/funcionarios/components/FuncionarioForm";
 import ReciboSalarioModal from "@/features/funcionarios/components/ReciboSalarioModal";
 import { PONTO_LABEL, type Equipe, type Funcionario, type PontoRegistro } from "@/shared/domain/funcionario";
+import { StatCard, Dado, Cartao } from "@/shared/ui/Ficha";
 
 /**
  * A página do funcionário — tudo o que existe sobre uma pessoa, num lugar só.
@@ -44,43 +44,8 @@ import { PONTO_LABEL, type Equipe, type Funcionario, type PontoRegistro } from "
 /* Peças                                                                      */
 /* -------------------------------------------------------------------------- */
 
-const StatCard = ({ icon, label, value, hint, tom }: { icon: ReactNode; label: string; value: string; hint?: string; tom?: "danger" | "warning" | "success" }) => (
-  <div className="card glass-sheen rounded-xl p-2.5">
-    <div className={`mb-1.5 flex h-7 w-7 items-center justify-center rounded-lg ring-1 ring-inset ${
-      tom === "danger" ? "bg-danger/[0.14] text-danger ring-danger/20"
-        : tom === "warning" ? "bg-warning/[0.14] text-warning ring-warning/20"
-        : tom === "success" ? "bg-success/[0.14] text-success ring-success/20"
-        : "bg-accent/[0.14] text-accent-soft ring-accent/20"
-    }`}>
-      {icon}
-    </div>
-    <p className="truncate text-[9.5px] uppercase tracking-[0.08em] text-faint">{label}</p>
-    <p className="mt-0.5 truncate text-[14px] tabular-nums tracking-tight text-ink sm:text-[15px]">{value}</p>
-    {hint && <p className="truncate text-[9.5px] text-faint">{hint}</p>}
-  </div>
-);
 
-/**
- * Linha de dado da ficha.
- *
- * Campo vazio NÃO some — aparece como "—". Sumir faria a ficha mudar de altura
- * conforme a pessoa e esconderia justamente o que falta preencher, que é a
- * informação mais acionável desta tela.
- */
-const Dado = ({ icon, label, valor }: { icon: ReactNode; label: string; valor?: string | null }) => (
-  <div className="flex items-center gap-2.5 px-3.5 py-2">
-    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-fg/[0.04] text-muted">{icon}</span>
-    <span className="w-[74px] shrink-0 text-[9.5px] uppercase tracking-[0.06em] text-faint">{label}</span>
-    {/* O valor alinha à DIREITA e leva `title`: numa coluna com a largura de
-       um KPI ele é a metade que trunca, e um salário cortado ("R$ 1.2…") sem
-       jeito de ler inteiro é pior que apertado. */}
-    <span title={valor || undefined} className={`min-w-0 flex-1 truncate text-right text-[12px] ${valor ? "text-ink" : "text-faint"}`}>{valor || EMPTY}</span>
-  </div>
-);
 
-const Cartao = ({ children, className = "" }: { children: ReactNode; className?: string }) => (
-  <div className={`card glass-sheen overflow-hidden rounded-2xl ${className}`}>{children}</div>
-);
 
 /*
  * O extrato de ponto é uma TABELA, e não uma lista de frases.

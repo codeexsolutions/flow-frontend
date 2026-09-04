@@ -9,6 +9,7 @@ import {
 
 import { PageScreen } from "@/shared/ui/PageShell";
 import { Modal } from "@/shared/ui/Modal";
+import { StatCard, Dado } from "@/shared/ui/Ficha";
 import { ControlesPagina, ListaCabecalho, ListaFantasmas, ListaLinha } from "@/shared/ui/DataTable";
 import Invoice from "@/features/vendas/components/Invoice";
 
@@ -51,13 +52,6 @@ const ALTURA_PEDIDO = 56;
 
 /* Mesma escala dos KPIs da ficha do produto e da do funcionário: eles são a
    régua da tela, não o assunto dela. */
-const StatCard = ({ icon, label, value }: { icon: ReactNode; label: string; value: string }) => (
-  <div className="card glass-sheen rounded-xl p-2.5 transition-colors hover:border-fg/[0.12]">
-    <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-lg bg-accent/[0.14] text-accent-soft ring-1 ring-inset ring-accent/20">{icon}</div>
-    <p className="truncate text-[9.5px] uppercase tracking-[0.08em] text-faint">{label}</p>
-    <p className="mt-0.5 truncate text-[14px] tabular-nums tracking-tight text-ink sm:text-[15px]">{value}</p>
-  </div>
-);
 
 const SectionHead = ({ icon, title, meta, acao }: { icon: ReactNode; title: string; meta?: string; acao?: ReactNode }) => (
   <div className="flex shrink-0 items-center gap-2.5 border-b border-fg/[0.07] px-4 py-2.5">
@@ -70,23 +64,6 @@ const SectionHead = ({ icon, title, meta, acao }: { icon: ReactNode; title: stri
   </div>
 );
 
-/**
- * Linha de dado da ficha: rótulo à esquerda, valor à direita.
- *
- * Vazio não some — aparece como "—" em tom apagado. Sumir com a linha faria a
- * ficha mudar de altura conforme o cliente e esconderia justamente o que falta
- * preencher, que é a informação mais acionável desta tela.
- */
-const Dado = ({ icon, label, valor, acao }: { icon: ReactNode; label: string; valor?: string | null; acao?: ReactNode }) => (
-  <div className="flex items-center gap-2.5 px-3.5 py-2">
-    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-fg/[0.04] text-muted">{icon}</span>
-    <span className="w-[74px] shrink-0 text-[9.5px] uppercase tracking-[0.06em] text-faint">{label}</span>
-    {/* O valor alinha à DIREITA e leva `title`: na coluna estreita ele é a
-       metade que trunca, e um telefone cortado no meio não serve para nada. */}
-    <span title={valor || undefined} className={`min-w-0 flex-1 truncate text-right text-[12px] ${valor ? "text-ink" : "text-faint"}`}>{valor || "—"}</span>
-    {acao}
-  </div>
-);
 
 /**
  * Anel de completude da ficha.

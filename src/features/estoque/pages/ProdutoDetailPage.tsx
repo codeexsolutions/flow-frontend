@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Package, Pencil, AlertTriangle, RotateCw, Loader2, Wallet,
@@ -25,6 +24,7 @@ import type { ProductFormData } from "@/features/estoque/schema/product.schema";
 import { calcularGanho } from "@/features/estoque/schema/product.schema";
 import EstoquePainel from "@/features/estoque/components/EstoquePainel";
 import AtributosPainel from "@/features/estoque/components/AtributosPainel";
+import { StatCard, Dado, Cartao } from "@/shared/ui/Ficha";
 
 /**
  * A página do produto — tudo o que existe sobre um item, num lugar só.
@@ -77,52 +77,8 @@ import AtributosPainel from "@/features/estoque/components/AtributosPainel";
  * valor parado são consulta. Sem nada distinguindo, o olho começa pelo
  * primeiro da esquerda por acaso, não por importância.
  */
-const StatCard = ({ icon, label, value, hint, tom, destaque }: { icon: ReactNode; label: string; value: string; hint?: string; tom?: "danger" | "warning" | "success"; destaque?: boolean }) => (
-  <div
-    /* O `title` repete a dica porque ela trunca em coluna estreita — e uma
-       dica cortada no meio ("limitado por Tecido pr…") é pior que nenhuma. */
-    title={hint ? `${label} — ${hint}` : label}
-    className={`card glass-sheen rounded-xl p-2.5 ${destaque ? "ring-1 ring-inset ring-accent/30" : ""}`}
-  >
-    <div className={`mb-1.5 flex h-7 w-7 items-center justify-center rounded-lg ring-1 ring-inset ${
-      tom === "danger" ? "bg-danger/[0.14] text-danger ring-danger/20"
-        : tom === "warning" ? "bg-warning/[0.14] text-warning ring-warning/20"
-        : tom === "success" ? "bg-success/[0.14] text-success ring-success/20"
-        : "bg-accent/[0.14] text-accent-soft ring-accent/20"
-    }`}>
-      {icon}
-    </div>
-    <p className="truncate text-[9.5px] uppercase tracking-[0.08em] text-faint">{label}</p>
-    <p className="mt-0.5 truncate text-[14px] tabular-nums tracking-tight text-ink sm:text-[15px]">{value}</p>
-    {hint && <p className="truncate text-[9.5px] text-faint">{hint}</p>}
-  </div>
-);
 
-/**
- * Linha de dado da ficha.
- *
- * Campo vazio NÃO some — aparece como "—". Sumir faria a ficha mudar de altura
- * conforme o produto e esconderia justamente o que falta preencher, que é a
- * informação mais acionável desta tela.
- *
- * `vazio` troca esse traço por um nome quando a ausência TEM nome — é o caso
- * da categoria, cuja falta se chama "Sem categoria" em toda tela do sistema.
- * O tom continua apagado: é um estado, não um valor preenchido.
- */
-const Dado = ({ icon, label, valor, vazio = EMPTY }: { icon: ReactNode; label: string; valor?: string | null; vazio?: string }) => (
-  <div className="flex items-center gap-2.5 px-3.5 py-2">
-    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-fg/[0.04] text-muted">{icon}</span>
-    <span className="w-[74px] shrink-0 text-[9.5px] uppercase tracking-[0.06em] text-faint">{label}</span>
-    {/* O valor alinha à DIREITA e leva `title`: numa coluna com a largura de
-       um KPI ele é a metade que trunca, e um preço cortado ("R$ 1.2…") sem
-       jeito de ler inteiro é pior que apertado. */}
-    <span title={valor || undefined} className={`min-w-0 flex-1 truncate text-right text-[12px] ${valor ? "text-ink" : "text-faint"}`}>{valor || vazio}</span>
-  </div>
-);
 
-const Cartao = ({ children, className = "" }: { children: ReactNode; className?: string }) => (
-  <div className={`card glass-sheen overflow-hidden rounded-2xl ${className}`}>{children}</div>
-);
 
 /* -------------------------------------------------------------------------- */
 /* Página                                                                     */

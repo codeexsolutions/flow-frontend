@@ -97,6 +97,13 @@ cartão), `Kpi` e `KpiFaixa` (o número em destaque), `Legenda` e `ChartTip`
 e `ClienteStatusBadge` — os dois já sabem traduzir o status do domínio, então
 não escreva o `switch` de novo.
 
+### Ficha — `Ficha.tsx`
+
+A tela de detalhe sobre UMA entidade: `StatCard` (o número em destaque, com
+`tom` e `destaque`), `Dado` (rótulo à esquerda, valor à direita, "—" quando
+vazio) e `Cartao` (o agrupador). Usado pelas fichas de cliente, produto e
+funcionário — as três tinham cópias próprias e já haviam divergido.
+
 ### Diversos
 
 `AbasTabela` (abas dentro de um cartão de lista), `SeletorDia`,
