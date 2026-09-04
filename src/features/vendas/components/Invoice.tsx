@@ -89,6 +89,74 @@ type InvoiceProps = {
 };
 
 
+/**
+ * ============================================================================
+ * A NOTA — 1.750 linhas, e o documento que o cliente leva. Leia este mapa.
+ * ============================================================================
+ *
+ * É o componente mais crítico do sistema: é ele que vira o papel na mão do
+ * cliente, o PNG mandado no WhatsApp e o registro da venda no banco. Um erro
+ * aqui sai da loja.
+ *
+ * ----------------------------------------------------------------------------
+ * UM COMPONENTE, TRÊS DOCUMENTOS
+ * ----------------------------------------------------------------------------
+ * As props mudam o que ele é:
+ *
+ *   • sem `id`            → NOTA NOVA, sendo montada no balcão;
+ *   • com `id`            → nota SALVA, que se edita, recebe pagamento,
+ *                           cancela ou apaga;
+ *   • `modoOrcamento`     → a MESMA nota como PROPOSTA: sem pagamento, com
+ *                           "Gerar orçamento" no lugar de "Gerar nota".
+ *
+ * `itensIniciais` faz a nota nascer com a proposta montada (converter
+ * orçamento em venda sem relançar item por item). `converterOrcamentoId`
+ * apaga o orçamento DEPOIS que a venda existe — ver a nota da prop.
+ *
+ * ----------------------------------------------------------------------------
+ * ELE É USADO DE QUATRO LUGARES
+ * ----------------------------------------------------------------------------
+ * PDV (venda nova), lista de vendas (abrir a nota), orçamentos (propor e
+ * converter) e agora o CRM (vender dentro da conversa). Mudança aqui aparece
+ * nos quatro — não existe "só no PDV".
+ *
+ * ----------------------------------------------------------------------------
+ * COMO O ARQUIVO ESTÁ DIVIDIDO
+ * ----------------------------------------------------------------------------
+ *   1. PROPS (acima) — cada uma documentada, porque é a prop que decide se
+ *      isto é nota, proposta ou conversão.
+ *
+ *   2. ESTADO E AÇÕES (~102 a ~930):
+ *        · `recarregarNotaEPrazo` — relê a nota e o acordo de prazo;
+ *        · `handleSalvar` — cria ou atualiza a nota;
+ *        · `handleGerarOrcamento` — a mesma coisa, para proposta;
+ *        · `handleAdicionarPagamento` — recebe;
+ *        · `handleCancelar` / `handleApagar` — encerram a nota. Cancelar
+ *          devolve o estoque e mantém no histórico; apagar só existe DEPOIS
+ *          de cancelada, e o servidor recusa se houver pagamento.
+ *        · `handleNovoProduto` — cadastra produto sem sair da venda.
+ *
+ *   3. RENDER — o cabeçalho com status e ações, o CORPO DO DOCUMENTO (é este
+ *      que vira PNG) e a coluna de pagamento.
+ *
+ * ----------------------------------------------------------------------------
+ * O QUE ENTRA NO PNG, E O QUE NÃO
+ * ----------------------------------------------------------------------------
+ * O download fotografa o nó `notaRef`. Tudo marcado com **`data-sem-foto`**
+ * fica DE FORA: são os controles de quem atende (atalhos de pagamento, o
+ * extrato de recebimentos). Ao acrescentar controle dentro do documento,
+ * pergunte se ele deve aparecer no papel do cliente — se não, marque.
+ *
+ * ----------------------------------------------------------------------------
+ * O QUE MORA FORA DAQUI
+ * ----------------------------------------------------------------------------
+ * `PainelPagamento` (a coluna de dinheiro no desktop), `PagamentoForm`,
+ * `RecebimentosNota` (o extrato que corrige e apaga cada pagamento),
+ * `MenuDownloadNota` e `BotaoRecibo`, `FundoNota` (o wallpaper), `PrazoNota`.
+ *
+ * Os números de linha envelhecem; os nomes dos handlers, não.
+ */
+
 const STATUS_STYLE: Record<string, string> = {
   ABERTO: "bg-warning/25 text-warning ring-warning/25",
   PENDENTE: "bg-warning/25 text-warning ring-warning/25",

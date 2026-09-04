@@ -54,6 +54,51 @@ type NotaAberta = {
   converterOrcamentoId?: string;
 };
 
+/**
+ * ============================================================================
+ * PDV — o balcão. 1.250 linhas; leia este mapa antes de procurar onde mexer.
+ * ============================================================================
+ *
+ * A tela onde a venda acontece. Duas abas sobre a MESMA operação:
+ *
+ *   • VENDAS — as notas do dia escolhido no calendário;
+ *   • ORÇAMENTOS — as propostas, com aprovar, recusar e faturar.
+ *
+ * A venda em si NÃO está aqui: ela abre num modal com o componente `Invoice`,
+ * o mesmo usado pela lista de vendas, por Orçamentos e pelo CRM. Mudar o
+ * comportamento da nota é mexer lá, não neste arquivo.
+ *
+ * ----------------------------------------------------------------------------
+ * COMO O ARQUIVO ESTÁ DIVIDIDO
+ * ----------------------------------------------------------------------------
+ *   1. COMPONENTES LOCAIS (aqui até ~160) — `Kpi`, `StatusBadge`, `Avatar`,
+ *      `SearchBox`, `LinhaAcoes` e `AcaoLinha`. São desta tela e não subiram
+ *      para `shared/ui` porque ainda não tiveram um segundo consumidor; se
+ *      você precisar de um deles noutra tela, o certo é subir, não copiar.
+ *
+ *   2. A PÁGINA (~174 em diante) — estado, carga e o render das duas abas.
+ *
+ * ----------------------------------------------------------------------------
+ * O CAMINHO DO ORÇAMENTO ATÉ A VENDA
+ * ----------------------------------------------------------------------------
+ * É o fluxo que mais confunde quem chega. Aprovar uma proposta não fatura
+ * nada: `faturarId` abre o `Invoice` com os itens da proposta já montados
+ * (`itensIniciais`) e com `converterOrcamentoId`, e é o `Invoice` que apaga o
+ * orçamento DEPOIS que o servidor devolve o id da nota — nunca antes. Ver a
+ * nota daquela prop.
+ *
+ * ----------------------------------------------------------------------------
+ * DUAS COISAS QUE PARECEM BUG E NÃO SÃO
+ * ----------------------------------------------------------------------------
+ *   • O status de pagamento é DERIVADO do valor já pago, não lido do campo de
+ *     status: nota parcialmente paga continua ABERTA no banco.
+ *   • Os botões da linha ficam SOBREPOSTOS à direita, fora do botão da linha
+ *     (`LinhaAcoes`). Botão dentro de botão é HTML inválido e, na prática,
+ *     clicar em "aprovar" abriria a nota junto.
+ *
+ * Os números de linha envelhecem; os nomes, não.
+ */
+
 /* --------------------------- Componentes locais --------------------------- */
 
 const TONES = {

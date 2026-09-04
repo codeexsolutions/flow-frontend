@@ -106,6 +106,53 @@ type Props = {
   onMudou: () => Promise<void> | void;
 };
 
+/**
+ * ============================================================================
+ * ESTOQUE DO PRODUTO — 1.020 linhas. Leia este mapa.
+ * ============================================================================
+ *
+ * O painel que fica dentro da ficha do produto. Duas abas sobre o mesmo item:
+ *
+ *   • ITENS — as variações (P, M, G / cores) e o saldo de cada uma. Produto
+ *     sem variação mostra o saldo dele mesmo;
+ *   • MOVIMENTAÇÕES — o extrato: toda entrada, saída, ajuste, venda e
+ *     devolução, com o saldo depois de cada uma.
+ *
+ * ----------------------------------------------------------------------------
+ * A REGRA QUE EXPLICA METADE DO ARQUIVO
+ * ----------------------------------------------------------------------------
+ * **Produto com variação não tem estoque próprio.** O saldo é de cada peça, e
+ * `produtos.quantidade` é mantido por um gatilho no banco, como a soma das
+ * variações ativas. Por isso a movimentação exige escolher a variação quando
+ * elas existem: sem isso o lançamento cairia no produto pai e seria
+ * sobrescrito pelo gatilho na primeira mudança de qualquer variação — o ajuste
+ * "sumiria" sozinho e ninguém saberia por quê.
+ *
+ * ----------------------------------------------------------------------------
+ * COMO O ARQUIVO ESTÁ DIVIDIDO
+ * ----------------------------------------------------------------------------
+ * Procure pelos separadores `── Nome ──`:
+ *
+ *   1. VARIAÇÃO EM EDIÇÃO (aqui) — o rascunho de uma variação e o vazio dela.
+ *   2. MOVIMENTAÇÃO (~140) — os tipos de lançamento (`ACOES`) e as cores.
+ *   3. VARIAÇÕES (~199) — criar, editar, gerar combinações, excluir.
+ *   4. MOVIMENTAÇÃO (~330) — lançar entrada, saída e ajuste, e APAGAR um
+ *      lançamento (o que desfaz o saldo dele).
+ *   5. O ITEM SEM VARIAÇÃO (~431) — o saldo do produto simples.
+ *   6. RENDER (~484) — as duas abas.
+ *
+ * ----------------------------------------------------------------------------
+ * APAGAR LANÇAMENTO DESFAZ O SALDO
+ * ----------------------------------------------------------------------------
+ * A lixeira só aparece em ENTRADA, SAIDA e AJUSTE — o que foi lançado à mão.
+ * Movimento de VENDA, CONSUMO e CANCELAMENTO não tem lixeira: apagá-lo
+ * devolveria mercadoria ao saldo sem tocar na venda que a tirou. Esses se
+ * desfazem cancelando a nota. O servidor recusa igual, se alguém chamar por
+ * fora.
+ *
+ * Os números de linha envelhecem; os separadores, não.
+ */
+
 /* ── Variação em edição ───────────────────────────────────────────────────── */
 
 type Rascunho = {

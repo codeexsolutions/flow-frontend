@@ -22,6 +22,85 @@ import MenuColuna from "@/features/planilhas/components/MenuColuna";
 import MenuContexto from "@/features/planilhas/components/MenuContexto";
 import QuadroPlanilha from "@/features/planilhas/components/QuadroPlanilha";
 
+/**
+ * ============================================================================
+ * PLANILHAS — a produção configurável. 2.000 linhas; leia este mapa primeiro.
+ * ============================================================================
+ *
+ * É a maior tela do sistema, e a que mais gente usa o dia inteiro. Vale
+ * entender o que ela é antes de procurar onde mexer.
+ *
+ * ----------------------------------------------------------------------------
+ * O QUE ELA É
+ * ----------------------------------------------------------------------------
+ * Um CONSTRUTOR de planilha, não uma planilha. O gestor desenha o MODELO
+ * (quais colunas existem e de que tipo é cada uma); a produção do dia, da
+ * semana ou do mês é a consulta dos registros daquele modelo no período.
+ *
+ * Dois níveis, e a tela alterna entre eles:
+ *
+ *   • a LISTA de planilhas — "Produção diária", "Estamparia", "Camisaria";
+ *   • a planilha ABERTA — as linhas do período, em tabela ou em quadro.
+ *
+ * A mesma tela é servida em duas rotas: `/producao/kanban` a monta com as abas
+ * da seção (ver `KanbanPage`), e `/planilhas` redireciona para lá.
+ *
+ * ----------------------------------------------------------------------------
+ * TABELA ⇄ BACKLOG: é a MESMA coisa
+ * ----------------------------------------------------------------------------
+ * O quadro não tem dado próprio. Cada cartão é uma LINHA da planilha, cada
+ * raia é uma alternativa de uma coluna de Seleção dela, e arrastar um cartão
+ * grava naquela célula o mesmo valor que a lista suspensa gravaria na tabela.
+ * Trocar de visão não move, não copia e não duplica nada.
+ *
+ * ----------------------------------------------------------------------------
+ * COMO O ARQUIVO ESTÁ DIVIDIDO
+ * ----------------------------------------------------------------------------
+ * Na ordem em que aparece. Procure pelos separadores em maiúsculas.
+ *
+ *   1. VOCABULÁRIO (aqui até ~200) — os tipos de coluna, as periodicidades,
+ *      os meses, as colunas da lista, e os utilitários de data (`iso`,
+ *      `doIso`, `rotuloPeriodo`, `rotuloAba`) mais o `lembrado`/`lembrar` que
+ *      guarda a preferência de visão por planilha no `localStorage`.
+ *
+ *   2. ESTADO E AÇÕES (~206 a ~900) — o miolo. Em blocos:
+ *        · colunas: `alternarPermissao`, `alternarPublico`, `renomearColuna`,
+ *          `definirCor`, `definirPadrao`, `definirDataMinima`, `criarColuna`,
+ *          `removerColuna`;
+ *        · planilhas: `carregarModelos`, `criarModelo`, `usarModelo`,
+ *          `duplicarAtual`, `excluirPlanilha`;
+ *        · dados: `carregarPlanilha`, `novaLinha`, `salvarCelula`,
+ *          `copiarDeCima`, `excluirLinha`;
+ *        · navegação e páginas: `navegar`, `proximaPagina`, `confirmarRenome`.
+ *
+ *   3. PLANILHA ⇄ BACKLOG (~900) — `trocarVisao`, a coluna que vira raia, e
+ *      `moverNoQuadro` (que é `salvarCelula` por outro gesto).
+ *
+ *   4. LISTA (~1014) — o render das planilhas existentes e o catálogo.
+ *
+ *   5. PLANILHA ABERTA (~1307) — o render da grade, do quadro e dos modais
+ *      (colunas, histórico, links do cliente, personalização).
+ *
+ * ----------------------------------------------------------------------------
+ * O QUE MORA FORA DAQUI
+ * ----------------------------------------------------------------------------
+ * `components/Celula` (o editor de cada tipo de célula), `QuadroPlanilha` (o
+ * quadro), `MenuColuna` e `MenuContexto`, `Presenca` (quem está olhando),
+ * `LinksCliente` e `Personalizacao`. Alterar o comportamento de UMA célula
+ * quase sempre é mexer em `Celula`, não aqui.
+ *
+ * ----------------------------------------------------------------------------
+ * DUAS REGRAS QUE JÁ CUSTARAM BUG
+ * ----------------------------------------------------------------------------
+ *   • TODO aviso desta tela é TOAST, nunca modal. Aqui se digita em rajada, e
+ *     o modal rouba o foco e engole a tecla seguinte. Ver `avisar`.
+ *   • A recarga é SILENCIOSA por padrão. Acender o esqueleto no meio da
+ *     digitação faz a pessoa achar que perdeu o que escreveu. Ver
+ *     `carregarPlanilha`.
+ *
+ * Os números de linha envelhecem — os separadores em maiúsculas, não.
+ */
+
 const TIPOS: { id: TipoColuna; label: string }[] = [
   { id: "TEXTO", label: "Texto" },
   { id: "TEXTO_LONGO", label: "Texto longo" },
@@ -896,7 +975,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
 
   const larguraTotal = useMemo(() => colunas.reduce((soma, c) => soma + (c.largura ?? 180), 56), [colunas]);
 
-  /* ------------------------- Planilha ⇄ Backlog ------------------------- */
+  /* ===================== 3. PLANILHA ⇄ BACKLOG ===================== */
 
   /**
    * As colunas que podem virar raias.
@@ -1011,7 +1090,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
   /* ------------------------- Fora do plano ------------------------- */
 
 
-  /* ---------------------------- Lista ---------------------------- */
+  /* ========================== 4. LISTA ========================== */
 
   if (!aberta) {
     return (
@@ -1304,7 +1383,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     );
   }
 
-  /* -------------------------- Planilha aberta -------------------------- */
+  /* ===================== 5. PLANILHA ABERTA ===================== */
 
   /*
    * Os controles sobem para o cabeçalho da página.
