@@ -1079,16 +1079,16 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
 
   return (
     <>
-    /*
-     * `min-h-0` em toda a corrente de altura.
-     *
-     * Sem ele, a nota que nasce cheia — é o caso de editar um orçamento, que
-     * abre com os itens da proposta — era recortada pela metade em vez de
-     * rolar: cada caixa flex herda `min-height: auto`, se recusa a encolher
-     * abaixo do próprio conteúdo e estoura a altura do modal, que corta o
-     * excedente no `overflow-hidden`. A venda nova não mostrava o defeito
-     * porque abre vazia e só cresce um item por vez.
-     */
+    {/*
+      * `min-h-0` em toda a corrente de altura.
+      *
+      * Sem ele, a nota que nasce cheia — é o caso de editar um orçamento, que
+      * abre com os itens da proposta — era recortada pela metade em vez de
+      * rolar: cada caixa flex herda `min-height: auto`, se recusa a encolher
+      * abaixo do próprio conteúdo e estoura a altura do modal, que corta o
+      * excedente no `overflow-hidden`. A venda nova não mostrava o defeito
+      * porque abre vazia e só cresce um item por vez.
+      */}
     <div className="flex h-full min-h-0 flex-col">
 
 
