@@ -48,6 +48,36 @@
 
   --ring-focus: 0 0 0 3px rgb(var(--accent) / 0.28);
 
+  /* ══════════════════════════════════════════════════════════════════
+     A DOCK DO CELULAR
+     ══════════════════════════════════════════════════════════════════
+     Os números da barra de baixo moram aqui, e não espalhados entre o
+     componente e a regra de respiro do rodapé. Era assim que eles
+     divergiam: a barra passou de 52px para 62px e o `padding-bottom`
+     das telas continuou em 72, deixando a última linha exatamente
+     embaixo dela. Agora só existe uma fonte.
+
+     `--dock-lift` é a distância do chão até a cápsula, e ela resolve os
+     dois jeitos de abrir o app no iPhone com uma conta só:
+
+       • **Instalado na tela de início** — `env(safe-area-inset-bottom)`
+         vale ~34px (a faixa do indicador de home). Menos 10px, a
+         cápsula sobe 24px: fica ACIMA do indicador, sem aquele bloco de
+         vidro morto embaixo dos ícones que fazia a barra parecer alta
+         demais.
+
+       • **No Safari** — com a barra de endereço embaixo, o `env()` vale
+         0, e o `max()` garante os 10px de folga até a borda do visor.
+         Sem ele a cápsula encostaria na barra do navegador.
+
+     `--dock-space` é o que as telas reservam no rodapé: a cápsula
+     FLUTUA sobre o conteúdo, então sem essa reserva o último botão de
+     cada tela (o "Cadastrar", o "Gerar orçamento") fica atrás dela.
+     ────────────────────────────────────────────────────────────────── */
+  --dock-h: 56px;
+  --dock-lift: max(10px, calc(env(safe-area-inset-bottom) - 10px));
+  --dock-space: calc(var(--dock-h) + var(--dock-lift) + 14px);
+
   --font-display: "Sora Variable", "Sora", system-ui, sans-serif;
   --font-body: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
@@ -375,6 +405,7 @@
 
 [data-fx="lite"] .glass,
 [data-fx="lite"] .glass-strong,
+[data-fx="lite"] .glass-dock,
 [data-fx="lite"] .glass-panel {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -616,6 +647,67 @@ input[type="number"]::-webkit-outer-spin-button {
    * Tudo em cima dos tokens do tema, então acompanha as 7 paletas e os 9
    * destaques — não é um efeito de cor fixa colado por cima.
    */
+  /*
+   * Vidro líquido da dock — a cápsula que flutua no rodapé do celular.
+   *
+   * Separada de `.glass-liquid` (que é dos cartões de entrada) porque o
+   * problema aqui é outro: a cápsula fica sobre CONTEÚDO QUE ROLA, e não
+   * sobre um fundo parado. Um vidro que só embaça deixa texto passando
+   * legível por trás dos ícones enquanto a lista corre, e o que se lê é
+   * uma sopa. Três camadas resolvem, e cada uma tem função:
+   *
+   *   1. **Blur com saturação alta.** O `saturate` é o que faz o material
+   *      parecer vidro e não plástico fosco: as cores de trás continuam
+   *      vivas, só desfocadas.
+   *   2. **Cor própria por cima do blur.** É ela que garante contraste do
+   *      ícone contra qualquer coisa que passe por baixo. Sozinho o blur
+   *      não garante nada — texto preto sobre branco continua legível
+   *      depois de 30px de desfoque.
+   *   3. **Degradês de luz.** Um diagonal frio no topo e um quente na
+   *      diagonal oposta, os dois em cima dos tokens do tema — é o que
+   *      dá a impressão de espessura, de um bloco de vidro com uma face
+   *      iluminada, em vez de uma folha translúcida.
+   *
+   * A borda tem duas partes: o anel externo (`border`) desenha o contorno
+   * da cápsula, e o `inset 0 1px 0` desenha o brilho especular na aresta
+   * de cima — a linha fina que aparece quando a luz bate na quina do
+   * vidro. Sem ela a cápsula lê como um retângulo cinza translúcido.
+   */
+  .glass-dock {
+    position: relative;
+    background-color: rgb(var(--glass-bg) / calc(var(--glass-alpha) + 0.16));
+    background-image:
+      linear-gradient(150deg, rgb(var(--glass-highlight) / 0.11) 0%, transparent 42%),
+      linear-gradient(315deg, rgb(var(--accent) / 0.1) 0%, transparent 58%);
+    backdrop-filter: blur(var(--blur-lg)) saturate(200%);
+    -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(200%);
+    border: 1px solid rgb(var(--glass-border) / calc(var(--glass-border-alpha) + 0.07));
+    box-shadow:
+      inset 0 1px 0 rgb(var(--glass-highlight) / 0.2),
+      inset 0 -1px 0 rgb(var(--glass-border) / 0.06),
+      0 1px 2px rgb(0 0 0 / 0.1),
+      0 12px 32px -10px rgb(0 0 0 / 0.4);
+  }
+
+  /*
+   * O reflexo que corre a aresta de cima.
+   *
+   * Some nas pontas (`transparent` nas duas extremidades) porque numa
+   * superfície curva a luz não bate igual na quina inteira — ela acende o
+   * meio e apaga onde o vidro vira. É esse apagar que faz a cápsula ler
+   * como volume; uma linha de brilho uniforme lê como adesivo.
+   */
+  .glass-dock::before {
+    content: "";
+    position: absolute;
+    inset-inline: 14%;
+    top: 0;
+    height: 1px;
+    border-radius: inherit;
+    background: linear-gradient(90deg, transparent, rgb(var(--glass-highlight) / 0.55), transparent);
+    pointer-events: none;
+  }
+
   .glass-liquid {
     position: relative;
     background-image:
@@ -892,19 +984,18 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 /*
- * A barra inferior é fixa e cobriria o fim do conteúdo. O respiro entra no
- * corpo rolável das telas, e só no celular — no desktop a barra nem existe.
+ * A dock FLUTUA sobre o conteúdo, então o fim de cada tela precisa parar
+ * antes dela. O respiro entra no corpo rolável, e só no celular — no desktop
+ * a barra nem existe.
  *
- * O número acompanha a barra: 58px de altura (ver `mobile/TabBar`) + 8px de
- * folga, para a última linha não encostar nela. A área segura do aparelho já
- * está dentro da barra, então entra aqui só uma vez. Quem mudar a altura da
- * barra precisa mudar aqui — foi o que aconteceu quando ela passou de 52px
- * para 62px e este valor continuou em 72, deixando a última linha exatamente
- * embaixo dela.
+ * O valor não é digitado aqui: `--dock-space` já soma altura, distância do
+ * chão e a folga, e é o MESMO token que a barra usa para se posicionar. Era
+ * exatamente essa duplicação que se perdia — a barra passou de 52px para 62px
+ * e este número continuou em 72, deixando a última linha embaixo dela.
  */
 @media (max-width: 767px) {
   main .overflow-y-auto {
-    padding-bottom: calc(66px + env(safe-area-inset-bottom));
+    padding-bottom: var(--dock-space);
   }
 }
 

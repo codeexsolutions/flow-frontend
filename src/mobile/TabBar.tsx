@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
 import { LayoutDashboard, ShoppingCart, DollarSign, Package, Users, Wallet, BarChart3, MoreHorizontal, Settings, LogOut, UserCircle, Truck, Lock, Factory, MessageCircle, Bell } from "lucide-react";
@@ -35,34 +36,46 @@ type Item = {
 };
 
 /**
- * Navegação do celular — dock flutuante, com a aba ativa expandida.
+ * Navegação do celular — cápsula de vidro líquido flutuando no rodapé.
  *
- * A barra anterior era colada na borda, ocupando a largura toda, com ícone em
- * cima e rótulo embaixo nos quatro itens. Dois problemas nisso: quatro rótulos
- * de 10px competindo entre si o tempo todo — e nenhum deles é lido depois da
- * primeira semana de uso — e uma faixa cheia encostada na base, que fazia a
- * tela terminar num degrau.
+ * ---------------------------------------------------------------------------
+ * O caminho até aqui, porque ele explica o desenho
+ * ---------------------------------------------------------------------------
+ * Já foram duas barras antes desta, e as duas erraram por motivos opostos:
  *
- * O desenho novo inverte a lógica: **só a aba em que você está mostra o nome**,
- * deitado ao lado do ícone dentro de uma pílula lavada; as outras ficam em
- * ícone puro. Quem está no PDV não precisa que a tela repita "PDV" — precisa
- * saber onde está e enxergar os outros destinos. E o nome aparecendo só ali dá
- * ao item ativo um peso que cor nenhuma sozinha daria.
+ *   1. **Pílula `w-fit` centralizada.** Bonita e inútil: sendo do tamanho do
+ *      conteúdo, sobravam faixas mortas nos dois lados e os alvos ficavam
+ *      apertados no meio, longe de onde o polegar cai.
+ *   2. **Faixa colada na borda, largura inteira.** Resolveu os alvos e criou
+ *      outro problema, este só visível no iPhone: com a área segura do
+ *      aparelho DENTRO dela, sobravam 34px de vidro vazio embaixo dos ícones.
+ *      A barra tinha 92px de altura para mostrar 58px de conteúdo, e a leitura
+ *      no aparelho era exatamente esta — "a barra está alta demais".
  *
- * A dock solta do chão, com margem e cantos arredondados, é o que tira o
- * degrau: a tela continua atrás dela e o conteúdo respira até embaixo.
+ * Esta terceira fica no meio: uma cápsula que flutua (como a do iOS 26), mas
+ * que ocupa quase a largura toda (`max-w-md`, `px-3`) em vez de se encolher ao
+ * conteúdo. Os alvos passam de 80px, e a área segura fica FORA dela — o vidro
+ * termina onde os ícones terminam.
  *
- * Cuidados que o desenho exige:
- *
- * - **Rótulo escondido não é rótulo removido**: todo botão carrega `aria-label`,
- *   então leitor de tela anuncia o destino igual, ativo ou não.
- * - **A pílula desliza** (`layoutId`) e o nome abre junto, na mesma mola. Dois
- *   movimentos na mesma direção lêem como um só.
- * - **A dock não estica.** Ela tem a largura do próprio conteúdo (`w-fit`), e
- *   a aba ativa cresce só o que o nome precisa. Com `flex-1` ela engolia toda a
- *   sobra da barra e virava um bloco do tamanho de três botões.
- * - **52px de altura + 10 de margem** ficam abaixo dos 72px que o corpo das
- *   telas já reserva no rodapé — nenhuma tela precisou de ajuste.
+ * ---------------------------------------------------------------------------
+ * O que sustenta o desenho
+ * ---------------------------------------------------------------------------
+ * - **Ela mora no `body`, por portal.** Não é detalhe de organização: é o que
+ *   faz o `bottom` significar o chão do visor. Ver a nota longa em `dock`.
+ * - **Os números moram no CSS** (`--dock-h`, `--dock-lift`, `--dock-space`, em
+ *   `index.css`). A cápsula flutua SOBRE o conteúdo, então o rodapé das telas
+ *   precisa reservar a altura dela — e foi justamente esse par que já
+ *   divergiu uma vez, com a barra crescendo e o respiro ficando para trás.
+ *   Agora é o mesmo token dos dois lados.
+ * - **Toda aba mostra o nome.** O Instagram não mostra nenhum, e ali funciona:
+ *   são cinco destinos abertos cinquenta vezes por dia. Aqui um carrinho e um
+ *   cifrão lado a lado não dizem qual é "PDV" e qual é "Vendas" para quem
+ *   entrou na segunda vez.
+ * - **A pílula do item ativo desliza** (`layoutId`) em vez de piscar no
+ *   destino. Um movimento lê como um lugar; dois piscas leem como um erro.
+ * - **Só a cápsula recebe toque.** O envelope é `pointer-events-none`: as
+ *   faixas ao lado dela mostram conteúdo, e conteúdo que se vê e não se toca é
+ *   pior do que conteúdo escondido.
  * - **Arrastar a tela troca de aba.** A ordem das abas mora em `ABAS_SWIPE`
  *   (em `useSwipeAbas`) e é lida daqui — uma fonte só para o gesto e a dock.
  */
@@ -176,134 +189,132 @@ const TabBar = () => {
 
   const mola = reduzir ? { duration: 0 } : ({ type: "spring", stiffness: 440, damping: 36 } as const);
 
+  /*
+   * A dock vai para o `body` por portal, e não fica onde está escrita.
+   *
+   * Este é o conserto do "no iPhone ela fica alta demais". `position: fixed`
+   * NÃO se resolve contra o visor quando algum ancestral tem `transform` ou
+   * `filter` — o elemento passa a se posicionar contra esse ancestral. E o
+   * `MainLayout` tem os dois: ele anima `scale` e `blur` na entrada e na saída
+   * de cada tela. Enquanto a animação corre (e sempre que uma transição de
+   * saída começa), a barra passa a medir "de baixo" a partir de uma caixa de
+   * `100dvh` — que no iPhone raramente coincide com o que se está vendo,
+   * porque a barra do Safari entra e sai e o `dvh` acompanha com atraso.
+   * Resultado: a dock sobe.
+   *
+   * Pendurada no `body`, ela não tem ancestral transformado nenhum e o
+   * `bottom` volta a significar "o chão do visor" — instalada na tela de
+   * início ou aberta no Safari, dá no mesmo.
+   */
+  const dock = (
+    <div
+      /*
+       * O envelope não recebe toque (`pointer-events-none`); só a cápsula
+       * recebe. Sendo uma pílula que não ocupa a largura toda, as faixas ao
+       * lado dela mostram conteúdo — e conteúdo que se vê e não se toca é pior
+       * do que conteúdo escondido, porque a pessoa tenta.
+       */
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] px-3 md:hidden"
+      style={{ paddingBottom: "var(--dock-lift)" }}
+    >
+      <motion.nav
+        initial={{ y: 90, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={reduzir ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }}
+        /*
+         * `max-w-md` e centralizada: num aparelho de 390px ela ocupa quase a
+         * largura inteira (os alvos continuam com mais de 80px), e num tablet
+         * estreito ela para de crescer em vez de virar uma régua de ponta a
+         * ponta com quatro ícones perdidos no meio.
+         *
+         * O raio é quase metade da altura — é o que faz a forma ler como
+         * cápsula, e não como cartão de cantos arredondados.
+         */
+        className="glass-dock pointer-events-auto mx-auto flex w-full max-w-md items-stretch justify-around gap-1 rounded-[26px] px-1.5"
+        style={{ height: "var(--dock-h)" }}
+      >
+        {principais.map((it) => {
+          const on = ativo(it.rota);
+
+          return (
+            <motion.button
+              key={it.rota}
+              type="button"
+              layout
+              onClick={() => ir(it.rota)}
+              aria-label={it.label}
+              aria-current={on ? "page" : undefined}
+              whileTap={reduzir ? undefined : { scale: 0.94 }}
+              transition={mola}
+              /*
+               * `flex-1`: cada aba fica com a mesma fatia da cápsula. Com
+               * largura de conteúdo sobrariam vãos mortos entre alvos de 48px,
+               * e o dedo erra justamente nas bordas.
+               */
+              className={`focus-ring relative flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-[20px] transition-colors ${on ? "text-accent-soft" : "text-faint"}`}
+            >
+              {/* A pílula é um irmão posicionado, não o fundo do botão: assim
+                  ela desliza entre os itens em vez de piscar no destino. */}
+              {on && (
+                <motion.span
+                  layoutId="dock-ativo"
+                  transition={mola}
+                  /* Fundo lavado com um fio de luz em cima — a mesma leitura
+                     de vidro da cápsula, uma camada acima dela. */
+                  className="absolute inset-x-1 inset-y-1 rounded-[18px] bg-accent/[0.14] shadow-[inset_0_1px_0_rgb(var(--glass-highlight)/0.18)]"
+                />
+              )}
+
+              {/* 20px, sobrescrevendo o `size={18}` do item por CSS.
+                  A lista de rotas é a MESMA da folha "Mais": trocar o `size`
+                  lá aumentaria também os ícones de dentro da folha, que já
+                  estão no tamanho certo para uma lista de texto. */}
+              <span className="relative shrink-0 [&_svg]:h-[20px] [&_svg]:w-[20px]">{it.icon}</span>
+
+              {/*
+               * O nome de TODAS as abas, sempre, embaixo do ícone.
+               *
+               * O Instagram não tem rótulo nenhum, e aqui isso não serve: lá
+               * são cinco destinos que a pessoa abre cinquenta vezes por dia.
+               * Aqui um carrinho e um cifrão lado a lado não dizem qual é
+               * "PDV" e qual é "Vendas" para quem entrou na segunda vez.
+               */}
+              <span className="relative whitespace-nowrap text-[10px] leading-none tracking-tight">{it.label}</span>
+            </motion.button>
+          );
+        })}
+
+        <motion.button
+          type="button"
+          layout
+          onClick={() => setMaisAberto(true)}
+          aria-label="Mais opções"
+          aria-expanded={maisAberto}
+          whileTap={reduzir ? undefined : { scale: 0.94 }}
+          transition={mola}
+          className={`focus-ring relative flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-[20px] transition-colors ${maisAberto ? "text-accent-soft" : "text-faint"}`}
+        >
+          {maisAberto && (
+            <motion.span
+              initial={{ opacity: 0, scale: 0.75 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 480, damping: 30 }}
+              className="absolute inset-x-1 inset-y-1 rounded-[18px] bg-accent/[0.14] shadow-[inset_0_1px_0_rgb(var(--glass-highlight)/0.18)]"
+            />
+          )}
+
+          <motion.span className="relative" animate={reduzir ? {} : { rotate: maisAberto ? 90 : 0 }} transition={{ type: "spring", stiffness: 420, damping: 28 }}>
+            <MoreHorizontal size={20} />
+          </motion.span>
+          <span className="relative whitespace-nowrap text-[10px] leading-none tracking-tight">Mais</span>
+        </motion.button>
+      </motion.nav>
+    </div>
+  );
+
   return (
     <>
-      {/*
-       * Barra encostada na borda, e não uma pílula flutuando no meio.
-       *
-       * ---------------------------------------------------------------------
-       * O que a pílula fazia de errado
-       * ---------------------------------------------------------------------
-       * Ela era `w-fit`, centralizada, com 10px de folga até o fim da tela — e
-       * FLUTUAVA sobre o conteúdo. Três consequências, todas vistas no
-       * aparelho:
-       *
-       *   • COBRIA O QUE IMPORTA. No cadastro de cliente ela ficava por cima
-       *     da linha "Cancelar / Cadastrar"; no orçamento, por cima do "Gerar
-       *     orçamento". O último elemento de toda tela era o único que a barra
-       *     escondia — e é sempre o botão que conclui a tarefa.
-       *   • DESPERDIÇAVA A LARGURA. Sendo `w-fit` no meio, sobravam faixas
-       *     mortas nos dois lados, e os alvos ficavam concentrados no centro
-       *     em vez de espalhados onde o polegar alcança.
-       *   • NÃO TINHA CHÃO. Sem fundo até a borda, o conteúdo aparecia por
-       *     baixo dela ao rolar, atravessando os ícones.
-       *
-       * Agora ela ocupa a largura inteira, tem fundo próprio até o fim da tela
-       * (inclusive dentro da área segura do aparelho) e o corpo da página
-       * reserva a altura dela — ver `PAGE_PAD` em `PageShell`. Nada mais passa
-       * por baixo, e nada mais fica escondido atrás.
-       */}
-      <div className="fixed inset-x-0 bottom-0 z-[100] md:hidden">
-        <motion.nav
-          initial={{ y: 80, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={reduzir ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }}
-          className="glass-strong flex h-[58px] items-stretch justify-around gap-1 border-x-0 border-b-0 border-t px-1"
-          style={{
-            borderColor: "rgb(var(--glass-border) / calc(var(--glass-border-alpha) + 0.06))",
-            boxShadow: "0 -8px 24px -18px rgb(0 0 0 / 0.5)",
-            paddingBottom: "env(safe-area-inset-bottom)",
-            height: "calc(58px + env(safe-area-inset-bottom))",
-          }}
-        >
-          {principais.map((it) => {
-            const on = ativo(it.rota);
-
-            return (
-              <motion.button
-                key={it.rota}
-                type="button"
-                layout
-                onClick={() => ir(it.rota)}
-                aria-label={it.label}
-                aria-current={on ? "page" : undefined}
-                whileTap={reduzir ? undefined : { scale: 0.94 }}
-                transition={mola}
-                /*
-                 * Agora É `flex-1`: cada aba fica com a mesma fatia da barra.
-                 *
-                 * Na pílula os botões tinham largura de conteúdo porque a
-                 * própria pílula se ajustava a eles. Numa barra que ocupa a
-                 * tela, largura de conteúdo deixa alvos de 48px separados por
-                 * vãos mortos — e o dedo erra justamente nas bordas. Divididos
-                 * por igual, cada alvo passa de 100px de largura e a linha
-                 * inteira é clicável.
-                 */
-                className={`focus-ring relative flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl transition-colors ${on ? "text-accent-soft" : "text-faint"}`}
-              >
-                {/* A pílula é um irmão posicionado, não o fundo do botão: assim
-                    ela desliza entre os itens em vez de piscar no destino. */}
-                {on && (
-                  <motion.span
-                    layoutId="dock-ativo"
-                    transition={mola}
-                    /* Fundo lavado com anel, no lugar do accent chapado: a aba
-                       fica marcada sem virar o objeto mais pesado da tela. */
-                    className="absolute inset-x-1 inset-y-0.5 rounded-xl bg-accent/[0.12]"
-                  />
-                )}
-
-                {/* 21px, sobrescrevendo o `size={18}` do item por CSS.
-                    A lista de rotas é a MESMA da folha "Mais": trocar o `size`
-                    lá aumentaria também os ícones de dentro da folha, que já
-                    estão no tamanho certo para uma lista de texto. */}
-                <span className="relative shrink-0 [&_svg]:h-[20px] [&_svg]:w-[20px]">{it.icon}</span>
-
-                {/*
-                 * O nome de TODAS as abas, sempre, embaixo do ícone.
-                 *
-                 * Antes só a aba ativa mostrava o rótulo, e ele abria em
-                 * largura empurrando as vizinhas. Isso resolvia um problema da
-                 * pílula (caber num espaço que se ajusta ao conteúdo) e criava
-                 * outro: as abas onde você NÃO está — que são justamente as
-                 * que você precisa identificar para ir a algum lugar — viravam
-                 * ícones sem nome. Um carrinho e um cifrão lado a lado não
-                 * dizem qual é "PDV" e qual é "Financeiro".
-                 *
-                 * Com a barra dividida por igual, cabe o rótulo embaixo do
-                 * ícone em todas — e nenhuma se mexe quando a ativa muda.
-                 */}
-                <span className="relative whitespace-nowrap text-[10px] leading-none tracking-tight">{it.label}</span>
-              </motion.button>
-            );
-          })}
-
-          <motion.button
-            type="button"
-            layout
-            onClick={() => setMaisAberto(true)}
-            aria-label="Mais opções"
-            aria-expanded={maisAberto}
-            whileTap={reduzir ? undefined : { scale: 0.94 }}
-            transition={mola}
-            className={`focus-ring relative flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl transition-colors ${maisAberto ? "text-accent-soft" : "text-faint"}`}
-          >
-            {maisAberto && (
-              <motion.span
-                initial={{ opacity: 0, scale: 0.75 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ type: "spring", stiffness: 480, damping: 30 }}
-                className="absolute inset-x-1 inset-y-0.5 rounded-xl bg-accent/[0.12]"
-              />
-            )}
-
-            <motion.span className="relative" animate={reduzir ? {} : { rotate: maisAberto ? 90 : 0 }} transition={{ type: "spring", stiffness: 420, damping: 28 }}>
-              <MoreHorizontal size={20} />
-            </motion.span>
-            <span className="relative whitespace-nowrap text-[10px] leading-none tracking-tight">Mais</span>
-          </motion.button>
-        </motion.nav>
-      </div>
+      {createPortal(dock, document.body)}
 
       <Sheet open={maisAberto} onClose={() => setMaisAberto(false)} title="Mais" subtitle={user?.nome ? `Conectado como ${user.nome}` : undefined}>
         <div className="flex flex-col gap-1 pb-2">
