@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { User, Mail, Phone, Briefcase, Camera, Trash2, Lock, Shield, CalendarDays, Loader2, RefreshCw, Signature } from "lucide-react";
+import { User, Mail, Phone, Briefcase, Camera, Trash2, Lock, Shield, CalendarDays, Loader2, RefreshCw, Signature, Sparkles } from "lucide-react";
 import useAuth from "@/features/auth/store/auth.store";
 import { useAlert } from "@/shared/ui/Alert";
 import Field from "@/shared/ui/inputs/Field";
@@ -13,6 +13,8 @@ import CorporateBadge from "@/features/config/components/CorporateBadge";
 import { profileSchema, type ProfileData, type ProfileInput, passwordSchema, type PasswordData } from "@/features/config/schema/profile.schema";
 import ProfileService from "@/features/config/services/profile.service";
 import { BUILD_ID, forcarAtualizacao } from "@/shared/pwa/versao";
+import useNovidades from "@/features/novidades/novidades.store";
+import { TOTAL_NOVIDADES } from "@/features/novidades/conteudo";
 
 /*
  * A foto vai para o STORAGE, não para dentro do JSON.
@@ -33,6 +35,9 @@ const MAX_PHOTO = 10 * 1024 * 1024;
 const ProfilePage = () => {
   /* Busca a versão mais recente na marra — ver `forcarAtualizacao`. */
   const [atualizando, setAtualizando] = useState(false);
+
+  /* A segunda porta das novidades — ver a nota junto do botão, lá embaixo. */
+  const abrirNovidades = useNovidades((s) => s.abrir);
 
   const atualizarAgora = () => {
     setAtualizando(true);
@@ -385,6 +390,35 @@ const ProfilePage = () => {
                   className="focus-ring shrink-0 cursor-pointer rounded-lg border border-fg/[0.1] px-3 py-1.5 text-[12px] text-mist transition-colors hover:text-ink disabled:opacity-60"
                 >
                   {atualizando ? "Buscando…" : "Buscar atualização"}
+                </button>
+              </div>
+
+              {/*
+                O aviso de novidades aparece UMA vez, sozinho, no primeiro
+                acesso depois da atualização. Este botão é a segunda porta —
+                para quem fechou sem ler, ou para quem quer conferir o que
+                mudou semanas depois.
+                
+                Fica aqui, ao lado da versão instalada, porque é a mesma
+                pergunta vista de dois ângulos: "o que eu tenho" e "o que veio
+                nisso".
+              */}
+              <div className="flex items-center gap-3 rounded-xl border border-fg/[0.08] bg-fg/[0.02] px-4 py-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/[0.10] text-accent-soft">
+                  <Sparkles size={15} />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-ink">Novidades desta versão</p>
+                  <p className="truncate text-[11px] text-faint">{TOTAL_NOVIDADES} mudanças no sistema</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={abrirNovidades}
+                  className="focus-ring shrink-0 cursor-pointer rounded-lg border border-fg/[0.1] px-3 py-1.5 text-[12px] text-mist transition-colors hover:text-ink"
+                >
+                  Ver
                 </button>
               </div>
             </div>

@@ -4,6 +4,7 @@ import { Outlet, useLocation } from "react-router-dom";
 
 import useTransicao from "@/shared/session/transicao.store";
 import TourInicial from "@/features/tour/TourInicial";
+import Novidades from "@/features/novidades/Novidades";
 
 import Sidebar from "@/shared/ui/Sidebar";
 import TabBar from "@/mobile/TabBar";
@@ -38,6 +39,10 @@ const Main = () => {
 
       <TabBar />
       <TourInicial />
+      {/* As novidades da versão, uma vez por pessoa. Nunca junto do tour: quem
+          está vendo o sistema pela primeira vez não tem "antes" para comparar —
+          ver a nota em `Novidades`. */}
+      <Novidades />
     </motion.div>
   );
 };
