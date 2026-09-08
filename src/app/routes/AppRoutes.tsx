@@ -48,7 +48,6 @@ import RastrearPage from "@/features/correios/pages/RastrearPage";
 
 import ClientesPage from "@/features/clientes/pages/ClientesPage";
 import CrmPage from "@/features/crm/pages/CrmPage";
-import ChatbotPage from "@/features/crm/pages/ChatbotPage";
 import CustomerDetailPage from "@/features/clientes/pages/ClienteDetailPage";
 
 import TableStock from "@/features/estoque/pages/StockPage";
@@ -269,10 +268,21 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
             vocabulário nosso, não dele.
           */}
           <Route path="whatsapp" element={<CrmPage />} />
-          {/* O robô é configuração do WhatsApp, mas tem destino próprio: quem
-              vem desligar às pressas não deve ter de achar uma aba dentro da
-              caixa de entrada. */}
-          <Route path="chatbot" element={<ChatbotPage />} />
+          {/*
+            O Chatbot fica FORA desta versão.
+
+            O WhatsApp entra em teste, e a resposta automática é justamente a
+            parte que não pode entrar assim: o que o robô escreve chega ao
+            cliente da loja sem ninguém ver, em nome da loja. O tamanho do erro
+            é outro — um cartão na raia errada se arrasta de volta, um prazo
+            prometido errado não.
+
+            A rota continua existindo e leva à caixa de entrada: quem tiver o
+            link salvo, o atalho no celular ou a aba aberta cai num lugar que
+            faz sentido, e não num 404. A tela (`ChatbotPage`) segue no
+            repositório esperando a liberação do robô.
+          */}
+          <Route path="chatbot" element={<Navigate to="/whatsapp" replace />} />
           <Route path="crm" element={<Navigate to="/whatsapp" replace />} />
           <Route path="clientes/:clienteId" element={<CustomerDetailPage />} />
 

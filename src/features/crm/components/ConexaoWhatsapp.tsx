@@ -37,6 +37,9 @@ type Props = {
   aoAtualizar: () => void;
 };
 
+/** Quanto a tela espera por uma transição antes de admitir que travou. */
+const ESPERA_MAXIMA_MS = 120_000;
+
 const ConexaoWhatsapp = ({ conexao, aoAtualizar }: Props) => {
   const alert = useAlert();
   const [ocupado, setOcupado] = useState(false);
@@ -47,13 +50,24 @@ const ConexaoWhatsapp = ({ conexao, aoAtualizar }: Props) => {
   const legenda = LEGENDA[status];
   const acompanhando = status === "INICIANDO" || status === "AGUARDANDO_QR";
 
+  const [desistiu, setDesistiu] = useState(false);
+
   useEffect(() => {
-    if (!acompanhando) return;
+    if (!acompanhando) {
+      setDesistiu(false);
+      return;
+    }
+
+    setDesistiu(false);
 
     const t = setInterval(aoAtualizar, INTERVALO_MS);
+    const limite = setTimeout(() => setDesistiu(true), ESPERA_MAXIMA_MS);
 
-    return () => clearInterval(t);
-  }, [acompanhando]);
+    return () => {
+      clearInterval(t);
+      clearTimeout(limite);
+    };
+  }, [acompanhando, status, conexao?.qr]);
 
   useEffect(() => {
     if (!conexao?.qr || !canvas.current) return;
@@ -77,17 +91,7 @@ const ConexaoWhatsapp = ({ conexao, aoAtualizar }: Props) => {
   };
 
   const desconectar = async () => {
-    /*
-     * Confirmação de verdade aqui, e não um toast depois.
-     *
-     * Desconectar derruba o atendimento da loja inteira e APAGA a credencial:
-     * voltar exige o celular na mão para ler o QR de novo. É a única ação
-     * desta tela que não dá para desfazer sozinho.
-     */
-    const { confirmed } = await alert.confirm(
-      "Desconectar o WhatsApp?",
-      "As mensagens param de chegar e será preciso ler o QR de novo para voltar. O histórico das conversas continua aqui.",
-    );
+    const { confirmed } = await alert.confirm("Desconectar o WhatsApp?", "As mensagens param de chegar e será preciso ler o QR de novo para voltar. O histórico das conversas continua aqui.");
 
     if (!confirmed) return;
 
@@ -108,10 +112,6 @@ const ConexaoWhatsapp = ({ conexao, aoAtualizar }: Props) => {
 
     try {
       await CrmService.importar();
-
-      /* Toast e não modal: a importação leva minutos e roda no servidor. Uma
-         caixa com "OK" prenderia a pessoa numa espera que ela não precisa
-         fazer — as conversas aparecem sozinhas conforme entram. */
       alert.toast("success", "Importando as conversas", "Elas vão aparecer aqui aos poucos.", {
         position: "bottom-right",
         timer: 5000,
@@ -123,8 +123,6 @@ const ConexaoWhatsapp = ({ conexao, aoAtualizar }: Props) => {
     }
   };
 
-  /* Instalação sem o serviço de WhatsApp: nem oferece o botão. Um "Conectar"
-     que sempre falha é pior do que dizer que o recurso não está disponível. */
   if (conexao && !conexao.configurado) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl border border-fg/[0.07] bg-fg/[0.02] px-6 py-10 text-center">
@@ -132,24 +130,14 @@ const ConexaoWhatsapp = ({ conexao, aoAtualizar }: Props) => {
           <ShieldAlert size={22} />
         </span>
         <p className="text-[13.5px] text-ink">O WhatsApp não está disponível nesta instalação</p>
-        <p className="max-w-sm text-[12px] leading-relaxed text-mist">
-          O serviço de mensagens não está configurado. Fale com o suporte para habilitar o CRM de WhatsApp.
-        </p>
+        <p className="max-w-sm text-[12px] leading-relaxed text-mist">O serviço de mensagens não está configurado. Fale com o suporte para habilitar o CRM de Whatsapp.</p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col items-center gap-4 rounded-2xl border border-fg/[0.07] bg-fg/[0.02] px-6 py-8 text-center">
-      <span
-        className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${
-          status === "CONECTADA"
-            ? "border-success/25 bg-success/[0.1] text-success"
-            : status === "DERRUBADA"
-              ? "border-danger/25 bg-danger/[0.1] text-danger"
-              : "border-fg/[0.06] bg-fg/[0.03] text-accent-soft"
-        }`}
-      >
+      <span className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${status === "CONECTADA" ? "border-success/25 bg-success/[0.1] text-success" : status === "DERRUBADA" ? "border-danger/25 bg-danger/[0.1] text-danger" : "border-fg/[0.06] bg-fg/[0.03] text-accent-soft"}`}>
         {status === "INICIANDO" ? <Loader2 size={22} className="animate-spin" /> : <MessageCircle size={22} />}
       </span>
 
@@ -157,25 +145,26 @@ const ConexaoWhatsapp = ({ conexao, aoAtualizar }: Props) => {
         <p className="text-[13.5px] text-ink">{legenda.titulo}</p>
         <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-mist">{legenda.texto}</p>
       </div>
-
-      {/* O QR só existe em AGUARDANDO_QR. Fundo branco fixo, e não o do tema:
-          o leitor do celular precisa de contraste real, e no tema escuro um
-          QR sobre fundo escuro simplesmente não é lido. */}
       {status === "AGUARDANDO_QR" && conexao?.qr && (
         <div className="rounded-2xl bg-white p-3">
           <canvas ref={canvas} />
         </div>
       )}
 
-      {status === "CONECTADA" && conexao?.numero && ( 
+      {status === "CONECTADA" && conexao?.numero && (
         <p className="flex items-center gap-1.5 rounded-full border border-fg/[0.08] bg-fg/[0.03] px-3 py-1 text-[12px] text-mist">
           <Smartphone size={13} className="text-success" /> {conexao.numero}
         </p>
       )}
 
-      {status === "DERRUBADA" && conexao?.erro && (
-        <p className="max-w-sm rounded-xl border border-danger/20 bg-danger/[0.06] px-3 py-2 text-[11.5px] leading-relaxed text-danger">
-          {conexao.erro}
+      {status === "DERRUBADA" && conexao?.erro && <p className="max-w-sm rounded-xl border border-danger/20 bg-danger/[0.06] px-3 py-2 text-[11.5px] leading-relaxed text-danger">{conexao.erro}</p>}
+
+      {/* Dois minutos girando sem nada mudar: a tela para de esperar e diz o
+          que sabe. Ver `ESPERA_MAXIMA_MS` — girar para sempre é a única
+          resposta que não ajuda ninguém. */}
+      {desistiu && acompanhando && (
+        <p className="max-w-sm rounded-xl border border-warning/25 bg-warning/[0.07] px-3 py-2 text-[11.5px] leading-relaxed text-warning">
+          O serviço do WhatsApp não respondeu nos últimos dois minutos. Ele pode ter reiniciado no meio da conexão — tente conectar de novo; a credencial salva continua valendo e o QR só é pedido se ela tiver expirado.
         </p>
       )}
 
@@ -206,11 +195,11 @@ const ConexaoWhatsapp = ({ conexao, aoAtualizar }: Props) => {
         ) : (
           <button
             type="button"
-            disabled={ocupado || status === "INICIANDO"}
+            disabled={ocupado || (status === "INICIANDO" && !desistiu)}
             onClick={() => void conectar()}
             className="focus-ring flex min-h-[38px] cursor-pointer items-center gap-2 rounded-xl bg-accent px-4 text-[12.5px] text-white transition-colors hover:bg-accent disabled:opacity-50"
           >
-            {ocupado || status === "INICIANDO" ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            {ocupado || (status === "INICIANDO" && !desistiu) ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
             {status === "AGUARDANDO_QR" ? "Gerar outro código" : "Conectar WhatsApp"}
           </button>
         )}

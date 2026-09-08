@@ -27,11 +27,19 @@ const nomeArquivo = (nome: string) =>
  * deslocada para cima, revelando a próxima fatia — o mesmo resultado de uma
  * nota que rolaria na tela.
  */
-export async function baixarNotaPdf(blob: Blob, nomeEmpresa: string): Promise<string> {
+/**
+ * O PDF da nota como ARQUIVO, sem baixar nada.
+ *
+ * Nasceu do envio pelo WhatsApp: a nota que sai da conversa vai para o
+ * cliente, não para a pasta de downloads de quem atende. `baixarNotaPdf`
+ * continua existindo e passou a usar isto — o desenho da página é o mesmo, o
+ * que muda é o destino.
+ */
+export async function gerarPdfNota(blob: Blob, nomeEmpresa: string): Promise<{ arquivo: Blob; nome: string }> {
   const { jsPDF } = await import("jspdf");
   const data = new Date().toISOString().slice(0, 10);
 
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<{ arquivo: Blob; nome: string }>((resolve, reject) => {
     const leitor = new FileReader();
 
     leitor.onerror = reject;
@@ -64,9 +72,7 @@ export async function baixarNotaPdf(blob: Blob, nomeEmpresa: string): Promise<st
             doc.addImage(dataUrl, "PNG", margem, margem - i * areaH, w, h);
           }
 
-          const arquivo = `nota-${nomeArquivo(nomeEmpresa)}-${data}.pdf`;
-          doc.save(arquivo);
-          resolve(arquivo);
+          resolve({ arquivo: doc.output("blob"), nome: `nota-${nomeArquivo(nomeEmpresa)}-${data}.pdf` });
         } catch (err) {
           reject(err);
         }
@@ -77,4 +83,23 @@ export async function baixarNotaPdf(blob: Blob, nomeEmpresa: string): Promise<st
 
     leitor.readAsDataURL(blob);
   });
+}
+
+export async function baixarNotaPdf(blob: Blob, nomeEmpresa: string): Promise<string> {
+  const { arquivo, nome } = await gerarPdfNota(blob, nomeEmpresa);
+
+  /* O download em si: um link temporário. `doc.save()` fazia isto por dentro
+     do jsPDF; agora que o PDF também vai para o WhatsApp, gerar e salvar são
+     dois passos separados. */
+  const url = URL.createObjectURL(arquivo);
+  const link = document.createElement("a");
+
+  link.download = nome;
+  link.href = url;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+
+  return nome;
 }

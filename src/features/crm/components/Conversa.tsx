@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, Loader2, Send, UserRound } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ArrowLeft, Loader2, Send } from "lucide-react";
 
 import CrmService, { type Conversa as ConversaTipo, type Mensagem } from "@/features/crm/services/crm.service";
+import { useSincronizacao } from "@/shared/realtime/useSincronizacao";
 import MidiaMensagem from "@/features/crm/components/MidiaMensagem";
+import CartaoContato from "@/features/crm/components/CartaoContato";
 import AtalhosContato from "@/features/crm/components/AtalhosContato";
-import PainelCliente from "@/features/crm/components/PainelCliente";
 import Invoice from "@/features/vendas/components/Invoice";
 import { Modal } from "@/shared/ui/Modal";
 import Dica from "@/shared/ui/Dica";
@@ -95,11 +96,14 @@ const CONFIRMACAO: Record<string, { tiques: 1 | 2; azul: boolean; dica: string }
 };
 
 /** Os dois tiques do WhatsApp, desenhados — não há ícone pronto com essa forma. */
-const Tiques = ({ tiques, azul }: { tiques: 1 | 2; azul: boolean }) => (
+const Tiques = ({ tiques, azul, cor }: { tiques: 1 | 2; azul: boolean; cor?: string }) => (
   <svg
     viewBox="0 0 18 12"
     aria-hidden
-    style={{ color: azul ? AZUL_LIDA : TEXTO_FRACO }}
+    /* `cor` é para a hora que fica POR CIMA da foto: ali o cinza do rodapé da
+       bolha desaparece contra a imagem, e o tique tem de acompanhar o branco
+       do resto da faixa. O azul de "lida" continua ganhando de todos. */
+    style={{ color: azul ? AZUL_LIDA : (cor ?? TEXTO_FRACO) }}
     className="h-3 w-[18px] shrink-0"
     fill="none"
     stroke="currentColor"
@@ -111,6 +115,87 @@ const Tiques = ({ tiques, azul }: { tiques: 1 | 2; azul: boolean }) => (
     {tiques === 2 && <path d="M7.4 6.5 L10.6 9.8 L16.6 2.4" />}
   </svg>
 );
+
+/**
+ * O histórico já lido, por conversa.
+ *
+ * Fora do componente porque o componente MORRE a cada troca de conversa (a
+ * caixa de entrada o remonta por `key`), e com ele morria tudo o que já tinha
+ * sido buscado: voltar para a conversa de onde você saiu há dez segundos
+ * mostrava o mesmo rodopio de carregamento da primeira vez. Era o defeito que
+ * aparecia como "toda vez que clico ele carrega de novo".
+ *
+ * Com o mapa aqui, reabrir é instantâneo: as mensagens que já estavam na tela
+ * voltam desenhadas e o servidor é consultado EM SILÊNCIO por trás — se veio
+ * algo novo, ele entra; se não veio, ninguém viu nada acontecer.
+ *
+ * É memória de aba, não cache de verdade: um F5 esvazia, e é o certo — a lista
+ * do servidor é sempre quem manda no que fica na tela.
+ */
+const historico = new Map<string, Mensagem[]>();
+
+/**
+ * O texto de uma bolha — quebrado, e dobrado quando é longo demais.
+ *
+ * ---------------------------------------------------------------------------
+ * Quebrar
+ * ---------------------------------------------------------------------------
+ * `whitespace-pre-wrap` guarda as quebras que a pessoa digitou; `break-words`
+ * quebra a palavra que não cabe. Sozinhos, os dois ainda deixavam passar o
+ * caso que mais aparece numa conversa de loja: um LINK gigante, um código de
+ * rastreio, uma chave Pix copiada — texto sem espaço nenhum, que esticava a
+ * bolha para fora da conversa e criava rolagem horizontal na tela inteira.
+ *
+ * `overflow-wrap: anywhere` fecha isso: sem espaço para quebrar, quebra no
+ * meio. E a bolha ganhou `min-w-0` (ver abaixo) porque item de flex tem
+ * `min-width: auto` — o conteúdo mais largo VENCE o `max-width`, e era por
+ * isso que a bolha continuava passando de 78% mesmo com o limite escrito.
+ *
+ * ---------------------------------------------------------------------------
+ * Dobrar
+ * ---------------------------------------------------------------------------
+ * Cliente que cola um pedido inteiro, uma lista de trinta itens ou o texto de
+ * um contrato manda uma mensagem que ocupa DUAS TELAS: quem abre a conversa
+ * cai no meio dela e não acha nem o começo nem o que veio depois. Acima de
+ * `LIMITE`, a bolha mostra o começo e um "Ler mais" — como no aplicativo.
+ *
+ * O corte é no espaço mais próximo do limite, nunca no meio da palavra, e a
+ * mensagem inteira continua a um clique. "Ler menos" volta: quem abriu por
+ * engano não fica com a conversa entupida.
+ */
+const LIMITE = 440;
+
+const TextoBolha = ({ texto, className = "" }: { texto: string; className?: string }) => {
+  const [aberto, setAberto] = useState(false);
+
+  const longo = texto.length > LIMITE;
+
+  const visivel = useMemo(() => {
+    if (!longo || aberto) return texto;
+
+    const corte = texto.slice(0, LIMITE);
+    const espaco = corte.lastIndexOf(" ");
+
+    return `${corte.slice(0, espaco > LIMITE - 60 ? espaco : LIMITE).trimEnd()}…`;
+  }, [texto, longo, aberto]);
+
+  return (
+    <p className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${className}`}>
+      {visivel}
+
+      {longo && (
+        <button
+          type="button"
+          onClick={() => setAberto((v) => !v)}
+          className="ml-1 cursor-pointer align-baseline text-[12px] underline underline-offset-2 transition-opacity hover:opacity-70"
+          style={{ color: "#027eb5" }}
+        >
+          {aberto ? "Ler menos" : "Ler mais"}
+        </button>
+      )}
+    </p>
+  );
+};
 
 type Props = {
   conversa: ConversaTipo;
@@ -124,18 +209,28 @@ type Props = {
 const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
   const alert = useAlert();
 
-  const [mensagens, setMensagens] = useState<Mensagem[]>([]);
-  const [carregando, setCarregando] = useState(true);
+  /* Abre com o que já foi lido — ver `historico`. Só quem nunca abriu esta
+     conversa vê o carregamento. */
+  const [mensagens, setMensagens] = useState<Mensagem[]>(() => historico.get(conversa.id) ?? []);
+  const [carregando, setCarregando] = useState(() => !historico.has(conversa.id));
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
 
   const fim = useRef<HTMLDivElement>(null);
+  const corpo = useRef<HTMLDivElement>(null);
+  /* A primeira pintura desce até o fim sempre; depois, só se a pessoa já
+     estiver lá embaixo (ver o efeito de rolagem). */
+  const primeiraRolagem = useRef(true);
 
-  /* O painel do cliente e a nota vivem AQUI, e não em `AtalhosContato`: os
-     dois ocupam a tela toda ou a coluna ao lado, e um componente de botões não
-     deve mandar no layout de quem o contém. */
-  const [painel, setPainel] = useState(false);
-  const [nota, setNota] = useState<null | { id?: string }>(null);
+  /*
+   * A nota vive AQUI, e não nos botões que a abrem: ela ocupa a tela inteira,
+   * e um componente de atalhos não deve mandar no layout de quem o contém.
+   *
+   * `clienteId` vem de quem abriu — pode ser o vínculo que já existia ou o
+   * cadastro que acabou de ser criado no clique de vender (ver
+   * `AtalhosContato`). `orcamento` troca o desfecho da mesma nota.
+   */
+  const [nota, setNota] = useState<null | { id?: string; clienteId?: string; nome?: string; orcamento?: boolean }>(null);
 
   const carregar = async (silencioso = false) => {
     if (!silencioso) setCarregando(true);
@@ -144,8 +239,10 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
       /* O servidor devolve as mais novas primeiro (é o que o LIMIT precisa
          para não cortar o fim da conversa); a tela lê de cima para baixo. */
       const lista = await CrmService.mensagens(conversa.id);
+      const emOrdem = lista.slice().reverse();
 
-      setMensagens(lista.slice().reverse());
+      historico.set(conversa.id, emOrdem);
+      setMensagens(emOrdem);
     } catch (err) {
       alert.toast("error", getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir a conversa."), {
         position: "bottom-right",
@@ -157,12 +254,29 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
   };
 
   useEffect(() => {
-    void carregar();
+    /* Com histórico em mãos a recarga é silenciosa: trocar a tela cheia por um
+       rodopio para depois redesenhar as mesmas bolhas é piscada pura. */
+    void carregar(historico.has(conversa.id));
 
     /* Abrir a conversa já marcou como lida no servidor — a lista precisa
        saber para tirar o contador. */
     aoMudar();
   }, [conversa.id]);
+
+  /*
+   * A mensagem que CHEGA, com a conversa aberta.
+   *
+   * A caixa de entrada já ouvia o tempo real e recarregava a LISTA — a prévia
+   * e o contador mudavam —, mas o histórico aberto não: quem estava com a
+   * conversa na tela via a lista ao lado mexer e a conversa parada, e só
+   * descobria o que o cliente disse fechando e abrindo de novo.
+   *
+   * Silenciosa, sempre: a bolha nova entra por baixo sem apagar o que está
+   * escrito nem mexer na rolagem de quem está lendo mais acima.
+   */
+  useSincronizacao(["crm"], () => {
+    void carregar(true);
+  });
 
   /*
    * Bate ponto na conversa enquanto ela está aberta.
@@ -192,11 +306,25 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
     return () => clearInterval(t);
   }, [conversa.id]);
 
-  /* Desce para a última mensagem. `auto` e não `smooth` na abertura: uma
-     conversa de duzentas mensagens rolando com animação demora mais do que a
-     pessoa espera para ver o que acabou de chegar. */
+  /*
+   * Desce para a última mensagem — mas não por cima de quem está lendo.
+   *
+   * `auto` e não `smooth` na abertura: uma conversa de duzentas mensagens
+   * rolando com animação demora mais do que a pessoa espera para ver o que
+   * acabou de chegar.
+   *
+   * Depois da abertura, só desce se a pessoa JÁ estiver no fim. Com a recarga
+   * em tempo real, descer sempre arrancaria de volta para baixo quem subiu
+   * para reler algo — no meio da leitura, a cada mensagem que chegasse.
+   */
   useEffect(() => {
-    fim.current?.scrollIntoView({ block: "end" });
+    const no = corpo.current;
+    const noFim = !no || no.scrollHeight - no.scrollTop - no.clientHeight < 160;
+
+    if (primeiraRolagem.current || noFim) {
+      fim.current?.scrollIntoView({ block: "end" });
+      primeiraRolagem.current = false;
+    }
   }, [mensagens.length]);
 
   const enviar = async () => {
@@ -221,7 +349,11 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
       autor_nome: null,
     };
 
-    setMensagens((m) => [...m, provisoria]);
+    setMensagens((m) => {
+      const nova = [...m, provisoria];
+      historico.set(conversa.id, nova);
+      return nova;
+    });
 
     try {
       await CrmService.enviar(conversa.id, corpo);
@@ -234,7 +366,11 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
       /* O envio nem chegou ao servidor (rede, sessão fora). A bolha vira
          FALHOU na hora — e o texto volta para o campo, porque o que a pessoa
          quer neste segundo é tentar de novo, não redigitar. */
-      setMensagens((m) => m.map((x) => (x.id === provisoria.id ? { ...x, status: "FALHOU", erro: extractErrorMessage(err, "Não saiu.") } : x)));
+      setMensagens((m) => {
+        const nova = m.map((x) => (x.id === provisoria.id ? { ...x, status: "FALHOU" as const, erro: extractErrorMessage(err, "Não saiu.") } : x));
+        historico.set(conversa.id, nova);
+        return nova;
+      });
       setTexto(corpo);
 
       alert.toast("error", getErrorTitle(err), extractErrorMessage(err, "Não foi possível enviar."), {
@@ -262,34 +398,25 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
           </button>
         )}
 
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-accent/25 bg-accent/[0.12] text-accent-soft">
-          {conversa.foto ? <img src={conversa.foto} alt="" className="h-full w-full object-cover" /> : <UserRound size={16} />}
-        </span>
-
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] text-ink">{conversa.nome}</p>
-          <p className="truncate font-mono text-[10.5px] text-faint">
-            {conversa.telefone}
-            {/* Contato sem cadastro é oportunidade, não erro — a tela diz isso
-                sem alarde, e o botão de cadastrar está logo ao lado. */}
-            {!conversa.cliente_fk && " · sem cadastro"}
-          </p>
-        </div>
-
-        {/* Os atalhos do lado oposto ao nome: cadastrar, vincular, ficha,
-            vender. Ver a nota no topo de `AtalhosContato` — atendimento e
-            cadastro são o mesmo momento, e estavam em telas diferentes. */}
-        <AtalhosContato
+        {/* A identidade — e a porta para a ficha completa: clicar na foto ou
+            no nome abre a janela com cadastro, produção e compras em tamanho
+            de leitura. Ver `CartaoContato`. */}
+        <CartaoContato
           conversa={conversa}
           aoMudar={aoMudar}
-          painelAberto={painel}
-          onAlternarPainel={() => setPainel((v) => !v)}
-          onNovaVenda={() => setNota({})}
+          onNovaVenda={(abertura) => setNota(abertura)}
+          onAbrirNota={(pedidoId) => setNota({ id: pedidoId })}
         />
+
+        {/* Os atalhos, do lado oposto ao nome: vincular (só sem cadastro),
+            orçamento e venda — as duas últimas cadastram o cliente sozinhas
+            quando ele ainda não existe. Ver a nota no topo de
+            `AtalhosContato`. */}
+        <AtalhosContato conversa={conversa} aoMudar={aoMudar} onAbrirNota={setNota} />
       </div>
 
       {/* Histórico */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" style={{ background: FUNDO }}>
+      <div ref={corpo} className="min-h-0 flex-1 overflow-y-auto px-4 py-4" style={{ background: FUNDO }}>
         {carregando ? (
           <div className="flex h-full items-center justify-center" style={{ color: TEXTO_FRACO }}>
             <Loader2 size={18} className="animate-spin" />
@@ -305,6 +432,22 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
               const novoDia = !anterior || diaDe(anterior.criado_em) !== diaDe(m.criado_em);
               const saiu = m.direcao === "SAIDA";
               const falhou = m.status === "FALHOU";
+
+              /*
+               * Foto e vídeo mandam na bolha; o resto mora dentro dela.
+               *
+               * A bolha tinha o mesmo respiro para tudo, e a foto aparecia
+               * como um retrato emoldurado: uma tarja da cor da bolha dando a
+               * volta na imagem. No WhatsApp a mídia É a mensagem — encosta
+               * nas bordas arredondadas e não sobra moldura. Quando há
+               * legenda, ela entra por baixo, aí sim com respiro: é texto, e
+               * texto colado na borda não se lê.
+               */
+              const midiaCheia = (m.tipo === "IMAGEM" || m.tipo === "VIDEO") && !falhou;
+              /* Sem legenda, a hora vai POR CIMA da foto, como no WhatsApp —
+                 uma faixa da cor da bolha embaixo de uma imagem sem texto é
+                 espaço gasto para dizer "14:32". */
+              const horaSobreposta = midiaCheia && !m.corpo;
 
               return (
                 <div key={m.id}>
@@ -325,7 +468,28 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
                         background: falhou ? "#ffdcdc" : saiu ? BOLHA_SAIDA : BOLHA_ENTRADA,
                         color: TEXTO,
                       }}
-                      className="max-w-[78%] rounded-2xl px-3 py-2 text-[12.5px] leading-relaxed shadow-[0_1px_1px_rgba(0,0,0,0.08)]"
+                      /*
+                       * A largura da bolha tem DOIS tetos, e vence o menor.
+                       *
+                       * Só a porcentagem não bastava: num monitor largo, 78%
+                       * da conversa são 700px de linha — o olho perde o começo
+                       * da linha seguinte, e a leitura de um recado curto vira
+                       * varredura. Tipografia tem medida boa, e ela é contada
+                       * em caracteres, não em porcentagem da janela.
+                       *
+                       * 380px dão ~55 caracteres nesse corpo, que é a medida
+                       * confortável — e é por volta disso que o WhatsApp
+                       * também para. No celular a porcentagem ainda manda: lá
+                       * 380px seriam a tela inteira.
+                       *
+                       * `min-w-0` é o que faz qualquer teto valer: sem ele,
+                       * item de flex tem `min-width: auto` e o conteúdo mais
+                       * largo (um link sem espaços) estica a bolha além do
+                       * limite escrito.
+                       */
+                      className={`relative min-w-0 max-w-[min(80%,380px)] overflow-hidden rounded-2xl text-[12.5px] leading-relaxed shadow-[0_1px_1px_rgba(0,0,0,0.08)] ${
+                        midiaCheia ? "p-0" : "px-3 py-2"
+                      }`}
                     >
                       {/*
                         O arquivo é buscado no WhatsApp na hora de mostrar — não
@@ -334,9 +498,21 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
                       */}
                       {m.tipo !== "TEXTO" && <MidiaMensagem mensagem={m} />}
 
-                      {m.corpo && <p className="whitespace-pre-wrap break-words">{m.corpo}</p>}
+                      {m.corpo && <TextoBolha texto={m.corpo} className={midiaCheia ? "px-3 pt-1.5" : ""} />}
 
-                      <p className="mt-1 flex items-center justify-end gap-1.5 text-[10px]" style={{ color: TEXTO_FRACO }}>
+                      <p
+                        className={`flex items-center justify-end gap-1.5 text-[10px] ${
+                          horaSobreposta
+                            ? "absolute bottom-1.5 right-1.5 rounded-full px-1.5 py-0.5"
+                            : midiaCheia
+                              ? "px-3 pb-1.5 pt-1"
+                              : "mt-1"
+                        }`}
+                        /* Por cima da foto, a hora precisa da própria sombra:
+                           o canto de uma imagem pode ser branco, preto ou o
+                           céu — e o cinza da bolha some em qualquer um deles. */
+                        style={horaSobreposta ? { background: "rgba(0,0,0,0.45)", color: "#ffffff" } : { color: TEXTO_FRACO }}
+                      >
                         {/* Quem respondeu, quando três pessoas atendem pelo
                             mesmo número. Só na saída: na entrada o autor é o
                             cliente, e o nome dele já está no cabeçalho. */}
@@ -357,13 +533,13 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
                         {saiu && CONFIRMACAO[m.status] && (
                           <Dica texto={CONFIRMACAO[m.status].dica}>
                             <span className="flex items-center">
-                              <Tiques tiques={CONFIRMACAO[m.status].tiques} azul={CONFIRMACAO[m.status].azul} />
+                              <Tiques tiques={CONFIRMACAO[m.status].tiques} azul={CONFIRMACAO[m.status].azul} cor={horaSobreposta ? "#ffffff" : undefined} />
                             </span>
                           </Dica>
                         )}
                       </p>
 
-                      {falhou && m.erro && <p className="mt-1 text-[10.5px]" style={{ color: "#b42318" }}>{m.erro}</p>}
+                      {falhou && m.erro && <p className={`text-[10.5px] ${midiaCheia ? "px-3 pb-1.5" : "mt-1"}`} style={{ color: "#b42318" }}>{m.erro}</p>}
                     </div>
                   </div>
                 </div>
@@ -416,38 +592,29 @@ const Conversa = ({ conversa, aoVoltar, aoMudar, podeEnviar }: Props) => {
       </div>
 
       {/*
-        O painel do cliente, ao LADO da conversa.
-        No celular ele toma a tela: 360px divididos entre conversa e painel não
-        servem a nenhum dos dois. No desktop os dois convivem, que é o ponto —
-        ler a produção e responder viram o mesmo gesto.
-      */}
-      {painel && (
-        <div className="absolute inset-0 z-20 bg-surface lg:static lg:z-auto lg:w-auto lg:bg-transparent">
-          <PainelCliente
-            conversa={conversa}
-            onFechar={() => setPainel(false)}
-            onAbrirNota={(pedidoId) => setNota({ id: pedidoId })}
-          />
-        </div>
-      )}
-
-      {/*
-        A nota, por cima — nova para este cliente, ou uma compra antiga aberta
-        pelo painel. `clienteId` só é passado quando há vínculo: sem cadastro a
-        nota abre em branco, e é o próprio fluxo dela que pede o cliente.
+        A nota, por cima — nova para este cliente, uma compra antiga aberta
+        pela ficha, ou um orçamento. O cliente vem de quem abriu: no caminho
+        normal ele já existe (foi cadastrado no próprio clique de vender), e
+        quando o cadastro falhou a nota abre em branco no campo do cliente e o
+        fluxo dela pede quem é.
       */}
       <Modal
         open={!!nota}
         onClose={() => setNota(null)}
-        title={nota?.id ? "Venda" : "Nova venda"}
+        title={nota?.orcamento ? "Novo orçamento" : nota?.id ? "Venda" : "Nova venda"}
         subtitle={conversa.nome}
         size="full"
       >
         {nota && (
           <Invoice
             id={nota.id}
-            clienteId={conversa.cliente_fk ?? undefined}
-            nome={conversa.cliente_fk ? conversa.nome : undefined}
+            /* A conversa vai junto: é ela que dá à nota o botão de mandar o
+               documento para o cliente assim que ele é gerado. Ver
+               `conversaId` em `Invoice`. */
+            conversaId={conversa.id}
+            modoOrcamento={nota.orcamento}
+            clienteId={nota.clienteId ?? ""}
+            nome={nota.clienteId ? nota.nome : undefined}
             onSaved={() => {
               setNota(null);
               aoMudar();

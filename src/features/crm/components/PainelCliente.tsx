@@ -54,9 +54,19 @@ type Props = {
   onFechar: () => void;
   /** Abre a nota de uma venda existente, por cima — ver `Conversa`. */
   onAbrirNota: (pedidoId: string) => void;
+  /**
+   * O painel dentro de OUTRA moldura — a janela da ficha (ver `CartaoContato`).
+   *
+   * Sem isto ele desenha a coluna de 320px com borda à esquerda e o próprio
+   * cabeçalho: dentro do modal, viraria uma faixa estreita encostada na
+   * borda, com o nome do contato dito duas vezes e dois botões de fechar.
+   * Embutido, ele é só o conteúdo — quem dá moldura, título e saída é a
+   * janela.
+   */
+  embutida?: boolean;
 };
 
-const PainelCliente = ({ conversa, onFechar, onAbrirNota }: Props) => {
+const PainelCliente = ({ conversa, onFechar, onAbrirNota, embutida = false }: Props) => {
   const [cliente, setCliente] = useState<ClientType | null>(null);
   const [producao, setProducao] = useState<LinhaProducao[]>([]);
   const [compras, setCompras] = useState<PedidoClienteType[]>([]);
@@ -105,7 +115,14 @@ const PainelCliente = ({ conversa, onFechar, onAbrirNota }: Props) => {
   const contato = cliente?.contato;
 
   return (
-    <aside className="flex h-full min-h-0 w-full flex-col border-l border-fg/[0.06] bg-surface/40 lg:w-[320px] lg:shrink-0">
+    <aside
+      className={
+        embutida
+          ? "flex h-full min-h-0 w-full flex-col"
+          : "flex h-full min-h-0 w-full flex-col border-l border-fg/[0.06] bg-surface/40 lg:w-[320px] lg:shrink-0"
+      }
+    >
+      {!embutida && (
       <header className="flex shrink-0 items-center gap-2 border-b border-fg/[0.06] px-3 py-3">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-accent/25 bg-accent/[0.12] text-accent-soft">
           {conversa.foto ? <img src={conversa.foto} alt="" className="h-full w-full object-cover" /> : <UserRound size={14} />}
@@ -122,13 +139,14 @@ const PainelCliente = ({ conversa, onFechar, onAbrirNota }: Props) => {
           <X size={14} />
         </button>
       </header>
+      )}
 
       {carregando ? (
         <div className="flex flex-1 items-center justify-center text-faint">
           <Loader2 size={18} className="animate-spin" />
         </div>
       ) : (
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+        <div className={`min-h-0 flex-1 space-y-4 overflow-y-auto ${embutida ? "p-0" : "p-3"}`}>
           {/* ---------------- Quem é ---------------- */}
           <section>
             <p className="mb-1.5 text-[10.5px] uppercase tracking-[0.1em] text-faint">Cadastro</p>
@@ -165,8 +183,8 @@ const PainelCliente = ({ conversa, onFechar, onAbrirNota }: Props) => {
               /* Sem cadastro não é erro: é o estado normal de quem acabou de
                  escrever. O botão de cadastrar está no cabeçalho da conversa. */
               <p className="rounded-xl border border-fg/[0.06] bg-fg/[0.02] p-2.5 text-[11.5px] leading-relaxed text-mist">
-                Esta pessoa ainda não tem cadastro. Use <span className="text-ink">Cadastrar</span>, ali em cima, para
-                criar a ficha dela com o que a conversa já sabe.
+                Esta pessoa ainda não tem cadastro. Use <span className="text-ink">Cadastrar</span>, no cabeçalho da
+                conversa, para criar a ficha dela com o que a conversa já sabe.
               </p>
             )}
           </section>

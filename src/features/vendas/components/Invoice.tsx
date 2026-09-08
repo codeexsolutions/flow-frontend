@@ -26,8 +26,11 @@ import BotaoRecibo from "@/shared/ui/BotaoRecibo";
 import FundoNota from "@/shared/ui/FundoNota";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import OrcamentoService from "@/features/orcamentos/services/orcamento.service";
+import CrmService from "@/features/crm/services/crm.service";
+import { gerarBlobNota } from "@/shared/ui/DownloadButton";
+import { gerarPdfNota } from "@/shared/ui/downloadNota";
 
-import { Save, Trash2, QrCode, Loader2, FileText, Copy, Check } from "lucide-react";
+import { Save, Trash2, QrCode, Loader2, FileText, Copy, Check, Image as ImageIcon } from "lucide-react";
 import { Skeleton, SkeletonInvoiceCard, SkeletonInvoiceHeader, SkeletonInvoiceRow, SkeletonSummary } from "@/shared/ui/skeleton";
 
 import { generatePixPayload, getQrCodeDataUrl } from "@/shared/utils/pix";
@@ -51,6 +54,15 @@ type InvoiceProps = {
   clienteId?: string;
   nome?: string;
   onSaved?: () => void;
+  /**
+   * A conversa de onde esta nota nasceu.
+   *
+   * Presente, a nota ganha o gesto que faltava: assim que ela é gerada, o
+   * documento vai para o cliente pelo WhatsApp — em PNG ou PDF —, na mesma
+   * conversa em que a venda foi combinada. Ausente (PDV, lista de vendas), a
+   * nota se comporta como sempre.
+   */
+  conversaId?: string;
   /** Modo orçamento: a mesma nota, mas com título "Orçamento", sem pagamento
       e com "Gerar orçamento" no lugar de "Gerar Nota". */
   modoOrcamento?: boolean;
@@ -167,9 +179,20 @@ const STATUS_STYLE: Record<string, string> = {
 
 
 
-const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = false, itensIniciais, orcamentoId, converterOrcamentoId }: InvoiceProps) => {
+const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = false, itensIniciais, orcamentoId, converterOrcamentoId, conversaId }: InvoiceProps) => {
   const alert = useAlert();
   const notaRef = useRef<HTMLDivElement>(null);
+
+  /*
+   * O envio da nota pelo WhatsApp.
+   *
+   * `perguntarEnvio` acende sozinho quando a nota nasce DENTRO de uma conversa
+   * — é o instante em que a pergunta faz sentido, e é o instante em que a
+   * pessoa está com o cliente do outro lado esperando o documento. Fora da
+   * conversa (`conversaId` ausente) nada disto existe.
+   */
+  const [perguntarEnvio, setPerguntarEnvio] = useState(false);
+  const [enviandoWhats, setEnviandoWhats] = useState<"png" | "pdf" | null>(null);
 
   /* O id começa na prop (nota existente) e pode nascer aqui dentro: ao criar
      uma nota nova, o `setPedidoId` é preenchido com o id devolvido pela API —
@@ -747,6 +770,55 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
     });
   };
 
+  /**
+   * Manda a nota para o cliente, pela conversa.
+   *
+   * O documento sai do MESMO nó que o download usa (`notaRef`), então o que o
+   * cliente recebe é exatamente o que a tela mostra. PNG abre como foto na
+   * conversa — o cliente vê sem baixar, e é o que ele quer no celular; PDF vai
+   * como anexo com nome, que é o que serve para guardar e imprimir.
+   *
+   * O base64 vai sem o prefixo `data:`: o WhatsApp espera o conteúdo cru, e o
+   * prefixo junto entrega um arquivo corrompido do outro lado.
+   */
+  const enviarNotaWhatsapp = async (formato: "png" | "pdf") => {
+    if (!conversaId) return;
+
+    setEnviandoWhats(formato);
+
+    try {
+      const png = await gerarBlobNota(notaRef);
+      const empresa = enterprise?.nomeFantasia ?? "nota";
+
+      const { arquivo, nome: nomeArquivo } =
+        formato === "pdf"
+          ? await gerarPdfNota(png, empresa)
+          : { arquivo: png, nome: `${modoOrcamento ? "orcamento" : "nota"}-${empresa}.png` };
+
+      const base64 = await new Promise<string>((pronto, falhou) => {
+        const leitor = new FileReader();
+
+        leitor.onerror = () => falhou(new Error("Não foi possível ler o arquivo."));
+        leitor.onload = () => pronto(String(leitor.result).split(",")[1] ?? "");
+        leitor.readAsDataURL(arquivo);
+      });
+
+      await CrmService.enviarArquivo(conversaId, {
+        base64,
+        mime: formato === "pdf" ? "application/pdf" : "image/png",
+        nome: nomeArquivo,
+        legenda: modoOrcamento ? "Segue o orçamento. Qualquer dúvida é só chamar!" : "Segue a nota da sua compra. Obrigado!",
+      });
+
+      setPerguntarEnvio(false);
+      alert.success("Enviado!", "A nota já está na conversa do cliente.");
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível enviar pelo WhatsApp."));
+    } finally {
+      setEnviandoWhats(null);
+    }
+  };
+
   const handleSalvar = async () => {
     if (!clienteId) {
       alert.warning("Sem cliente", "Selecione um cliente para emitir a nota.");
@@ -813,6 +885,10 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
         if (novoId) setPedidoId(novoId);
         setFocarPagamento(true);
         alert.success("Nota criada!", "A venda foi registrada. Agora registre o pagamento.");
+
+        /* Nasceu dentro de uma conversa: o documento tem para onde ir agora
+           mesmo — ver `enviarNotaWhatsapp`. */
+        if (conversaId) setPerguntarEnvio(true);
 
         /*
          * A proposta some agora que a venda existe.
@@ -1002,6 +1078,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   const valResumo = "mt-1 block truncate text-sm text-ink";
 
   return (
+    <>
     /*
      * `min-h-0` em toda a corrente de altura.
      *
@@ -1817,6 +1894,59 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
         )}
       </div>
     </div>
+
+      {/*
+        A nota recém-gerada, a caminho do cliente.
+        Só existe quando a venda nasceu dentro de uma conversa (`conversaId`).
+        Duas saídas de verdade — foto ou documento — e a terceira, que é não
+        mandar: quem gerou a nota para conferir não deve ser obrigado a enviar.
+      */}
+      <Modal
+        open={perguntarEnvio}
+        onClose={() => !enviandoWhats && setPerguntarEnvio(false)}
+        title="Enviar para o cliente?"
+        subtitle="Pelo WhatsApp, na mesma conversa"
+        size="sm"
+      >
+        <div className="flex flex-col gap-3">
+          <p className="text-[12.5px] leading-relaxed text-mist">
+            A nota que você acabou de gerar vai como está na tela. <span className="text-ink">Foto</span> o cliente vê
+            sem baixar nada — é o que serve no celular. <span className="text-ink">PDF</span> ele guarda e imprime.
+          </p>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={!!enviandoWhats}
+              onClick={() => void enviarNotaWhatsapp("png")}
+              className="focus-ring flex min-h-[64px] cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-fg/[0.09] text-[12.5px] text-mist transition-colors hover:border-accent/50 hover:text-ink disabled:opacity-50"
+            >
+              {enviandoWhats === "png" ? <Loader2 size={16} className="animate-spin text-accent" /> : <ImageIcon size={16} className="text-accent-soft" />}
+              Enviar como foto
+            </button>
+
+            <button
+              type="button"
+              disabled={!!enviandoWhats}
+              onClick={() => void enviarNotaWhatsapp("pdf")}
+              className="focus-ring flex min-h-[64px] cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-fg/[0.09] text-[12.5px] text-mist transition-colors hover:border-accent/50 hover:text-ink disabled:opacity-50"
+            >
+              {enviandoWhats === "pdf" ? <Loader2 size={16} className="animate-spin text-accent" /> : <FileText size={16} className="text-accent-soft" />}
+              Enviar como PDF
+            </button>
+          </div>
+
+          <button
+            type="button"
+            disabled={!!enviandoWhats}
+            onClick={() => setPerguntarEnvio(false)}
+            className="focus-ring cursor-pointer text-center text-[12px] text-faint transition-colors hover:text-ink disabled:opacity-50"
+          >
+            Agora não
+          </button>
+        </div>
+      </Modal>
+    </>
   );
 };
 

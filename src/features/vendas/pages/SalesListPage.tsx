@@ -7,7 +7,7 @@ import Invoice from "@/features/vendas/components/Invoice";
 import NotaResumo from "@/features/vendas/components/NotaResumo";
 import { ControlesPagina, ListaCabecalho, ListaFantasmas, ListaLinha, TabelaCard, TabelaVazia } from "@/shared/ui/DataTable";
 import { AbasTabela } from "@/shared/ui/AbasTabela";
-import ListaContas from "@/features/financeiro/components/ListaContas";
+import AgendaCobrancas from "@/features/vendas/components/AgendaCobrancas";
 import ContaForm from "@/features/financeiro/components/ContaForm";
 import useContasStore from "@/features/financeiro/store/contas.store";
 import Select from "@/shared/ui/Select";
@@ -29,6 +29,9 @@ import { baixarNotaPdf } from "@/shared/ui/downloadNota";
 import MenuDownloadNota from "@/shared/ui/MenuDownloadNota";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import ContaService, { type NovaConta, type PrazoVenda } from "@/features/financeiro/services/conta.service";
+import ListaOrcamentos from "@/features/orcamentos/components/ListaOrcamentos";
+import { filtrarOrcamentos } from "@/features/orcamentos/utils/fila";
+import { type Orcamento, type StatusOrcamento } from "@/features/orcamentos/services/orcamento.service";
 import { dataBr, prazo } from "@/shared/utils/parcelas";
 
 /**
@@ -64,7 +67,8 @@ const ORDEM_FILTRO: StatusFiltro[] = ["todos", "pago", "pendente", "vencida", "c
 const TITULO_ABA: Record<AbaVenda, string> = {
   "visao-geral": "Visão geral",
   vendas: "Todas as vendas",
-  "a-prazo": "Vendas a prazo",
+  "a-prazo": "Carnê de cobranças",
+  orcamentos: "Orçamentos",
 };
 
 /**
@@ -91,11 +95,18 @@ const ALTURA_CABECALHO = 40;
 /**
  * As três listas da seção — e o panorama.
  *
- * "A prazo" veio do Financeiro, onde se chamava "A receber". Ela nunca foi
+ * "Carnê" veio do Financeiro, onde se chamava "A receber". Ela nunca foi
  * assunto de caixa: é o pedaço não pago das notas que estão logo acima, e a
  * pergunta que ela responde — "quem ainda me deve?" — se termina abrindo a
  * venda, não o livro-caixa. No financeiro ela obrigava a atravessar a tela
  * para conferir a nota; aqui, a nota está na aba ao lado.
+ *
+ * O nome mudou junto com a tela. "A prazo" descrevia a MODALIDADE da venda, e
+ * a aba não lista modalidades: lista as cobranças que vencem. Carnê é a
+ * palavra que o comércio já usa para isso — a caderneta de quem paga em qual
+ * dia —, e é o que a aba passou a mostrar: o calendário do mês, com os
+ * clientes de cada dia e os dois botões da cobrança (avisar e dar baixa) na
+ * própria linha. Ver `AgendaCobrancas`.
  *
  * Orçamento troca de rota (a lista inteira mora em `/pdv/orcamentos`), por
  * isso não entra na barra animada: a pílula não desliza entre telas.
@@ -118,7 +129,15 @@ const ALTURA_CABECALHO = 40;
  * apenas as próprias vendas veria o próprio número com cara de total da loja.
  * Ver `veVendasDeTodos`.
  */
-type AbaVenda = "visao-geral" | "vendas" | "a-prazo";
+type AbaVenda = "visao-geral" | "vendas" | "a-prazo" | "orcamentos";
+
+/** As situações que a barra do cartão oferece para as propostas. */
+const FILTROS_ORCAMENTO: { id: "todos" | StatusOrcamento; label: string }[] = [
+  { id: "todos", label: "Todas" },
+  { id: "ABERTO", label: "Aguardando" },
+  { id: "APROVADO", label: "Aprovadas" },
+  { id: "RECUSADO", label: "Recusadas" },
+];
 
 const SalesList = () => {
   const navigate = useNavigate();
@@ -129,6 +148,11 @@ const SalesList = () => {
      dentro do panorama, porque quem o desenha na barra é este cartão. */
   const [periodo, setPeriodo] = useState<Periodo>(PERIODO_TUDO);
   const [novaConta, setNovaConta] = useState(false);
+
+  /* As propostas: a lista as carrega e devolve por `onCarregado` — o cartão
+     precisa delas só para as contagens da aba e do seletor. */
+  const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
+  const [filtroOrcamento, setFiltroOrcamento] = useState<"todos" | StatusOrcamento>("todos");
   const [salvandoConta, setSalvandoConta] = useState(false);
 
   const contas = useContasStore((s) => s.contas);
@@ -351,6 +375,33 @@ const SalesList = () => {
     [contas],
   );
 
+  /**
+   * Os clientes que a busca sugere na aba de propostas.
+   *
+   * Saem dos próprios orçamentos, e não da base de clientes, pelo mesmo motivo
+   * da lista de vendas: sugerir quem nunca pediu proposta leva a zero linhas.
+   */
+  const clientesDasPropostas = useMemo(() => {
+    const mapa = new Map<string, number>();
+
+    for (const o of orcamentos) {
+      const nome = o.clienteNome?.trim();
+      if (nome) mapa.set(nome, (mapa.get(nome) ?? 0) + 1);
+    }
+
+    return [...mapa.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([nome, n]) => ({ id: nome, label: nome, sub: `${n} ${n === 1 ? "proposta" : "propostas"}` }));
+  }, [orcamentos]);
+
+  /* A fila de propostas — a mesma regra da lista, para o número não prometer
+     linhas que ela não mostra (`CONVERTIDO` não é fila de ninguém). */
+  const orcamentosNaFila = useMemo(() => filtrarOrcamentos(orcamentos, "", "todos"), [orcamentos]);
+  const orcamentosVisiveis = useMemo(
+    () => filtrarOrcamentos(orcamentos, search, filtroOrcamento),
+    [orcamentos, search, filtroOrcamento],
+  );
+
   const criarConta = async (dados: NovaConta) => {
     setSalvandoConta(true);
 
@@ -397,14 +448,26 @@ const SalesList = () => {
     <div className="flex min-h-0 flex-1 flex-col">
       <TabelaCard
         title={TITULO_ABA[aba]}
-        icon={aba === "visao-geral" ? <LayoutDashboard size={15} /> : aba === "vendas" ? <ShoppingCart size={15} /> : <CalendarClock size={15} />}
+        icon={
+          aba === "visao-geral" ? <LayoutDashboard size={15} />
+            : aba === "vendas" ? <ShoppingCart size={15} />
+              : aba === "orcamentos" ? <FileText size={15} />
+                : <CalendarClock size={15} />
+        }
         /* O panorama não tem contagem: os quatro cartões do topo já são os
            números, e "N registros" sobre eles não diria de quê. */
-        count={aba === "visao-geral" ? undefined : aba === "vendas" ? vendasFiltradas.length : parcelasEmAberto}
+        count={
+          aba === "visao-geral" ? undefined
+            : aba === "vendas" ? vendasFiltradas.length
+              : aba === "orcamentos" ? orcamentosVisiveis.length
+                : parcelasEmAberto
+        }
         countLabel={
           aba === "vendas"
             ? `${vendasFiltradas.length === 1 ? "nota" : "notas"}${vendasFiltradas.length !== vendas.length ? ` de ${vendas.length}` : ""}`
-            : "parcelas em aberto"
+            : aba === "orcamentos"
+              ? `${orcamentosVisiveis.length === 1 ? "proposta" : "propostas"}${orcamentosVisiveis.length !== orcamentosNaFila.length ? ` de ${orcamentosNaFila.length}` : ""}`
+              : "parcelas em aberto"
         }
         /* A largura mínima de 980px é das COLUNAS. Os painéis são fluidos e
            herdariam dela uma barra de rolagem horizontal no notebook. */
@@ -412,14 +475,25 @@ const SalesList = () => {
         /* No celular os painéis empurram o cartão em vez de rolar por dentro
            dele — ver `corpoLivre`. As listas continuam paginando. */
         corpoLivre={aba === "visao-geral"}
+        /* O carnê é uma peça só e divide a altura do corpo entre as semanas —
+           ver `corpoCheio`. */
+        corpoCheio={aba === "a-prazo"}
         bodyRef={bodyRef}
-        onAdd={aba === "a-prazo" ? () => setNovaConta(true) : () => navigate("/pdv", { state: { abrir: "venda" } })}
-        addLabel={aba === "a-prazo" ? "Novo acordo" : "Nova venda"}
+        onAdd={
+          aba === "a-prazo" ? () => setNovaConta(true)
+            : aba === "orcamentos" ? () => navigate("/pdv", { state: { abrir: "orcamento" } })
+              : () => navigate("/pdv", { state: { abrir: "venda" } })
+        }
+        addLabel={aba === "a-prazo" ? "Novo acordo" : aba === "orcamentos" ? "Novo orçamento" : "Nova venda"}
         /*
-         * Duas abas com a pílula que desliza (a mesma peça do estoque e do
-         * PDV) e uma terceira porta que TROCA DE ROTA — a lista completa de
-         * orçamentos mora em `/pdv/orcamentos`, e pílula não desliza entre
-         * telas. Por isso ela é um botão à parte, ao lado da barra.
+         * Quatro abas na MESMA barra — nenhuma delas troca de rota.
+         *
+         * "Orçamentos" era um botão à parte que levava para `/pdv/orcamentos`:
+         * quem estava conferindo notas caía no balcão, perdia a aba, o filtro
+         * e a busca, e voltava pelo histórico. Ver a proposta é o mesmo
+         * trabalho de ver a nota, e agora é a mesma tela — a lista de lá entra
+         * aqui como peça (ver `ListaOrcamentos`). A página em `/pdv/orcamentos`
+         * continua de pé para quem chega por link ou pelo menu do balcão.
          */
         navegacao={
           <>
@@ -432,21 +506,15 @@ const SalesList = () => {
                    não mais uma lista com N itens. */
                 ...(veTudo ? [{ id: "visao-geral" as const, label: "Visão geral", icone: <LayoutDashboard size={13} /> }] : []),
                 { id: "vendas", label: "Vendas", icone: <ShoppingCart size={13} />, contagem: vendasFiltradas.length },
-                { id: "a-prazo", label: "A prazo", icone: <CalendarClock size={13} />, contagem: parcelasEmAberto },
+                { id: "a-prazo", label: "Carnê", icone: <CalendarClock size={13} />, contagem: parcelasEmAberto },
+                { id: "orcamentos", label: "Orçamentos", icone: <FileText size={13} />, contagem: orcamentosNaFila.length },
               ]}
             />
-
-            <button
-              type="button"
-              onClick={() => navigate("/pdv/orcamentos")}
-              className="focus-ring relative flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[12.5px] text-faint transition-colors hover:text-ink"
-            >
-              <FileText size={13} />
-              Orçamentos
-            </button>
           </>
         }
-        acoes={
+        /* Na aba das propostas o botão principal já é "Novo orçamento" — o
+           atalho amarelo ao lado seria o mesmo destino duas vezes. */
+        acoes={aba === "orcamentos" ? undefined : (
           <button
             type="button"
             onClick={() => navigate("/pdv", { state: { abrir: "orcamento" } })}
@@ -455,12 +523,41 @@ const SalesList = () => {
             <FileText className="h-4 w-4" />
             Novo orçamento
           </button>
-        }
+        )}
         controles={aba === "visao-geral" ? (
           /* O período governa TUDO o que está abaixo dele — os cartões, a curva
              e o ranking falam todos do mesmo recorte —, por isso fica na barra
              do cartão e não dentro de um dos painéis. */
           <SeletorPeriodo valor={periodo} onChange={setPeriodo} meses={mesesDoSeletor} comHoje />
+        ) : aba === "orcamentos" ? (
+          /* A mesma dupla da aba de vendas — buscar quem e recortar por
+             situação —, para que trocar de aba não troque de gramática. A
+             busca é o MESMO campo: aqui ela casa com o cliente e com o número
+             da proposta (ver `filtrarOrcamentos`). */
+          <>
+            <BuscaSugestoes
+              valor={search}
+              onValor={setSearch}
+              sugestoes={clientesDasPropostas}
+              onEscolher={(s) => setSearch(s.label)}
+              placeholder="Buscar cliente ou nº…"
+              aria-label="Buscar orçamento por cliente ou número"
+              className="w-[230px] shrink-0"
+            />
+
+            <Select
+              valor={filtroOrcamento}
+              onChange={(v) => setFiltroOrcamento(v as "todos" | StatusOrcamento)}
+              aria-label="Filtrar por situação da proposta"
+              icone={<ListFilter size={14} />}
+              className="w-[168px] shrink-0"
+              opcoes={FILTROS_ORCAMENTO.map((f) => ({
+                valor: f.id,
+                label: f.label,
+                contagem: filtrarOrcamentos(orcamentos, search, f.id).length,
+              }))}
+            />
+          </>
         ) : aba !== "vendas" ? undefined : (
           <>
             {/* Busca e filtros no mesmo grupo: as três coisas restringem a
@@ -502,10 +599,17 @@ const SalesList = () => {
             />
           </>
         )}
-        /* Sem rodapé no panorama: "total em aberto" já é um dos cartões lá
-           dentro, e a paginação não tem o que paginar — a faixa só tiraria
-           altura dos gráficos. */
-        footer={aba === "visao-geral" ? undefined : (
+        /*
+         * O rodapé é da LISTA DE NOTAS — só ela tem os dois números que ele
+         * mostra.
+         *
+         * No panorama, "total em aberto" já é um dos cartões lá dentro e não
+         * há o que paginar. No carnê é pior: a faixa trazia o total das notas
+         * e as setas de página numa aba sem notas e sem páginas — controle
+         * morto ocupando a altura que as semanas do calendário precisam. O
+         * total do mês e o das atrasadas o próprio calendário diz.
+         */
+        footer={aba !== "vendas" ? undefined : (
           <>
             <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span className="flex items-center gap-1.5">
@@ -545,12 +649,15 @@ const SalesList = () => {
           <div className="p-3">
             <SalesOverviewPage periodo={periodo} />
           </div>
+        ) : aba === "orcamentos" ? (
+          /* A lista de propostas, sem moldura: a moldura é a do cartão. É a
+             MESMA peça de `/pdv/orcamentos`. */
+          <ListaOrcamentos busca={search} filtro={filtroOrcamento} onCarregado={setOrcamentos} />
         ) : aba === "a-prazo" ? (
-          /* A parcela tem botão de receber, de recibo e de cancelar, e essa
-             lógica já mora na `ListaContas`. Aqui ela entra sem moldura. */
-          <ListaContas
-            embutida
-            tipo="RECEBER"
+          /* O carnê: o calendário do mês com quem paga em cada dia, e a
+             cobrança do dia escolhido ao lado — avisar e dar baixa sem sair
+             daqui. Ver `AgendaCobrancas`. */
+          <AgendaCobrancas
             contas={contas.filter((c) => c.tipo === "RECEBER")}
             carregando={carregandoContas}
             onRecarregar={() => void fetchContas(true)}

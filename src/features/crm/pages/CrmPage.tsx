@@ -3,6 +3,7 @@ import { Inbox, KanbanSquare, Loader2, MessageCircle, Search, Settings2, UserRou
 
 import CrmService, { type Conexao, type Conversa, type Etapa } from "@/features/crm/services/crm.service";
 import ConexaoWhatsapp from "@/features/crm/components/ConexaoWhatsapp";
+import AvisoTeste from "@/features/crm/components/AvisoTeste";
 import ConversaAberta from "@/features/crm/components/Conversa";
 import QuadroFunil from "@/features/crm/components/QuadroFunil";
 import { useAlert } from "@/shared/ui/Alert";
@@ -10,6 +11,7 @@ import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler"
 import { useSincronizacao } from "@/shared/realtime/useSincronizacao";
 import { useIsMobile } from "@/shared/hooks/useIsMobile";
 import { PageScreen } from "@/shared/ui/PageShell";
+import useNaoLidas from "@/features/crm/store/naoLidas.store";
 
 /**
  * O CRM de WhatsApp.
@@ -37,6 +39,18 @@ import { PageScreen } from "@/shared/ui/PageShell";
 
 type Visao = "caixa" | "funil";
 
+/**
+ * A última caixa de entrada que esta aba viu.
+ *
+ * A tela é remontada toda vez que se entra em WhatsApp pelo menu, e sem isto
+ * a volta era sempre a mesma: tela em branco com um rodopio no meio, mesmo
+ * tendo saído dela há dez segundos. Guardado aqui fora, o retorno mostra a
+ * lista de antes na hora e o servidor é consultado em silêncio por trás.
+ *
+ * Memória de aba: um F5 esvazia, e o servidor continua sendo quem manda.
+ */
+const ultimaCaixa: { conversas: Conversa[]; etapas: Etapa[] } = { conversas: [], etapas: [] };
+
 /** Toast no canto, como nas planilhas: esta tela também é de digitar. */
 const TOAST = { position: "bottom-right" as const, timer: 4000 };
 
@@ -45,10 +59,11 @@ const CrmPage = () => {
   const celular = useIsMobile();
 
   const [conexao, setConexao] = useState<Conexao | null>(null);
-  const [etapas, setEtapas] = useState<Etapa[]>([]);
-  const [conversas, setConversas] = useState<Conversa[]>([]);
+  const [etapas, setEtapas] = useState<Etapa[]>(ultimaCaixa.etapas);
+  const [conversas, setConversas] = useState<Conversa[]>(ultimaCaixa.conversas);
 
-  const [carregando, setCarregando] = useState(true);
+  /* Só quem chega sem nada em mãos vê o carregamento — ver `ultimaCaixa`. */
+  const [carregando, setCarregando] = useState(ultimaCaixa.conversas.length === 0);
   const [visao, setVisao] = useState<Visao>("caixa");
   const [busca, setBusca] = useState("");
   const [abertaId, setAbertaId] = useState<string | null>(null);
@@ -85,6 +100,14 @@ const CrmPage = () => {
     try {
       const [lista, funil] = await Promise.all([CrmService.conversas(), CrmService.etapas()]);
 
+      ultimaCaixa.conversas = lista;
+      ultimaCaixa.etapas = funil;
+
+      /* O selo do menu vem desta mesma lista: abrir uma conversa zera as não
+         lidas dela no servidor, e o número lá em cima cai no mesmo instante,
+         sem uma segunda viagem dizer o que esta já disse. */
+      useNaoLidas.getState().definir(lista.reduce((acc, c) => acc + (Number(c.nao_lidas) || 0), 0));
+
       setConversas(lista);
       setEtapas(funil);
     } catch (err) {
@@ -96,7 +119,9 @@ const CrmPage = () => {
 
   useEffect(() => {
     void carregarConexao();
-    void carregarDados();
+    /* Com a lista de antes na tela, a recarga da volta é silenciosa: trocá-la
+       por um rodopio para redesenhar as mesmas linhas é piscada pura. */
+    void carregarDados(ultimaCaixa.conversas.length > 0);
   }, [carregarConexao, carregarDados]);
 
   /* Mensagem nova chega sem ninguém pedir — ver a nota no topo. Silenciosa,
@@ -113,11 +138,16 @@ const CrmPage = () => {
        — o arrasto pareceria não ter funcionado. */
     const antes = conversas;
 
-    setConversas((c) => c.map((x) => (x.id === conversaId ? { ...x, etapa_fk: etapaId } : x)));
+    setConversas((c) => {
+      const nova = c.map((x) => (x.id === conversaId ? { ...x, etapa_fk: etapaId } : x));
+      ultimaCaixa.conversas = nova;
+      return nova;
+    });
 
     try {
       await CrmService.alterarConversa(conversaId, { etapaId });
     } catch (err) {
+      ultimaCaixa.conversas = antes;
       setConversas(antes);
       avisar(err, "Não foi possível mover a conversa.");
     }
@@ -149,8 +179,10 @@ const CrmPage = () => {
      entrada sem WhatsApp conectado não tem o que mostrar. */
   if (!carregando && !conectado && !mostrarConexao) {
     return (
-      <PageScreen title="WhatsApp" subtitle="Converse com seus clientes pelo número da loja" icon={<MessageCircle />} corpoCheio>
-      <div className="flex h-full items-center justify-center p-6">
+      <PageScreen title="WhatsApp" subtitle="Em testes · converse com seus clientes pelo número da loja" icon={<MessageCircle />} corpoCheio>
+      <div className="flex h-full flex-col">
+      <AvisoTeste />
+      <div className="flex flex-1 items-center justify-center p-6">
         <div className="w-full max-w-md">
           <ConexaoWhatsapp conexao={conexao} aoAtualizar={() => void carregarConexao()} />
 
@@ -168,6 +200,7 @@ const CrmPage = () => {
           )}
         </div>
       </div>
+      </div>
       </PageScreen>
     );
   }
@@ -178,62 +211,71 @@ const CrmPage = () => {
   return (
     <PageScreen
       title="WhatsApp"
-      subtitle={conectado ? "Caixa de entrada e funil" : "Converse com seus clientes pelo número da loja"}
+      subtitle={conectado ? "Em testes · caixa de entrada e funil" : "Em testes · converse com seus clientes pelo número da loja"}
       icon={<MessageCircle />}
       corpoCheio
+      /*
+       * Os controles moram no CABEÇALHO da tela, não numa faixa abaixo dele.
+       *
+       * Eram uma barra própria: um vão vazio à esquerda, as pílulas Caixa/Funil
+       * no meio e o botão do WhatsApp na direita, tudo entre o cabeçalho e a
+       * lista. Uma segunda barra de comando empilhada na primeira — 50 px de
+       * altura tirados justamente da tela em que a conversa e a lista brigam
+       * por espaço, para mostrar dois controles que o cabeçalho já tinha lugar
+       * para receber (ver `actions` em `HeaderPage`).
+       */
+      actions={
+        <>
+          {/* Caixa ⇄ Funil: as MESMAS conversas, em duas leituras. Mesma
+              decisão do Tabela ⇄ Backlog das planilhas — é forma de olhar o
+              que já está aberto, não destino de menu. */}
+          <div className="glass-subtle flex h-[34px] shrink-0 items-center gap-1 rounded-xl p-1">
+            {(
+              [
+                { id: "caixa", label: "Caixa", icone: <Inbox size={14} /> },
+                { id: "funil", label: "Funil", icone: <KanbanSquare size={14} /> },
+              ] as const
+            ).map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => setVisao(v.id)}
+                aria-pressed={visao === v.id}
+                className={`focus-ring flex h-full cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[12px] transition-colors ${
+                  visao === v.id ? "bg-accent text-white shadow-glow" : "text-mist hover:text-ink"
+                }`}
+              >
+                {v.icone}
+                <span className="hidden sm:inline">{v.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* O estado da conexão vira botão: é onde se reconecta quando cai, e
+              a bolinha diz se está no ar sem ocupar uma linha de texto. Sem o
+              rótulo "WhatsApp" — o título ao lado já é essa palavra. */}
+          <button
+            type="button"
+            onClick={() => setMostrarConexao((v) => !v)}
+            aria-pressed={mostrarConexao}
+            title={conectado ? `Conectado${conexao?.numero ? ` — ${conexao.numero}` : ""}` : "WhatsApp desconectado — clique para conectar"}
+            aria-label="Conexão do WhatsApp"
+            className={`focus-ring flex h-[34px] shrink-0 cursor-pointer items-center gap-2 rounded-xl border px-2.5 transition-colors ${
+              mostrarConexao ? "border-accent/50 bg-accent/[0.08] text-ink" : "border-fg/[0.08] text-mist hover:border-accent/40 hover:text-ink"
+            }`}
+          >
+            <span className={`h-2 w-2 rounded-full ${conectado ? "bg-success" : "bg-danger"}`} />
+            <Settings2 size={14} />
+          </button>
+        </>
+      }
     >
     <div className="flex h-full min-h-0 flex-col">
-      {/* Barra de controles */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-fg/[0.06] px-3 py-2.5">
-        {/*
-          A busca saiu daqui e foi para dentro da lista de contatos.
-          Ela procura CONVERSA — nome e telefone —, e na barra de cima parecia
-          buscar a tela inteira: quem estava no funil digitava ali esperando
-          filtrar cartão, e quem estava lendo uma conversa esperava achar
-          mensagem. Junto da lista, o que ela faz fica óbvio.
-        */}
-        <div className="flex-1" />
+      {/* O aviso de versão de testes vem ANTES de tudo, inclusive do painel de
+          conexão: ele é sobre a tela inteira, não sobre um pedaço dela. */}
+      <AvisoTeste />
 
-        {/* Caixa ⇄ Funil: as MESMAS conversas, em duas leituras. Mesma
-            decisão do Tabela ⇄ Backlog das planilhas — é forma de olhar o que
-            já está aberto, não destino de menu. */}
-        <div className="glass-subtle flex h-[38px] shrink-0 items-center gap-1 rounded-xl p-1">
-          {(
-            [
-              { id: "caixa", label: "Caixa", icone: <Inbox size={14} /> },
-              { id: "funil", label: "Funil", icone: <KanbanSquare size={14} /> },
-            ] as const
-          ).map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              onClick={() => setVisao(v.id)}
-              aria-pressed={visao === v.id}
-              className={`focus-ring flex h-full cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[12px] transition-colors ${
-                visao === v.id ? "bg-accent text-white shadow-glow" : "text-mist hover:text-ink"
-              }`}
-            >
-              {v.icone}
-              <span className="hidden sm:inline">{v.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* O estado da conexão vira botão: é onde se reconecta quando cai, e
-            a bolinha diz se está no ar sem ocupar uma linha de texto. */}
-        <button
-          type="button"
-          onClick={() => setMostrarConexao((v) => !v)}
-          title={conectado ? `Conectado${conexao?.numero ? ` — ${conexao.numero}` : ""}` : "WhatsApp desconectado"}
-          className="focus-ring flex h-[38px] shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-fg/[0.08] px-3 text-[12px] text-mist transition-colors hover:border-accent/40 hover:text-ink"
-        >
-          <span className={`h-2 w-2 rounded-full ${conectado ? "bg-success" : "bg-danger"}`} />
-          <Settings2 size={14} />
-          <span className="hidden md:inline">WhatsApp</span>
-        </button>
-      </div>
-
-      {/* O painel de conexão, quando pedido pela barra. */}
+      {/* O painel de conexão, quando pedido pelo cabeçalho. */}
       {mostrarConexao && (
         <div className="shrink-0 border-b border-fg/[0.06] p-3">
           <ConexaoWhatsapp conexao={conexao} aoAtualizar={() => void carregarConexao()} />

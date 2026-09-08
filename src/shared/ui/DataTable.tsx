@@ -111,6 +111,7 @@ export const TabelaCard = ({
   bodyRef,
   minWidth = MIN_TABLE_WIDTH,
   corpoLivre = false,
+  corpoCheio = false,
 }: {
   title: string;
   icon?: ReactNode;
@@ -168,6 +169,16 @@ export const TabelaCard = ({
    * computador nada muda: lá o cartão ocupa a janela de propósito.
    */
   corpoLivre?: boolean;
+  /**
+   * O conteúdo ocupa a ALTURA do corpo, em vez de ter a sua.
+   *
+   * O corpo é rolável e envolve o que recebe num bloco de altura automática —
+   * o certo para uma lista, que é alta por ter muitas linhas. Uma aba que
+   * desenha uma peça só e quer preenchê-la (o calendário do carnê, cujas
+   * semanas dividem o espaço disponível) precisa do oposto: sem isto ela
+   * encolhe para o mínimo e sobra faixa vazia até o rodapé.
+   */
+  corpoCheio?: boolean;
 }) => (
   /*
    * No celular a tabela tem ALTURA PRÓPRIA; no computador ela estica.
@@ -219,7 +230,7 @@ export const TabelaCard = ({
     )}
 
     <div ref={bodyRef} className={`min-h-0 flex-1 overflow-auto ${corpoLivre ? "max-sm:flex-none max-sm:overflow-visible" : ""}`}>
-      <div className="min-w-0 sm:[min-width:var(--tabela-min)]" style={{ "--tabela-min": `${minWidth}px` } as CSSProperties}>
+      <div className={`min-w-0 sm:[min-width:var(--tabela-min)] ${corpoCheio ? "h-full" : ""}`} style={{ "--tabela-min": `${minWidth}px` } as CSSProperties}>
         {children}
       </div>
     </div>

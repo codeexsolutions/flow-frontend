@@ -227,6 +227,22 @@ const CrmService = {
   },
 
   /**
+   * Manda um arquivo pela conversa — a nota da venda, um comprovante.
+   *
+   * `base64` sem o prefixo `data:`: é o que o WhatsApp espera do outro lado, e
+   * mandar o prefixo junto entrega ao cliente um arquivo corrompido.
+   *
+   * Aqui o aviso de carregamento FICA (diferente do resto do CRM): o envio
+   * pode levar segundos com a sessão dormindo, e é a única ação da tela em que
+   * a pessoa precisa saber que algo está a caminho antes de fechar a nota.
+   */
+  async enviarArquivo(conversaId: string, dados: { base64: string; mime: string; nome?: string; legenda?: string }) {
+    return um<string>(
+      await sysgrafix.post(`/crm/conversas/${conversaId}/arquivo`, dados, { carregamento: "Enviando para o cliente…" }),
+    );
+  },
+
+  /**
    * Move de etapa, troca responsável, arquiva — no mesmo lugar.
    *
    * `etapaId: null` TIRA do funil, e é diferente de omitir o campo (que

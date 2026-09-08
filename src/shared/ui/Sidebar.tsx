@@ -1,7 +1,7 @@
-import { useEffect } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
-import { Package, Users, DollarSign, Settings, LogOut, ShoppingCart, BarChart3, LayoutDashboard, Truck, UserCog, Wallet, LifeBuoy, Lock, MessageCircle, Factory, Bot } from "lucide-react";
+import { Package, Users, DollarSign, Settings, LogOut, ShoppingCart, BarChart3, LayoutDashboard, Truck, UserCog, Wallet, LifeBuoy, Lock, MessageCircle, Factory, ChevronDown, Bell } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import useAuth from "@/features/auth/store/auth.store";
@@ -13,6 +13,8 @@ import { tocarNavegacao } from "@/shared/session/somSessao";
 import useEquipeStore, { planoTemEquipe } from "@/features/funcionarios/store/equipe.store";
 import usePlano from "@/shared/plano/plano.store";
 import BotaoInstalar from "@/shared/pwa/BotaoInstalar";
+import useNaoLidas from "@/features/crm/store/naoLidas.store";
+import { useSincronizacao } from "@/shared/realtime/useSincronizacao";
 
 /**
  * O menu do sistema — uma lista só, sem painel que troca.
@@ -40,50 +42,60 @@ import BotaoInstalar from "@/shared/pwa/BotaoInstalar";
  * responde "onde está X?" sem obrigar a abrir gaveta.
  *
  * ---------------------------------------------------------------------------
- * A faixa do topo continua — e agora ela NAVEGA
+ * O que saiu depois: a faixa de atalhos
  * ---------------------------------------------------------------------------
- * O lugar de destaque no alto do menu era bom demais para um interruptor. Ele
- * continua ali, com o mesmo peso visual, mas os três botões agora são
- * DESTINOS: Início, PDV e Planilhas — o que se abre dez vezes por dia. Antes
- * eles eram três linhas na lista, do mesmo tamanho de "Relatórios", que se
- * abre uma vez por mês.
+ * No lugar das abas ficou uma faixa com dois botões grandes — Início e PDV,
+ * ícone em cima do rótulo, dois quadrados ocupando a largura do menu. A ideia
+ * era destacar o que se abre dez vezes por dia, mas o preço apareceu no uso:
+ * ~70 px de altura para DOIS destinos, uma segunda gramática de navegação
+ * (quadrado preenchido) convivendo com a da lista (linha com ícone à
+ * esquerda), e o olho tendo que procurar em dois lugares diferentes de que
+ * jeito o sistema mostra "você está aqui".
+ *
+ * Agora eles são os dois primeiros ITENS da lista, num bloco próprio no alto.
+ * Continuam sendo os primeiros que a vista encontra — o alto do menu já é o
+ * destaque —, custam a altura de duas linhas e acendem igual a todo o resto.
  *
  * ---------------------------------------------------------------------------
- * Os grupos: ERP, CRM e TMS
+ * Os grupos são sanfonas, e só o primeiro vem aberto
  * ---------------------------------------------------------------------------
- * O resto da lista é separado pelos três domínios do produto. A versão
- * anterior usava nomes de área ("Cadastros", "Dinheiro", "Loja"), e são seis
- * grupos de um ou dois itens: mais cabeçalho do que conteúdo. Três domínios
- * agrupam os mesmos dez destinos em três cabeçalhos.
+ * O resto da lista é separado em três assuntos. Eles já se chamaram ERP, CRM
+ * e TMS: as siglas são do nosso mercado, não do balcão — ninguém pensa "vou
+ * abrir o CRM", pensa "vou ver o cliente". Três siglas de três letras
+ * separando dez itens não dizem a ninguém o que há embaixo de cada uma, e um
+ * menu cujos títulos não ajudam é lido item a item, todas as vezes. Ficaram
+ * as palavras: Gestão da empresa, Atendimento, Entregas.
+ *
+ * E os três abrem e fecham. Aberta vem só a gestão — estoque, vendas,
+ * financeiro, relatórios, produção, equipe: é o trabalho do dia e responde
+ * pela maioria dos cliques. Atendimento e Entregas ficam recolhidos em uma
+ * linha cada, e continuam a um clique de distância; assim o menu inteiro cabe
+ * na tela baixa sem rolagem, em vez de gastar altura com dez destinos abertos
+ * dos quais oito não serão usados agora.
+ *
+ * A sanfona ABRE SOZINHA a seção de onde você está: chegar em Clientes por um
+ * link e encontrar "Atendimento" fechado faria o menu mentir sobre a tela
+ * aberta. Depois disso, quem fechar manda — a escolha da pessoa não é
+ * desfeita a cada navegação dentro da mesma seção.
  */
 
 /* -------------------------------------------------------------------------- */
 
+/** Os três assuntos da lista — o `id` é a chave do aberto/fechado. */
+type IdSecao = "gestao" | "atendimento" | "entregas";
+
 /**
- * Os atalhos do alto.
+ * As rotas de cada seção.
  *
- * `rota` é o que `navigate` recebe — `""` é a raiz, e é assim que o `isActive`
- * distingue "/" de "qualquer coisa que começa com /".
+ * Serve a uma coisa só: saber em qual sanfona está a tela aberta, para
+ * escancará-la sozinha. Sem isso, quem chega em `/clientes` por um link vê
+ * "Atendimento" fechado e o menu deixa de dizer onde a pessoa está.
  */
-const ATALHOS: { rota: string; label: string; icone: typeof LayoutDashboard; recurso?: string }[] = [
-  { rota: "", label: "Início", icone: LayoutDashboard },
-  /* "PDV" fica: não é jargão de software, é o nome que o lojista já usa, e é
-     como a tela se chama no tour e na barra do celular. */
-  { rota: "pdv", label: "PDV", icone: ShoppingCart },
-  /*
-   * Planilhas saiu daqui, e não foi por espaço.
-   *
-   * Ela era um destino de menu ao lado de Início e PDV — mas planilha não é
-   * um ASSUNTO, é um jeito de olhar a produção. Ao lado dela existia o quadro
-   * de etapas, com os mesmos pedidos e as mesmas pessoas, e ter os dois no
-   * menu obrigava a escolher a VISÃO antes de escolher o TRABALHO. Agora os
-   * dois são as duas leituras de Produção › Kanban, e o menu tem um destino
-   * onde tinha dois conceitos.
-   *
-   * A faixa fica com dois atalhos em vez de três, e a grade acompanha: dois
-   * botões espremidos em três colunas deixariam um vão morto à direita.
-   */
-];
+const ROTAS_DA_SECAO: Record<IdSecao, string[]> = {
+  gestao: ["estoque", "vendas", "financeiro", "relatorios", "producao", "funcionarios"],
+  atendimento: ["clientes", "whatsapp", "chatbot"],
+  entregas: ["correios"],
+};
 
 const Sidebar = () => {
   const { pathname } = useLocation();
@@ -100,6 +112,25 @@ const Sidebar = () => {
 
   /** Módulo que o plano não cobre continua no menu, com cadeado. */
   const temRecurso = usePlano((s) => s.recurso);
+
+  /*
+   * As mensagens de cliente esperando resposta — o número ao lado de WhatsApp.
+   *
+   * A caixa de entrada é a única tela em que o trabalho CHEGA sozinho, e o
+   * menu era o último lugar a saber: sem o selo, descobrir que alguém escreveu
+   * exigia abrir o WhatsApp de tempos em tempos. Uma vez na abertura e depois
+   * só quando o tempo real avisa — a mesma escuta que a caixa de entrada usa.
+   */
+  const naoLidas = useNaoLidas((s) => s.total);
+  const buscarNaoLidas = useNaoLidas((s) => s.buscar);
+
+  useEffect(() => {
+    void buscarNaoLidas();
+  }, [buscarNaoLidas]);
+
+  useSincronizacao(["crm"], () => {
+    void buscarNaoLidas();
+  });
 
   /* Só o gestor pergunta: a API recusa para vendedor, e uma chamada que sempre
      falha em toda navegação é ruído no log e na rede. */
@@ -128,6 +159,20 @@ const Sidebar = () => {
     // O pai não acende quando a filha tem item próprio no menu.
     return !FILHAS_COM_ITEM_PROPRIO.some((f) => f !== alvo && pathname.startsWith(f));
   };
+
+  /* Só a gestão vem aberta: é o trabalho do dia. As outras duas custam uma
+     linha cada enquanto ninguém precisa delas. */
+  const [abertas, setAbertas] = useState<Record<IdSecao, boolean>>({ gestao: true, atendimento: false, entregas: false });
+
+  /* A seção da tela aberta se escancara — e só ela, e só quando entra: quem
+     fechou uma seção continua com ela fechada enquanto navega dentro dela. */
+  useEffect(() => {
+    const dona = (Object.keys(ROTAS_DA_SECAO) as IdSecao[]).find((id) =>
+      ROTAS_DA_SECAO[id].some((r) => pathname === `/${r}` || pathname.startsWith(`/${r}/`)),
+    );
+
+    if (dona) setAbertas((atual) => (atual[dona] ? atual : { ...atual, [dona]: true }));
+  }, [pathname]);
 
   const reduzir = useReducedMotion();
 
@@ -159,7 +204,14 @@ const Sidebar = () => {
    * URL, pelo celular ou por link salvo. O que deixou de existir é o convite
    * disfarçado de destino.
    */
-  const item = (route: string, icon: ReactNode, label: string, disabled = false, bloqueado = false) => {
+  /**
+   * `selo` é o rótulo pequeno ao lado do nome — hoje só o "Teste" do WhatsApp.
+   *
+   * Diferente do "Breve" e do cadeado de plano: aqueles dizem que a tela NÃO
+   * abre. Este diz que ela abre e ainda está sendo acertada, que é uma
+   * informação que o lojista precisa ANTES de apostar o atendimento dele nela.
+   */
+  const item = (route: string, icon: ReactNode, label: string, disabled = false, bloqueado = false, contagem = 0, selo?: string) => {
     if (bloqueado && !disabled) {
       return (
         <div
@@ -230,68 +282,88 @@ const Sidebar = () => {
         </span>
 
         <span className="relative min-w-0 flex-1 truncate">{label}</span>
+
+        {/* O selo vem ANTES do contador: "Teste" é sobre a tela, o número é
+            sobre o que está esperando lá dentro. Trocados, o aviso de versão
+            pareceria um rótulo das mensagens. */}
+        {selo && (
+          <span className="relative shrink-0 rounded-full border border-accent/25 bg-accent/[0.10] px-1.5 py-0.5 text-[8.5px] uppercase tracking-wider text-accent-soft">
+            {selo}
+          </span>
+        )}
+
+        {/*
+         * O que está esperando: um sininho e o número, parados.
+         *
+         * O selo piscava entre o verde e o vermelho do tema para chamar de
+         * longe, e chamava demais — um ponto se acendendo e apagando no canto
+         * do olho, o tempo todo, na tela em que a pessoa está trabalhando em
+         * outra coisa. O sino já diz "tem recado" sem se mexer, e a cor
+         * continua sendo a do TEMA (`--danger`), não um vermelho cravado que
+         * brigaria com metade das aparências.
+         *
+         * Só existe quando há algo: um zero permanente ensina o olho a ignorar
+         * o lugar onde o aviso apareceria.
+         */}
+        {contagem > 0 && (
+          <span
+            aria-label={`${contagem} ${contagem === 1 ? "mensagem não lida" : "mensagens não lidas"}`}
+            className="relative flex h-[18px] shrink-0 items-center gap-1 rounded-full border border-danger/30 bg-danger/[0.14] px-1.5 text-[10px] tabular-nums text-danger"
+          >
+            <Bell size={9} className="shrink-0" />
+            {contagem > 99 ? "99+" : contagem}
+          </span>
+        )}
       </button>
     );
   };
 
   /**
-   * Cabeçalho de grupo: o nome que se entende, e a sigla ao lado.
+   * Uma seção da sanfona: o título que abre e fecha, e os itens dentro.
    *
-   * ---------------------------------------------------------------------------
-   * Por que os dois, e não só a sigla
-   * ---------------------------------------------------------------------------
-   * A primeira versão deste menu usava "ERP", "CRM" e "TMS" sozinhos. Elas são
-   * as siglas do nosso mercado, não as palavras de quem vende: ninguém no
-   * balcão pensa "vou abrir o CRM", pensa "vou ver o cliente". Três siglas de
-   * três letras separando dez itens não dizem a ninguém o que há embaixo de
-   * cada uma — e um menu em que os títulos não ajudam é um menu lido item a
-   * item, todas as vezes.
+   * O título é uma PALAVRA, não uma sigla — ver a nota no alto do arquivo. O
+   * traço à direita fecha a linha até a borda: sem ele o título flutua no meio
+   * da lista e o menu volta a parecer uma pilha só. A seta diz de que lado a
+   * seção está, e é o único enfeite: o cabeçalho inteiro é o alvo do clique,
+   * porque mirar numa seta de 13px é trabalho que ninguém pediu.
    *
-   * Só as palavras simples também não bastavam: quem contrata o sistema
-   * conhece as siglas, e a mesma tela é o que ele compara com o concorrente.
-   *
-   * Então são os dois, com pesos diferentes: a PALAVRA lidera (é ela que
-   * responde "o que tem aqui?") e a SIGLA vem numa etiqueta ao lado, pequena,
-   * para quem a procura. A frase inteira fica no `title`, para o hover de quem
-   * quer saber mais sem ocupar linha nenhuma da sidebar.
-   *
-   * O traço à direita fecha a linha até a borda: sem ele o título flutua no
-   * meio da lista e o menu volta a parecer uma pilha só.
+   * `explicacao` fica no `title`: a frase inteira ajuda quem está procurando
+   * onde mora um assunto, e no hover ela não cobra linha nenhuma do menu.
    */
+  const secao = (id: IdSecao, nome: string, explicacao: string, filhos: ReactNode) => {
+    const aberta = abertas[id];
 
-  /**
-   * Cabeçalho de grupo: o nome que se entende, e a sigla ao lado.
-   *
-   * ---------------------------------------------------------------------------
-   * Por que os dois, e não só a sigla
-   * ---------------------------------------------------------------------------
-   * A primeira versão deste menu usava "ERP", "CRM" e "TMS" sozinhos. Elas são
-   * as siglas do nosso mercado, não as palavras de quem vende: ninguém no
-   * balcão pensa "vou abrir o CRM", pensa "vou ver o cliente". Três siglas de
-   * três letras separando dez itens não dizem a ninguém o que há embaixo de
-   * cada uma — e um menu em que os títulos não ajudam é um menu lido item a
-   * item, todas as vezes.
-   *
-   * Só as palavras simples também não bastavam: quem contrata o sistema
-   * conhece as siglas, e a mesma tela é o que ele compara com o concorrente.
-   *
-   * Então são os dois, com pesos diferentes: a PALAVRA lidera (é ela que
-   * responde "o que tem aqui?") e a SIGLA vem numa etiqueta ao lado, pequena,
-   * para quem a procura. A frase inteira fica no `title`, para o hover de quem
-   * quer saber mais sem ocupar linha nenhuma da sidebar.
-   *
-   * O traço à direita fecha a linha até a borda: sem ele o título flutua no
-   * meio da lista e o menu volta a parecer uma pilha só.
-   */
-  const grupo = (nome: string, sigla: string, explicacao: string) => (
-    <div className="flex items-center gap-2 px-2 pb-1.5 pt-4 first:pt-1" title={explicacao}>
-      <span className="shrink-0 rounded-md border border-accent/20 bg-accent/[0.10] px-1.5 py-[3px] text-[8px] uppercase tracking-[0.14em] text-accent-soft">
-        {sigla}
-      </span>
-      <p className="min-w-0 truncate text-[10px] uppercase tracking-[0.16em] text-muted">{nome}</p>
-      <span aria-hidden className="h-px flex-1 bg-fg/[0.07]" />
-    </div>
-  );
+    return (
+      <div className="pt-2.5 first:pt-0">
+        <button
+          type="button"
+          onClick={() => setAbertas((atual) => ({ ...atual, [id]: !atual[id] }))}
+          aria-expanded={aberta}
+          title={explicacao}
+          className="focus-ring flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-fg/[0.04]"
+        >
+          <p className="min-w-0 truncate text-[10px] uppercase tracking-[0.16em] text-muted">{nome}</p>
+          <span aria-hidden className="h-px flex-1 bg-fg/[0.07]" />
+          <ChevronDown size={13} className={`shrink-0 text-faint transition-transform duration-200 ${aberta ? "" : "-rotate-90"}`} />
+        </button>
+
+        <AnimatePresence initial={false}>
+          {aberta && (
+            <motion.div
+              key="itens"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={reduzir ? { duration: 0 } : { duration: 0.18, ease: "easeOut" }}
+              className="overflow-hidden"
+            >
+              <div className="space-y-1 pt-1">{filhos}</div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -312,12 +384,18 @@ const Sidebar = () => {
         />
 
         {/*
-         * Marca da empresa, numa linha.
+         * Marca da empresa — o logo, o nome e o que esta tela é.
          *
-         * Tinha um logo de 44 px e a legenda "Painel de gestão" embaixo do
-         * nome — 76 px de cabeçalho para dizer o nome da empresa, sendo que a
-         * legenda não informava nada que a tela ao lado não dissesse. Em 36 px
-         * e uma linha, o mesmo dado ocupa metade.
+         * O nome sozinho ao lado do logo dizia DE QUEM é o sistema e nada
+         * sobre o que está aberto: a mesma marca aparece no PDV do balcão, no
+         * acompanhamento que o cliente abre pelo link e na tela de login. A
+         * segunda linha nomeia o lugar — é o cabeçalho de um painel, e quem
+         * abre precisa saber que entrou na administração da loja, não numa
+         * das telas públicas que levam a mesma marca.
+         *
+         * Ela acompanha quem está logado: o vendedor não administra nada, e
+         * chamar de "administrativo" a tela dele prometeria um poder que a
+         * própria lista abaixo não dá.
          */}
         <div className="relative flex items-center gap-2.5 border-b border-fg/[0.07] px-4 py-3">
           <div className="relative h-9 w-9 shrink-0">
@@ -338,181 +416,126 @@ const Sidebar = () => {
             </div>
           </div>
 
-          <p className="min-w-0 flex-1 truncate text-[14px] tracking-tight text-ink">{enterprise?.nomeFantasia || "Sua Empresa"}</p>
-        </div>
-
-        {/*
-         * A faixa de atalhos — o lugar mais visível do menu, com destinos.
-         *
-         * Herdou a forma do seletor de abas que morava aqui (três colunas,
-         * ícone em cima do rótulo) porque a forma estava certa: é a única
-         * coisa do menu que se lê como um bloco, e não como item de lista. O
-         * que mudou é que agora ela LEVA a algum lugar em vez de trocar o
-         * conteúdo de baixo.
-         *
-         * Ativo é preenchido de acento, e não um contorno como nos itens da
-         * lista: aqui são alvos grandes lado a lado, e o preenchimento é o que
-         * se enxerga de relance, sem ler.
-         *
-         * O PARADO também tem forma — borda e sombra rasa. Ver a nota no botão
-         * sobre por que a borda existe nos dois estados.
-         */}
-        <div className="relative border-b border-fg/[0.07] p-2.5">
-          <div className="grid grid-cols-2 gap-1">
-            {ATALHOS.map(({ rota, label, icone: Icone, recurso }) => {
-              const on = isActive(rota);
-              const travado = Boolean(recurso && !temRecurso(recurso));
-
-              if (travado) {
-                return (
-                  <div
-                    key={label}
-                    title={`${label} não está incluído no seu plano. Veja as opções em Configurações › Faturas.`}
-                    className="flex cursor-not-allowed flex-col items-center justify-center gap-1 rounded-lg border border-fg/[0.1] bg-fg/[0.02] py-2 text-[10.5px] text-faint opacity-55"
-                  >
-                    <span className="relative">
-                      <Icone size={17} />
-                      <Lock size={9} className="absolute -right-1.5 -top-1 text-accent-soft" />
-                    </span>
-                    <span className="w-full truncate px-1 text-center leading-none">{label}</span>
-                  </div>
-                );
-              }
-
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => goto(rota)}
-                  aria-current={on ? "page" : undefined}
-                  /*
-                   * Parado, o atalho agora TEM CORPO: borda, fundo e uma
-                   * sombra rasa.
-                   *
-                   * Antes só o ativo se via — os dois eram texto solto sobre o
-                   * mesmo fundo do menu, e a faixa que existe para destacar
-                   * Início e PDV entregava um botão aceso e um desaparecido.
-                   * Quem procurava o PDV com o Início aberto tinha de ler, e
-                   * ler é o que um atalho existe para evitar.
-                   *
-                   * A borda está nos DOIS estados, com cores diferentes: só no
-                   * parado, o botão mudaria de tamanho ao ser clicado e a
-                   * fileira inteira daria um pulo.
-                   *
-                   * `shadow-e1` e não uma sombra crua: é o token que acompanha
-                   * os sete temas — no tema plano ele vira um fio de contorno,
-                   * onde sombra de verdade ficaria suja.
-                   */
-                  className={`focus-ring relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg border py-2 text-[10.5px] transition-colors duration-200 ${
-                    on
-                      ? "border-accent/60 text-white"
-                      : "border-fg/[0.1] bg-fg/[0.04] text-mist shadow-e1 hover:border-accent/40 hover:bg-fg/[0.07] hover:text-ink"
-                  }`}
-                >
-                  {/* Sem `layoutId`, pelo mesmo motivo dos itens da lista: o pai
-                      é animado com `scale` e medição de layout sai errada. */}
-                  {on && (
-                    <motion.span
-                      aria-hidden
-                      className="absolute inset-0 rounded-lg bg-gradient-to-br from-accent-soft to-accent"
-                      style={{ boxShadow: "0 6px 18px -8px rgb(var(--accent) / calc(0.9 * var(--fx-glow, 1)))" }}
-                      initial={reduzir ? false : { opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.16, ease: "easeOut" }}
-                    />
-                  )}
-
-                  <span className={`relative ${on ? "" : "text-faint"}`}>
-                    <Icone size={17} />
-                  </span>
-                  <span className="relative w-full truncate px-1 text-center leading-none">{label}</span>
-                </button>
-              );
-            })}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[14px] leading-tight tracking-tight text-ink">{enterprise?.nomeFantasia || "Sua Empresa"}</p>
+            <p className="truncate text-[9.5px] uppercase leading-tight tracking-[0.14em] text-faint">
+              {gestor ? "Painel administrativo" : "Painel do vendedor"}
+            </p>
           </div>
         </div>
 
         {/*
          * A lista inteira, sem gaveta.
          *
-         * `overflow-y-auto` continua aqui e não deve incomodar: dez itens em
-         * três grupos cabem sem rolagem em qualquer tela de 700 px para cima.
-         * Ele existe para a tela baixa e para o dia em que aparecer o
-         * décimo primeiro.
+         * `overflow-y-auto` continua aqui para a tela baixa e para o dia em
+         * que aparecer o décimo primeiro destino — mas com as sanfonas ele
+         * quase nunca entra em ação: fechadas, Atendimento e Entregas custam
+         * uma linha cada.
          */}
-        <nav className="relative flex-1 overflow-y-auto px-3 py-2.5 space-y-1">
-          {grupo(
+        <nav className="relative flex-1 space-y-1 overflow-y-auto px-3 py-2.5">
+          {/*
+           * O bloco do dia a dia — sem cabeçalho de grupo.
+           *
+           * São os dois destinos que se abrem toda hora, e nomeá-los custaria
+           * uma linha para dizer o óbvio de duas: "Início" e "PDV" não
+           * pertencem a um domínio do produto, são o começo do expediente. O
+           * traço abaixo os separa dos grupos sem gastar altura com título.
+           */}
+          {item("", <LayoutDashboard size={16} />, "Início")}
+          {/* "PDV" fica: não é jargão de software, é o nome que o lojista já
+              usa, e é como a tela se chama no tour e na barra do celular. */}
+          {item("pdv", <ShoppingCart size={16} />, "PDV")}
+
+          <div aria-hidden className="!my-1 h-px bg-fg/[0.06]" />
+
+          {secao(
+            "gestao",
             "Gestão da empresa",
-            "ERP",
-            "ERP — a empresa por dentro: o que você tem em estoque, quanto entra e sai de dinheiro, quem trabalha com você e o que os números dizem.",
-          )}
-          {/* "e serviços" no rótulo: é a mesma tela de sempre, mas quem presta
-              serviço cadastra serviço nela, e sem isso metade dos clientes
-              procurava um menu que não existe. */}
-          {item("estoque", <Package size={16} />, "Estoque/Serviços")}
-          {/*
-           * Dois itens, dois assuntos.
-           *
-           * Eram um só ("Financeiro"), porque vendas e dinheiro eram a mesma
-           * tela em cinco abas — e o menu mandava para uma tela cujo título
-           * era outro. Agora a divisão é a que o lojista já faz de cabeça: o
-           * que EU VENDI (panorama e notas, juntos) e o DINHEIRO DA EMPRESA
-           * (caixa, a pagar, a receber, juntos).
-           *
-           * O vendedor fica só com o primeiro, e ele se chama "Minhas vendas":
-           * a lista dele já traz só as próprias notas.
-           */}
-          {item("vendas", <DollarSign size={16} />, gestor ? "Vendas" : "Minhas vendas")}
-          {gestor && item("financeiro", <Wallet size={16} />, "Financeiro", false, !temRecurso("financeiro"))}
-          {item("relatorios", <BarChart3 size={16} />, "Relatórios", false, !temRecurso("relatorios"))}
-          {/*
-           * Produção reúne o que era Planilhas mais o quadro de etapas.
-           *
-           * É UM item, e não uma gaveta com as duas telas dentro: a navegação
-           * entre Produções e Kanban mora na barra da própria tabela, junto do
-           * conteúdo que ela troca (ver `AbasProducao`). Repeti-la aqui daria
-           * dois lugares para o mesmo gesto, e o menu voltaria a ter gaveta.
-           *
-           * Fica com o cadeado abaixo do Professional porque é lá que o
-           * módulo entra — e o cadeado, não a ausência, é de propósito: quem
-           * não vê o item nunca descobre que o upgrade destrava um controle
-           * de produção, e essa é justamente a razão de subir de plano nessa
-           * faixa.
-           */}
-          {item("producao", <Factory size={16} />, "Produção", false, !temRecurso("producao"))}
-          {/* Equipe só existe em plano que comporta mais de um usuário: mostrar
-              para quem tem uma vaga só seria oferecer porta que não abre. */}
-          {/* `planoTemEquipe` continua valendo por CIMA da trava de plano: um
-              plano que inclui o módulo mas só permite um login não tem equipe
-              para gerenciar, e a aba apareceria vazia. */}
-          {gestor && planoTemEquipe(equipe) && item("funcionarios", <UserCog size={16} />, "Funcionários", false, !temRecurso("funcionarios"))}
+            "A empresa por dentro: o que você tem em estoque, quanto entra e sai de dinheiro, o que sai da oficina, quem trabalha com você e o que os números dizem.",
+            <>
+              {/* "e serviços" no rótulo: é a mesma tela de sempre, mas quem
+                  presta serviço cadastra serviço nela, e sem isso metade dos
+                  clientes procurava um menu que não existe. */}
+              {item("estoque", <Package size={16} />, "Estoque/Serviços")}
 
-          {/* Clientes aparecia duas vezes no menu antigo, uma em cada aba, para
-              não cobrar troca de gaveta no destino mais visitado do sistema.
-              Sem gavetas, uma vez basta. */}
-          {grupo(
+              {/*
+               * Dois itens, dois assuntos.
+               *
+               * Eram um só ("Financeiro"), porque vendas e dinheiro eram a
+               * mesma tela em cinco abas — e o menu mandava para uma tela cujo
+               * título era outro. Agora a divisão é a que o lojista já faz de
+               * cabeça: o que EU VENDI (panorama e notas, juntos) e o DINHEIRO
+               * DA EMPRESA (caixa, a pagar, a receber, juntos).
+               *
+               * O vendedor fica só com o primeiro, e ele se chama "Minhas
+               * vendas": a lista dele já traz só as próprias notas.
+               */}
+              {item("vendas", <DollarSign size={16} />, gestor ? "Vendas" : "Minhas vendas")}
+              {gestor && item("financeiro", <Wallet size={16} />, "Financeiro", false, !temRecurso("financeiro"))}
+              {item("relatorios", <BarChart3 size={16} />, "Relatórios", false, !temRecurso("relatorios"))}
+
+              {/*
+               * Produção reúne o que era Planilhas mais o quadro de etapas.
+               *
+               * É UM item, e não uma gaveta com as duas telas dentro: a
+               * navegação entre Produções e Kanban mora na barra da própria
+               * tabela, junto do conteúdo que ela troca (ver `AbasProducao`).
+               *
+               * Fica com o cadeado abaixo do Professional porque é lá que o
+               * módulo entra — e o cadeado, não a ausência, é de propósito:
+               * quem não vê o item nunca descobre que o upgrade destrava um
+               * controle de produção, e essa é a razão de subir de plano.
+               */}
+              {item("producao", <Factory size={16} />, "Produção", false, !temRecurso("producao"))}
+
+              {/* Equipe só existe em plano que comporta mais de um usuário:
+                  mostrar para quem tem uma vaga só seria oferecer porta que
+                  não abre. `planoTemEquipe` vale por CIMA da trava de plano —
+                  um plano que inclui o módulo mas só permite um login não tem
+                  equipe para gerenciar, e a tela apareceria vazia. */}
+              {gestor && planoTemEquipe(equipe) && item("funcionarios", <UserCog size={16} />, "Funcionários", false, !temRecurso("funcionarios"))}
+            </>,
+          )}
+
+          {secao(
+            "atendimento",
             "Atendimento",
-            "CRM",
-            "CRM — as pessoas do outro lado do balcão: quem compra de você, o histórico de cada uma e os canais para falar com elas.",
+            "As pessoas do outro lado do balcão: quem compra de você, o histórico de cada uma e os canais para falar com elas.",
+            <>
+              {/* Clientes aparecia duas vezes no menu antigo, uma em cada aba,
+                  para não cobrar troca de gaveta no destino mais visitado do
+                  sistema. Sem gavetas, uma vez basta. */}
+              {item("clientes", <Users size={16} />, "Clientes")}
+              {/* Deixou de ser "Em breve": a caixa de entrada, o funil e a
+                  conexão do número da loja moram em `/whatsapp` (ver `CrmPage`). */}
+              {item("whatsapp", <MessageCircle size={16} />, "WhatsApp", false, false, naoLidas, "Teste")}
+              {/*
+                O Chatbot NÃO entra nesta versão.
+                
+                O WhatsApp sai em teste, e resposta automática é a parte que não
+                pode sair assim: o que ela escreve chega ao cliente da loja sem
+                ninguém ver, em nome da loja. Errar no funil é um cartão na raia
+                errada; errar aqui é a loja prometendo prazo que não cumpre.
+                
+                O código da tela continua no repositório (`ChatbotPage`), e a
+                rota `/chatbot` leva ao WhatsApp para não quebrar link salvo —
+                ver `AppRoutes`. Quando o robô for liberado, é devolver esta
+                linha e a rota.
+              */}
+            </>,
           )}
-          {item("clientes", <Users size={16} />, "Clientes")}
-          {/* Deixou de ser "Em breve": a caixa de entrada, o funil e a
-              conexão do número da loja moram em `/whatsapp` (ver `CrmPage`). */}
-          {item("whatsapp", <MessageCircle size={16} />, "WhatsApp")}
-          {/* O robô ao lado do WhatsApp, e não dentro dele: é o que a pessoa
-              procura quando quer DESLIGAR a resposta automática, e nessa hora
-              ninguém quer caçar uma aba dentro da caixa de entrada. */}
-          {item("chatbot", <Bot size={16} />, "Chatbot")}
 
-          {grupo(
+          {secao(
+            "entregas",
             "Entregas",
-            "TMS",
-            "TMS — o que sai da loja e vira encomenda: postagem, frete e rastreio até a mão do cliente.",
+            "O que sai da loja e vira encomenda: postagem, frete e rastreio até a mão do cliente.",
+            <>
+              {/* Correios está "Em breve" enquanto o módulo é finalizado. Não é
+                  "Plano": o cadeado promete uma tela que o upgrade destrava
+                  hoje, e essa ainda não está de pé. */}
+              {item("correios", <Truck size={16} />, "Correios", true)}
+            </>,
           )}
-          {/* Correios está "Em breve" enquanto o módulo é finalizado. Não é
-              "Plano": o cadeado promete uma tela que o upgrade destrava hoje, e
-              essa ainda não está de pé. */}
-          {item("correios", <Truck size={16} />, "Correios", true)}
         </nav>
 
         {/* Ajuda — fica fora da navegação: não é lugar que se visita no fluxo de
