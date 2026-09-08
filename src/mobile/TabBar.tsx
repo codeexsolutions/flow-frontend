@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, ShoppingCart, DollarSign, Package, Users, Wallet, BarChart3, MoreHorizontal, Settings, LogOut, UserCircle, Truck, Lock, Factory } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, DollarSign, Package, Users, Wallet, BarChart3, MoreHorizontal, Settings, LogOut, UserCircle, Truck, Lock, Factory, MessageCircle, Bell } from "lucide-react";
 
 import useAuth from "@/features/auth/store/auth.store";
 import { ehGestor } from "@/features/vendas/components/TabsVendas";
@@ -10,6 +10,7 @@ import Sheet from "@/shared/ui/Sheet";
 import { tocarNavegacao } from "@/shared/session/somSessao";
 import { ABAS_SWIPE } from "@/shared/hooks/useSwipeAbas";
 import usePlano from "@/shared/plano/plano.store";
+import useNaoLidas from "@/features/crm/store/naoLidas.store";
 
 /**
  * `familia` só vem preenchida no primeiro item de cada grupo — é ela que
@@ -27,6 +28,10 @@ type Item = {
   recurso?: string;
   /** Tela que ainda não existe — diferente de módulo fora do plano. */
   emBreve?: boolean;
+  /** Rótulo pequeno ao lado do nome. Hoje só o "Teste" do WhatsApp. */
+  selo?: string;
+  /** O que está esperando lá dentro — as mensagens não lidas. */
+  contagem?: number;
 };
 
 /**
@@ -73,6 +78,10 @@ const TabBar = () => {
 
   /** Item fora do plano aparece apagado e sem toque. */
   const temRecurso = usePlano((s) => s.recurso);
+
+  /* O mesmo número do menu do computador — quem alimenta é a caixa de
+     entrada e o tempo real, não uma segunda consulta daqui. */
+  const naoLidas = useNaoLidas((s) => s.total);
 
   /* No celular a sidebar não existe, então a busca precisa acontecer aqui —
      senão "Funcionários" nunca apareceria no menu "Mais". */
@@ -134,6 +143,17 @@ const TabBar = () => {
     ...(gestor && planoTemEquipe(equipe) ? [{ rota: "/funcionarios", label: "Funcionários", icon: <UserCircle size={18} />, recurso: "funcionarios" }] : []),
 
     { rota: "/clientes", label: "Clientes", icon: <Users size={18} />, familia: "Atendimento" },
+
+    /*
+     * WhatsApp no celular não é conveniência: é ONDE a loja responde.
+     *
+     * Ficou de fora quando a tela nasceu, e o resultado foi o destino existir
+     * só no computador — quem atende do balcão, com o telefone na mão, não
+     * tinha como chegar nele. O contador vem junto porque esta é a única tela
+     * em que o trabalho chega sozinho, e a folha "Mais" já é o segundo toque:
+     * sem o número, é preciso abrir para descobrir que não havia nada.
+     */
+    { rota: "/whatsapp", label: "WhatsApp", icon: <MessageCircle size={18} />, selo: "Teste", contagem: naoLidas },
 
     // Correios voltou para "em breve" enquanto o módulo é finalizado. Fica na
     // folha, apagado: some do menu e ninguém descobre que existe. O selo é
@@ -324,7 +344,23 @@ const TabBar = () => {
                   className="focus-ring flex min-h-[48px] w-full items-center gap-3 rounded-xl px-3 text-left text-[14px] text-ink transition-colors hover:bg-fg/[0.05]"
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-fg/[0.05] text-mist">{it.icon}</span>
-                  {it.label}
+                  <span className="min-w-0 flex-1 truncate">{it.label}</span>
+
+                  {it.selo && (
+                    <span className="shrink-0 rounded-full border border-accent/25 bg-accent/[0.10] px-2 py-0.5 text-[9px] uppercase tracking-wider text-accent-soft">
+                      {it.selo}
+                    </span>
+                  )}
+
+                  {Boolean(it.contagem) && (
+                    <span
+                      aria-label={`${it.contagem} ${it.contagem === 1 ? "mensagem não lida" : "mensagens não lidas"}`}
+                      className="flex h-[18px] shrink-0 items-center gap-1 rounded-full border border-danger/30 bg-danger/[0.14] px-1.5 text-[10px] tabular-nums text-danger"
+                    >
+                      <Bell size={9} className="shrink-0" />
+                      {(it.contagem ?? 0) > 99 ? "99+" : it.contagem}
+                    </span>
+                  )}
                 </button>
               )}
             </div>

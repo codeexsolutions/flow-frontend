@@ -162,7 +162,20 @@ const Sidebar = () => {
 
   /* Só a gestão vem aberta: é o trabalho do dia. As outras duas custam uma
      linha cada enquanto ninguém precisa delas. */
-  const [abertas, setAbertas] = useState<Record<IdSecao, boolean>>({ gestao: true, atendimento: false, entregas: false });
+  /*
+   * Atendimento nasce ABERTA desde que o WhatsApp entrou nela.
+   *
+   * Fechada, a seção escondia a única tela do sistema em que o trabalho CHEGA
+   * sozinho: o cliente escreveu, a mensagem está lá, e o menu mostrava um
+   * título cinza que ninguém clica. "Não dá para acessar o WhatsApp" foi
+   * exatamente isso — o destino existia e estava a um toque invisível de
+   * distância.
+   *
+   * Entregas continua fechada: lá dentro só há o Correios, que ainda é "em
+   * breve". Abrir uma gaveta para mostrar uma porta que não abre é pior que
+   * deixá-la fechada.
+   */
+  const [abertas, setAbertas] = useState<Record<IdSecao, boolean>>({ gestao: true, atendimento: true, entregas: false });
 
   /* A seção da tela aberta se escancara — e só ela, e só quando entra: quem
      fechou uma seção continua com ela fechada enquanto navega dentro dela. */
@@ -330,7 +343,7 @@ const Sidebar = () => {
    * `explicacao` fica no `title`: a frase inteira ajuda quem está procurando
    * onde mora um assunto, e no hover ela não cobra linha nenhuma do menu.
    */
-  const secao = (id: IdSecao, nome: string, explicacao: string, filhos: ReactNode) => {
+  const secao = (id: IdSecao, nome: string, explicacao: string, filhos: ReactNode, pendencias = 0) => {
     const aberta = abertas[id];
 
     return (
@@ -344,6 +357,22 @@ const Sidebar = () => {
         >
           <p className="min-w-0 truncate text-[10px] uppercase tracking-[0.16em] text-muted">{nome}</p>
           <span aria-hidden className="h-px flex-1 bg-fg/[0.07]" />
+
+          {/* Fechada, a seção ainda precisa dizer que tem gente esperando lá
+              dentro: o selo do item some junto com o item, e sem isto quem
+              recolhe Atendimento deixa de ver que o cliente escreveu. Aberta,
+              o número aparece na própria linha do WhatsApp — mostrar nos dois
+              lugares seria contar a mesma coisa duas vezes. */}
+          {!aberta && pendencias > 0 && (
+            <span
+              aria-label={`${pendencias} ${pendencias === 1 ? "mensagem não lida" : "mensagens não lidas"}`}
+              className="flex h-[16px] shrink-0 items-center gap-1 rounded-full border border-danger/30 bg-danger/[0.14] px-1.5 text-[9.5px] tabular-nums text-danger"
+            >
+              <Bell size={8} className="shrink-0" />
+              {pendencias > 99 ? "99+" : pendencias}
+            </span>
+          )}
+
           <ChevronDown size={13} className={`shrink-0 text-faint transition-transform duration-200 ${aberta ? "" : "-rotate-90"}`} />
         </button>
 
@@ -523,6 +552,7 @@ const Sidebar = () => {
                 linha e a rota.
               */}
             </>,
+            naoLidas,
           )}
 
           {secao(
