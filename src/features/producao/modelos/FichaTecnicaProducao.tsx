@@ -27,11 +27,15 @@
  * Basta chamar window.print() (ou rasterizar o ref, como faz o resto do
  * sistema em `abrirDocumento`).
  *
- * Dependências: apenas react + tailwindcss. Nenhuma lib externa.
+ * Dependências: react + tailwindcss, mais o `UploadImagem` do sistema — é ele
+ * que põe a arte de frente e costa na ficha (só no modo edição; o documento
+ * impresso é imagem e nada mais).
  * ---------------------------------------------------------------------------
  */
 
 import React, { forwardRef, useCallback } from "react";
+
+import UploadImagem from "@/shared/ui/UploadImagem";
 
 /* ========================================================================== */
 /*  Tipos                                                                      */
@@ -217,14 +221,34 @@ function Field({
   );
 }
 
-/** Área de anexo do modelo (frente/costa). */
+/**
+ * Área de anexo do modelo (frente/costa).
+ *
+ * ---------------------------------------------------------------------------
+ * No preenchimento é um BOTÃO de enviar; no papel é só a imagem
+ * ---------------------------------------------------------------------------
+ * É a maior área da folha — 110mm dos 297 — e era a única que o sistema não
+ * sabia preencher: a arte chegava por WhatsApp e alguém imprimia, recortava e
+ * grampeava na ficha. Aqui a mesma caixa recebe o arquivo.
+ *
+ * O upload existe SÓ em `editable`. O documento que vai para a impressora não
+ * pode ter borda tracejada, ícone de "escolher" nem botão de remover — e o nó
+ * que vira PNG é montado com `editable` desligado, então nada disso o alcança.
+ *
+ * `object-contain`, e não `cover`: recortar a arte para preencher o quadrado
+ * cortaria justamente a manga ou a gola que a bancada precisa ver.
+ */
 function AnexoBox({
   titulo,
   anexo,
+  editable,
+  onChange,
   className = "",
 }: {
   titulo: string;
   anexo?: AnexoModelo | null;
+  editable?: boolean;
+  onChange?: (url: string | null) => void;
   className?: string;
 }) {
   return (
@@ -235,7 +259,20 @@ function AnexoBox({
         {titulo}
       </div>
       <div className={`${BORDA} flex flex-1 items-center justify-center overflow-hidden p-1`}>
-        {anexo?.url ? (
+        {editable ? (
+          /* `min-h` para a caixa não colapsar quando a ficha é aberta fora da
+             folha A4 (`a4={false}`, que é como o preenchimento a mostra): sem
+             altura o alvo de clique viraria uma faixa de poucos pixels. */
+          <div className="h-full min-h-[220px] w-full">
+            <UploadImagem
+              tipo="servico"
+              formato="miniatura"
+              rotulo={titulo}
+              valor={anexo?.url ?? null}
+              onChange={(url) => onChange?.(url)}
+            />
+          </div>
+        ) : anexo?.url ? (
           <img
             src={anexo.url}
             alt={anexo.alt ?? titulo}
@@ -422,8 +459,18 @@ const FichaTecnicaProducao = forwardRef<HTMLDivElement, FichaTecnicaProducaoProp
         {/* ---------------- 2. Anexos do modelo ---------------- */}
         <SectionBar className="mt-2">2. Anexos do Modelo</SectionBar>
         <div className="grid min-h-[110mm] flex-1 grid-cols-2">
-          <AnexoBox titulo="Modelo Frente" anexo={data.modeloFrente} />
-          <AnexoBox titulo="Modelo Costa" anexo={data.modeloCosta} />
+          <AnexoBox
+            titulo="Modelo Frente"
+            anexo={data.modeloFrente}
+            editable={editable}
+            onChange={(url) => set("modeloFrente", { url, alt: "Modelo frente" })}
+          />
+          <AnexoBox
+            titulo="Modelo Costa"
+            anexo={data.modeloCosta}
+            editable={editable}
+            onChange={(url) => set("modeloCosta", { url, alt: "Modelo costa" })}
+          />
         </div>
 
         {/* ------- 3. Moldes e especificações  |  4. Tecidos ------- */}

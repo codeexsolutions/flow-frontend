@@ -1,9 +1,9 @@
-import { ClipboardList, KanbanSquare, Receipt } from "lucide-react";
+import { ClipboardList, Factory, KanbanSquare, Receipt } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { AbasTabela } from "@/shared/ui/AbasTabela";
 
-type Aba = "pedidos" | "os" | "kanban";
+type Aba = "pedidos" | "os" | "quadro" | "kanban";
 
 /**
  * As três telas de Produção, na barra da própria tabela.
@@ -16,6 +16,9 @@ type Aba = "pedidos" | "os" | "kanban";
  *     vendas: não guarda nada.
  *   • ORDEM DE SERVIÇO — "o que levo impresso para a bancada?". As ordens
  *     geradas, cada uma com o documento que anda junto com a peça.
+ *   • QUADRO — "em que etapa está cada ORDEM?". As mesmas ordens da aba ao
+ *     lado, em colunas de etapa, para arrastar conforme o trabalho anda. Sem
+ *     ele a ordem nasceria na primeira etapa e não teria como sair dela.
  *   • KANBAN — "onde está cada pedido?". É a PLANILHA de produção, em grade ou
  *     em quadro, com o histórico e as colunas que a empresa montou.
  *
@@ -25,8 +28,9 @@ type Aba = "pedidos" | "os" | "kanban";
  * Houve uma tentativa de trocar esta aba por um quadro novo, sobre outra
  * tabela. Foi revertida: a produção da loja está na planilha, com registros e
  * gente treinada nela — e um quadro vazio no lugar dela não é uma versão nova,
- * é a perda do que já funcionava. Pedidos e Ordem de Serviço entraram como
- * ADIÇÃO, ao lado dela, sem tirar nada.
+ * é a perda do que já funcionava. Pedidos, Ordem de Serviço e Quadro entraram
+ * como ADIÇÃO, ao lado dela, sem tirar nada: quem trabalha na planilha continua
+ * na planilha, e quem trabalha por ordem tem onde movê-las.
  *
  * ---------------------------------------------------------------------------
  * Por que aqui, e não no cabeçalho da página
@@ -45,7 +49,13 @@ const AbasProducao = () => {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
-  const atual: Aba = pathname.startsWith("/producao/kanban") ? "kanban" : pathname.startsWith("/producao/os") ? "os" : "pedidos";
+  const atual: Aba = pathname.startsWith("/producao/kanban")
+    ? "kanban"
+    : pathname.startsWith("/producao/quadro")
+      ? "quadro"
+      : pathname.startsWith("/producao/os")
+        ? "os"
+        : "pedidos";
 
   return (
     <AbasTabela<Aba>
@@ -55,6 +65,7 @@ const AbasProducao = () => {
       abas={[
         { id: "pedidos", label: "Pedidos", icone: <Receipt size={14} /> },
         { id: "os", label: "Ordem de Serviço", icone: <ClipboardList size={14} /> },
+        { id: "quadro", label: "Quadro", icone: <Factory size={14} /> },
         { id: "kanban", label: "Kanban", icone: <KanbanSquare size={14} /> },
       ]}
     />

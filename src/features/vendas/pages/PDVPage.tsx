@@ -31,6 +31,7 @@ import NotaResumo from "@/features/vendas/components/NotaResumo";
 import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
 import { abrirDocumento } from "@/shared/ui/downloadNota";
+import { pixDaNota, type PixDaNota } from "@/shared/domain/pixDaNota";
 import ProducaoService from "@/features/producao/services/producao.service";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 
@@ -241,6 +242,8 @@ const PontoDeVenda = () => {
    * linha) custariam o render de todas elas a cada mudança da lista.
    */
   const [notaDownload, setNotaDownload] = useState<PedidoClienteType | null>(null);
+  /* O Pix vai PRONTO para o nó escondido — ver `pixDaNota`. */
+  const [pixDownload, setPixDownload] = useState<PixDaNota | null>(null);
   const [orcamentoDownload, setOrcamentoDownload] = useState<Orcamento | null>(null);
   const refNotaDownload = useRef<HTMLDivElement>(null);
   const refOrcamentoDownload = useRef<HTMLDivElement>(null);
@@ -757,7 +760,11 @@ const PontoDeVenda = () => {
   const abrirNotaDoc = (v: PedidoClienteType) =>
     abrirDaLinha(
       String(v.pedido.pedidoId),
-      () => setNotaDownload(v),
+      async () => {
+        /* O QR ANTES do nó: quando ele montar, o data URI já existe. */
+        setPixDownload(await pixDaNota(v));
+        setNotaDownload(v);
+      },
       () => setNotaDownload(null),
       refNotaDownload,
       `nota-${v.nomeCliente ? v.nomeCliente.toLowerCase().replace(/[^a-z0-9]+/g, "-") : enterprise?.nomeFantasia ?? "venda"}`,
@@ -1325,7 +1332,7 @@ const PontoDeVenda = () => {
           São dois, e não um por linha — o conteúdo é trocado para o documento
           escolhido no instante do clique.
         */}
-        <NotaEscondida venda={notaDownload} refNota={refNotaDownload} />
+        <NotaEscondida venda={notaDownload} pix={pixDownload} refNota={refNotaDownload} />
 
         <div className="fixed -left-[9999px] top-0 w-[900px]" aria-hidden>
           {orcamentoDownload && <OrcamentoNota orcamento={orcamentoDownload} refNota={refOrcamentoDownload} />}
@@ -1336,10 +1343,10 @@ const PontoDeVenda = () => {
 };
 
 /** A nota fora da tela, pronta para virar imagem — igual à de Vendas. */
-function NotaEscondida({ venda, refNota }: { venda: PedidoClienteType | null; refNota: LegacyRef<HTMLDivElement> }) {
+function NotaEscondida({ venda, pix, refNota }: { venda: PedidoClienteType | null; pix?: PixDaNota | null; refNota: LegacyRef<HTMLDivElement> }) {
   return (
     <div className="fixed -left-[9999px] top-0 w-[900px]" aria-hidden>
-      {venda && <NotaResumo venda={venda} refNota={refNota} />}
+      {venda && <NotaResumo venda={venda} pix={pix} refNota={refNota} />}
     </div>
   );
 }

@@ -7,6 +7,13 @@ export type ItemOrcamento = {
   quantidade: number;
   valorUnitario: number;
   subtotal?: number;
+  /**
+   * Preço de TABELA do produto — o que permite mostrar o desconto dado.
+   *
+   * Vem do catálogo na hora da leitura, como na nota: compara com o preço de
+   * hoje, não com um congelado. `null` no item avulso, que não tem produto.
+   */
+  valorProduto?: number | null;
 };
 
 /**

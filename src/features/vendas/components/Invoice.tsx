@@ -46,6 +46,7 @@ import PainelPagamento from "@/features/vendas/components/PainelPagamento";
 import PagamentoForm from "@/shared/ui/PagamentoForm";
 import RecebimentosNota from "@/features/financeiro/components/RecebimentosNota";
 import ContaService, { type AcordoVenda } from "@/features/financeiro/services/conta.service";
+import NotaResumo from "@/features/vendas/components/NotaResumo";
 
 const gerarUID = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -159,16 +160,23 @@ type InvoiceProps = {
  *          de cancelada, e o servidor recusa se houver pagamento.
  *        · `handleNovoProduto` — cadastra produto sem sair da venda.
  *
- *   3. RENDER — o cabeçalho com status e ações, o CORPO DO DOCUMENTO (é este
- *      que vira PNG) e a coluna de pagamento.
+ *   3. RENDER — o cabeçalho com status e ações, a nota EDITÁVEL e a coluna de
+ *      pagamento.
  *
  * ----------------------------------------------------------------------------
- * O QUE ENTRA NO PNG, E O QUE NÃO
+ * ESTA TELA NÃO É O DOCUMENTO
  * ----------------------------------------------------------------------------
- * O download fotografa o nó `notaRef`. Tudo marcado com **`data-sem-foto`**
- * fica DE FORA: são os controles de quem atende (atalhos de pagamento, o
- * extrato de recebimentos). Ao acrescentar controle dentro do documento,
- * pergunte se ele deve aparecer no papel do cliente — se não, marque.
+ * O que o cliente recebe sai do `NotaResumo`, num nó escondido de 900px — o
+ * MESMO componente que a lista de Vendas e o PDV fotografam. Ver
+ * `vendaDoDocumento`, que traduz o estado vivo desta tela para ele.
+ *
+ * Foi assim que acabou a divergência de detalhes entre a nota baixada aqui
+ * dentro e a baixada pela lista: não existe mais um segundo desenho do mesmo
+ * papel. Mexer no documento é mexer no `NotaResumo`; mexer aqui é mexer na
+ * ferramenta de montar a venda.
+ *
+ * O `notaRef` e o `data-sem-foto` continuam servindo ao ORÇAMENTO, que ainda
+ * é fotografado da tela.
  *
  * ----------------------------------------------------------------------------
  * O QUE MORA FORA DAQUI
@@ -672,6 +680,78 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
     };
   }, [pixPayload]);
 
+  /* ─────────────────────────── O DOCUMENTO ───────────────────────────
+   *
+   * O que sai impresso NÃO é esta tela.
+   *
+   * Durante muito tempo foi: o botão fotografava o próprio formulário
+   * (`notaRef`) e o `data-sem-foto` apagava os controles da foto. Funcionava
+   * até alguém comparar com a nota baixada pela LISTA, que sempre foi um
+   * componente à parte — e aí eram dois documentos parecidos, divergindo em
+   * silêncio a cada mexida num dos dois. O telefone do cliente só saía por um
+   * caminho; o número da nota, só pelo outro; e como o formulário usa
+   * breakpoints (`md:`, `lg:`), a nota baixada do celular saía com os itens em
+   * cartões e o resumo em duas colunas, enquanto a do desktop saía em tabela e
+   * seis colunas — a mesma venda, dois papéis.
+   *
+   * Agora os dois caminhos fotografam o MESMO `NotaResumo`, num nó escondido
+   * de 900px. Esta tela voltou a ser o que é: onde se monta a venda.
+   */
+  const refDocumento = useRef<HTMLDivElement>(null);
+
+  /**
+   * A venda como o documento a lê — do estado VIVO, não do que o servidor
+   * devolveu por último.
+   *
+   * Quem clica em "Ver nota" acabou de mexer nos itens, nas fotos ou no
+   * desconto; o papel tem de mostrar o que está na tela. O que vem do `pedido`
+   * é só o que a tela não tem: status, data de emissão e a forma do último
+   * pagamento.
+   */
+  const vendaDoDocumento = useMemo<PedidoClienteType>(
+    () => ({
+      clienteId: clienteId ?? pedido?.clienteId ?? "",
+      nomeCliente: pedido?.nomeCliente || nome || "—",
+      statusCliente: pedido?.statusCliente ?? "",
+      codigoEmpresa: pedido?.codigoEmpresa ?? "",
+      vendedorId: pedido?.vendedorId ?? null,
+      /* O vendedor gravado manda; a nota nova ainda não tem um, e aí quem
+         assina é quem está emitindo. */
+      nomeVendedor: pedido?.nomeVendedor || vendedor,
+      pedido: {
+        pedidoId: id ?? "",
+        totalPedido: total,
+        dataPedido: pedido?.pedido?.dataPedido ?? new Date(),
+        pedidoStatus: pedido?.pedido?.pedidoStatus ?? "ABERTO",
+        valorPago: totalPago,
+        formaPagamento: pedido?.pedido?.formaPagamento ?? null,
+        itensPedido: itens,
+        imagensServico,
+        mostrarQr,
+      },
+    }),
+    [clienteId, nome, pedido, vendedor, id, total, totalPago, itens, imagensServico, mostrarQr],
+  );
+
+  /**
+   * O Pix que entra no documento.
+   *
+   * As mesmas portas do `pixDaNota`, para o papel sair igual pelos dois
+   * caminhos: sem QR desligado, sem nota cancelada e sem nota já quitada — um
+   * QR numa nota paga é um convite a pagar duas vezes.
+   *
+   * O QR em si é o que a tela já preparou (`qrCodeNota`, um data URI pronto
+   * desde que a pessoa abriu a nota), e o valor é o desta tela: o campo
+   * "Cobrar" existe justamente para o sinal combinado no balcão.
+   */
+  const pixDoDocumento = useMemo(
+    () =>
+      mostrarQr && qrCodeNota && pixPayload && pendente > 0 && pedido?.pedido?.pedidoStatus !== "CANCELADO"
+        ? { qrCode: qrCodeNota, payload: pixPayload, valor: valorCobranca }
+        : null,
+    [mostrarQr, qrCodeNota, pixPayload, pendente, pedido, valorCobranca],
+  );
+
 
   /**
    * Copia o código Pix (o "copia e cola") para a área de transferência.
@@ -848,8 +928,9 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   /**
    * Manda a nota para o cliente, pela conversa.
    *
-   * O documento sai do MESMO nó que o download usa (`notaRef`), então o que o
-   * cliente recebe é exatamente o que a tela mostra. PNG abre como foto na
+   * O documento sai do MESMO nó que o botão "Ver nota" usa (`refDocumento`, o
+   * `NotaResumo` escondido), então o que vai pela conversa é o mesmo papel que
+   * sai pela lista de Vendas — e não uma foto desta tela. PNG abre como foto na
    * conversa — o cliente vê sem baixar, e é o que ele quer no celular; PDF vai
    * como anexo com nome, que é o que serve para guardar e imprimir.
    *
@@ -862,7 +943,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
     setEnviandoWhats(formato);
 
     try {
-      const png = await gerarBlobNota(notaRef);
+      const png = await gerarBlobNota(modoOrcamento ? notaRef : refDocumento);
       const empresa = enterprise?.nomeFantasia ?? "nota";
 
       const { arquivo, nome: nomeArquivo } =
@@ -1954,7 +2035,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
              * sem fechar nada — e o que ele baixa é o documento de verdade.
              */}
             {(modoOrcamento ? Boolean(orcamentoId) : Boolean(id)) && (
-              <BotaoVerDocumento refNota={notaRef} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Baixar orçamento" : "Baixar nota"} documento={modoOrcamento ? "orçamento" : "nota"} />
+              <BotaoVerDocumento refNota={modoOrcamento ? notaRef : refDocumento} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Baixar orçamento" : "Baixar nota"} documento={modoOrcamento ? "orçamento" : "nota"} />
             )}
 
             {/* Recibo: só depois de quitada. Antes disso não há o que
@@ -2088,6 +2169,21 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
           </button>
         </div>
       </Modal>
+
+      {/* O DOCUMENTO — fora da tela, com a largura fixa do papel.
+
+          `-left-[9999px]` em vez de `display:none`: `html-to-image` não
+          fotografa o que não está no layout, e a largura de 900px é o que
+          garante que a nota saia igual no celular e no desktop. Mesmo recurso
+          da lista de Vendas e do PDV.
+
+          Só na nota: a proposta tem outro documento (validade, sem vendedor,
+          sem pagamento) e continua saindo do nó da tela. */}
+      {!modoOrcamento && (
+        <div className="fixed -left-[9999px] top-0 w-[900px]" aria-hidden>
+          <NotaResumo venda={vendaDoDocumento} pix={pixDoDocumento} refNota={refDocumento} />
+        </div>
+      )}
     </>
   );
 };

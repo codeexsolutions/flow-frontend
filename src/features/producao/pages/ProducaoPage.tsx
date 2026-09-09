@@ -68,14 +68,15 @@ function diasAtePrazo(prazo: string | null): number | null {
  * Foi revertida no mesmo dia: um quadro vazio no lugar de uma produção com
  * histórico não é uma versão nova, é a perda do que funcionava.
  *
- * O arquivo fica porque `producao_itens` voltou a ter uso: é onde vivem as
- * ORDENS DE SERVIÇO geradas na aba Pedidos. Esta tela é a única interface que
- * existe para mexer nelas por etapa, e apagá-la tornaria esse conteúdo
- * inalcançável sem passar pelo banco.
+ * O arquivo ficou porque `producao_itens` voltou a ter uso: é onde vivem as
+ * ORDENS DE SERVIÇO. E desde que a venda passou a virar ordem sozinha, esta
+ * tela deixou de ser um arquivo guardado e virou a aba QUADRO
+ * (`/producao/quadro`): sem ela a ordem nasceria na primeira etapa e não teria
+ * como sair de lá.
  */
 /**
- * As props sobraram do arranjo anterior, em que esta tela era a visão
- * "backlog" da aba Kanban. Ninguém as passa hoje.
+ * As props vêm da rota: a aba Quadro passa `abasSecao` para a barra da tabela,
+ * do mesmo jeito que as outras telas de Produção.
  */
 type Props = {
   /** Abas que TROCAM a tela — ponta esquerda da barra. */

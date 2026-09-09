@@ -20,6 +20,11 @@ export type ItemProducao = {
   os_modelo: string | null;
   /** O que foi preenchido na OS, no formato do modelo que a desenha. */
   os_dados: Record<string, unknown> | null;
+  /** A linha que esta ordem abriu na planilha de produção. `null` = não foi. */
+  planilha_registro_fk: string | null;
+  /** Em qual planilha ela foi aberta — fica gravado mesmo se a linha sumir. */
+  planilha_modelo_fk: string | null;
+  planilha_nome: string | null;
   etapa_fk: string | null;
   etapa_nome: string | null;
   etapa_conclui: boolean | null;
@@ -60,10 +65,13 @@ const ProducaoService = {
   },
 
   /**
-   * Leva uma venda já gravada para a planilha de produção.
+   * Gera a ORDEM DE SERVIÇO de uma venda já gravada.
    *
-   * Devolve a mensagem do servidor: quando nada é criado (a venda já está lá,
-   * ou falta escolher a planilha) isso não é erro, e a tela precisa do texto
+   * Sem `osModelo`, a ordem nasce com o modelo padrão da empresa — o escolhido
+   * em Configurações › Produção.
+   *
+   * Devolve a mensagem do servidor: quando nada é criado (a venda já tem ordem,
+   * ou o fluxo ainda não tem etapa) isso não é erro, e a tela precisa do texto
    * para dizer o que houve em vez de piscar um "pronto" mentiroso.
    */
   async daVenda(pedidoId: string, osModelo?: string): Promise<{ criado: boolean; mensagem: string }> {
@@ -115,6 +123,19 @@ const ProducaoService = {
    */
   async definirModeloOs(id: string, chave: string) {
     await sysgrafix.patch(`/producao/itens/${id}`, { osModelo: chave });
+  },
+
+  /**
+   * Manda a ordem para uma planilha de produção.
+   *
+   * Cria a linha do cliente lá e guarda o vínculo na ordem. Devolve a mensagem
+   * do servidor porque "criei agora" e "já estava" são desfechos diferentes, e
+   * o segundo precisa ser dito — senão clicar duas vezes dá o mesmo "pronto" e
+   * ninguém sabe se duplicou.
+   */
+  async mandarParaPlanilha(id: string, modeloId: string): Promise<string> {
+    const r = await sysgrafix.post(`/producao/itens/${id}/planilha`, { modeloId });
+    return String(r.data?.message ?? "");
   },
 
   /** Grava o preenchimento da OS — o que a bancada escreveu na ficha. */

@@ -1,5 +1,6 @@
 import type { LegacyRef } from "react";
 
+import useEnterprise from "@/features/empresa/store/enterprise.store";
 import type { ItemProducao } from "@/features/producao/services/producao.service";
 import OrdemServico from "@/features/producao/components/OrdemServico";
 import FichaTecnicaProducao, { criarFichaVazia, type FichaTecnicaData } from "@/features/producao/modelos/FichaTecnicaProducao";
@@ -42,6 +43,30 @@ export type ChaveModeloOS = "PADRAO" | "FICHA_TECNICA_PRODUCAO";
 type Props = {
   ordem: ItemProducao;
   refDoc?: LegacyRef<HTMLDivElement>;
+};
+
+/**
+ * A marca da empresa no alto da folha.
+ *
+ * A ficha reserva uma caixa de 16% da largura para a logo e, sem ela, imprimia
+ * a palavra "Logo" em cinza — um espaço reservado que vai para a bancada e
+ * para a mão do cliente parecendo defeito. Aqui entra a mesma logo da nota e do
+ * orçamento (`enterprise.urlLogo`), com o mesmo `/logo.png` de reserva para
+ * quem ainda não subiu a sua.
+ *
+ * `object-contain`: logo é marca, não foto de capa — `cover` cortaria as bordas
+ * de qualquer uma que não seja quadrada.
+ */
+const LogoDaEmpresa = () => {
+  const enterprise = useEnterprise((s) => s.enterprise);
+
+  return (
+    <img
+      src={enterprise?.urlLogo || "/logo.png"}
+      alt={enterprise?.nomeFantasia ?? "Logo da empresa"}
+      className="max-h-[18mm] max-w-full object-contain"
+    />
+  );
 };
 
 /** `YYYY-MM-DD` — o formato que a ficha entende como data. */
@@ -111,6 +136,7 @@ export const MODELOS_OS: Record<ChaveModeloOS, ModeloOS> = {
     Documento: ({ ordem, refDoc }) => (
       <FichaTecnicaProducao
         ref={refDoc as never}
+        logo={<LogoDaEmpresa />}
         data={{ ...daOrdemParaFicha(ordem), ...((ordem.os_dados ?? {}) as FichaTecnicaData) }}
       />
     ),
@@ -119,6 +145,7 @@ export const MODELOS_OS: Record<ChaveModeloOS, ModeloOS> = {
       <FichaTecnicaProducao
         editable
         a4={false}
+        logo={<LogoDaEmpresa />}
         data={{ ...daOrdemParaFicha(ordem), ...(dados as FichaTecnicaData) }}
         onChange={(d) => onChange(d as Record<string, unknown>)}
       />

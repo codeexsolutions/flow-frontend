@@ -33,6 +33,8 @@ import AjudaPage from "@/features/ajuda/pages/AjudaPage";
 import PedidosProducaoPage from "@/features/producao/pages/PedidosPage";
 import OrdensServicoPage from "@/features/producao/pages/OrdensServicoPage";
 import KanbanPage from "@/features/producao/pages/KanbanPage";
+import QuadroProducaoPage from "@/features/producao/pages/ProducaoPage";
+import AbasProducao from "@/features/producao/components/AbasProducao";
 import AcompanharProducaoPage from "@/features/acompanhamento/pages/AcompanharProducaoPage";
 import BaterPontoPage from "@/features/ponto/pages/BaterPontoPage";
 import AbrirPontoPage from "@/features/ponto/pages/AbrirPontoPage";
@@ -418,6 +420,22 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
                 promessa="Acompanhe cada pedido por etapa, monte a produção em tabela ou quadro e mande a cada cliente o link do pedido dele."
               >
                 <OrdensServicoPage />
+              </RecursoDoPlano>
+            }
+          />
+          {/* O QUADRO das ordens de serviço — as mesmas de `/producao/os`, em
+              colunas de etapa. Ele existe porque a venda passou a virar ordem
+              sozinha: sem um lugar para arrastá-la, a ordem nasceria na
+              primeira etapa e ficaria lá para sempre. O Kanban ao lado
+              continua sendo a planilha, intocada. */}
+          <Route
+            path="producao/quadro"
+            element={
+              <RecursoDoPlano
+                recurso="producao"
+                promessa="Acompanhe cada pedido por etapa, monte a produção em tabela ou quadro e mande a cada cliente o link do pedido dele."
+              >
+                <QuadroProducaoPage abasSecao={<AbasProducao />} />
               </RecursoDoPlano>
             }
           />

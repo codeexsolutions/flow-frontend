@@ -21,11 +21,13 @@ import { PedidoStatusBadge } from "@/shared/ui/StatusBadge";
 import useAuth from "@/features/auth/store/auth.store";
 import { ehGestor, veVendasDeTodos } from "@/features/vendas/components/TabsVendas";
 import useVendaStore from "@/features/vendas/store/venda.store";
+import useClienteStore from "@/features/clientes/store/cliente.store";
 import SalesOverviewPage from "@/features/vendas/pages/SalesOverviewPage";
 import SeletorPeriodo, { PERIODO_TUDO, type Periodo } from "@/shared/ui/SeletorPeriodo";
 import { mesesComMovimento, vendasAtivas } from "@/shared/domain/serieVendas";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
 import { abrirDocumento } from "@/shared/ui/downloadNota";
+import { pixDaNota, type PixDaNota } from "@/shared/domain/pixDaNota";
 import ProducaoService from "@/features/producao/services/producao.service";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
@@ -163,6 +165,10 @@ const SalesList = () => {
   const fetchContas = useContasStore((s) => s.fetchContas);
   const vendas = useVendaStore((s) => s.vendas);
   const fetchVendas = useVendaStore((s) => s.fetchVendas);
+  /* Só a função: assinar a LISTA de clientes redesenharia a tabela de vendas a
+     cada mexida no cadastro, sem nada na tela dependendo dela. Quem lê os
+     clientes é o documento, dentro do `NotaResumo`. */
+  const fetchClientes = useClienteStore((s) => s.fetchClientes);
   const enterprise = useEnterprise((s) => s.enterprise);
 
   const [notaAberta, setNotaAberta] = useState<NotaAberta | null>(null);
@@ -178,6 +184,9 @@ const SalesList = () => {
      é preenchido com a venda escolhida antes de rasterizar. Assim não há N
      notas escondidas e o modal não precisa abrir. */
   const [notaDownload, setNotaDownload] = useState<PedidoClienteType | null>(null);
+  /* O Pix vai PRONTO para o nó escondido: gerar o QR dentro do documento
+     perderia a corrida com a foto. Ver `pixDaNota`. */
+  const [pixDownload, setPixDownload] = useState<PixDaNota | null>(null);
   const [baixandoNota, setBaixandoNota] = useState(false);
   const refNotaDownload = useRef<HTMLDivElement>(null);
 
@@ -217,9 +226,14 @@ const SalesList = () => {
     if (baixandoNota) return;
 
     setBaixandoNota(true);
-    setNotaDownload(v);
 
     try {
+      /* O QR ANTES do nó: quando ele montar, o data URI já existe. */
+      const pix = await pixDaNota(v);
+
+      setPixDownload(pix);
+      setNotaDownload(v);
+
       await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
       const blob = await gerarBlobNota(refNotaDownload);
 
@@ -253,10 +267,23 @@ const SalesList = () => {
       .catch(() => setPrazos(new Map()));
   };
 
+  /*
+   * A base de clientes entra junto — não para a lista, para o DOCUMENTO.
+   *
+   * A nota impressa traz telefone, e-mail e documento do cliente, e esses três
+   * campos moram no cadastro, não na venda. Quem chegava direto em Vendas (sem
+   * passar por Início ou Clientes) baixava a nota com "Não informado" no
+   * telefone, enquanto a mesma nota saía completa depois de uma volta pelo
+   * Início — o papel do cliente dependia do caminho que a pessoa fez na tela.
+   *
+   * `fetchClientes` já não repete busca: sai na hora se o store estiver
+   * carregado.
+   */
   useEffect(() => {
     fetchVendas();
     carregarPrazos();
-  }, [fetchVendas]);
+    void fetchClientes();
+  }, [fetchVendas, fetchClientes]);
 
   const abrirNota = (nota: NotaAberta) => setNotaAberta(nota);
   const fecharNota = () => {
@@ -807,17 +834,17 @@ const SalesList = () => {
       </Modal>
 
       {/* Nó de nota fora da tela para o download rápido. */}
-      <NotaEscondida venda={notaDownload} refNota={refNotaDownload} />
+      <NotaEscondida venda={notaDownload} pix={pixDownload} refNota={refNotaDownload} />
     </div>
   );
 };
 
 /** Nó de nota escondido à esquerda — `html-to-image` precisa que ele exista
     no DOM, então fica fora do viewport em vez de `display:none`. */
-function NotaEscondida({ venda, refNota }: { venda: PedidoClienteType | null; refNota: LegacyRef<HTMLDivElement> }) {
+function NotaEscondida({ venda, pix, refNota }: { venda: PedidoClienteType | null; pix?: PixDaNota | null; refNota: LegacyRef<HTMLDivElement> }) {
   return (
     <div className="fixed -left-[9999px] top-0 w-[900px]" aria-hidden>
-      {venda && <NotaResumo venda={venda} refNota={refNota} />}
+      {venda && <NotaResumo venda={venda} pix={pix} refNota={refNota} />}
     </div>
   );
 }

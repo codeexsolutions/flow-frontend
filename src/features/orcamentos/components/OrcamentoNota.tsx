@@ -50,8 +50,22 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
   const subtotal = (i: { quantidade: number; valorUnitario: number; subtotal?: number }) =>
     Number(i.subtotal ?? Number(i.valorUnitario) * Number(i.quantidade));
 
+  /* As mesmas três contas da nota e do orçamento aberto, com os mesmos nomes:
+     quando uma mudar, é para as três mudarem juntas. */
+  const totalLiquido = Number(o.total ?? 0);
+  const totalBruto = o.itens.reduce(
+    (acc, i) => acc + Number(i.valorProduto ?? i.valorUnitario ?? 0) * Number(i.quantidade ?? 0),
+    0,
+  );
+  const totalDesconto = Math.max(totalBruto - totalLiquido, 0);
+  const temDesconto = totalDesconto > 0 && totalBruto > 0;
+
   const telefone = o.clienteContato ? maskPhone(String(o.clienteContato)) : "";
   const enterprise = useEnterprise((s) => s.enterprise);
+
+  /* Os mesmos rótulos e valores do resumo da nota. */
+  const lblResumo = "block text-[11px] uppercase tracking-[0.08em] text-faint";
+  const valResumo = "mt-1 block truncate text-sm text-ink";
 
   /* O prazo por extenso ao lado da data: "válido até 23/09" sozinho obriga
      quem lê a contar no calendário para saber quanto tempo ainda tem. */
@@ -135,7 +149,14 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
                       <p className="px-1 tabular-nums text-ink">{Number(i.quantidade)}</p>
                     </td>
                     <td className="p-2 align-middle">
-                      <p className="px-1 tabular-nums text-ink">{formatCurrency(Number(i.valorUnitario))}</p>
+                      {/* O preço de tabela riscado ao lado do praticado — é o
+                          desconto item a item, do mesmo jeito que a nota. */}
+                      <div className="flex items-center gap-1.5 px-1">
+                        <span className="tabular-nums text-ink">{formatCurrency(Number(i.valorUnitario))}</span>
+                        {Number(i.valorProduto ?? 0) > 0 && Number(i.valorProduto) !== Number(i.valorUnitario) && (
+                          <span className="text-[10px] text-mist line-through">{formatCurrency(Number(i.valorProduto))}</span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-2 align-middle">
                       <p className="px-1 tabular-nums text-ink">{formatCurrency(subtotal(i))}</p>
@@ -162,14 +183,30 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
         </div>
       )}
 
-      {/* Total — o único número que importa para a proposta.
-          Mesma caixa do resumo da nota (`NotaResumo`): mesma largura mínima,
-          mesmo corpo de texto, mesmo canto. O que muda é só não haver "Pago" e
-          "Pendente" ao lado — proposta não tem dinheiro recebido. */}
-      <div className="flex flex-wrap justify-end gap-2 p-6">
-        <div className="min-w-[150px] rounded-xl border border-fg/[0.06] bg-fg/[0.03] p-4 text-right">
-          <span className="text-[10.5px] uppercase tracking-wide text-faint">Total do orçamento</span>
-          <span className="mt-1 block text-xl tabular-nums text-ink">{formatCurrency(o.total)}</span>
+      {/* Resumo — as MESMAS caixas do orçamento aberto (`Invoice` em modo
+          proposta): bruto, desconto e líquido. Pagamento não entra: proposta
+          não tem dinheiro recebido.
+
+          Aqui havia só "Total do orçamento". Quem negociou R$ 80 numa proposta
+          de R$ 100 mandava ao cliente um papel que não dizia o abatimento em
+          lugar nenhum — e é justamente o desconto que o cliente confere
+          primeiro. */}
+      <div className="p-5 pt-6">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl border border-fg/[0.06] bg-fg/[0.03] p-3">
+            <span className={lblResumo}>T. Bruto</span>
+            <span className={`${valResumo} tabular-nums`}>{formatCurrency(totalBruto)}</span>
+          </div>
+
+          <div className={`rounded-xl border p-3 ${temDesconto ? "border-warning/20 bg-warning/[0.12]" : "border-fg/[0.06] bg-fg/[0.03]"}`}>
+            <span className={`${lblResumo} ${temDesconto ? "text-warning" : "text-faint"}`}>Desconto</span>
+            <span className={`mt-1 block truncate text-sm tabular-nums ${temDesconto ? "text-warning" : "text-ink"}`}>{temDesconto ? `- ${formatCurrency(totalDesconto)}` : formatCurrency(0)}</span>
+          </div>
+
+          <div className="rounded-xl border border-fg/[0.06] bg-fg/[0.03] p-3">
+            <span className={lblResumo}>T. Líquido</span>
+            <span className={`${valResumo} tabular-nums`}>{formatCurrency(totalLiquido)}</span>
+          </div>
         </div>
       </div>
       </div>
