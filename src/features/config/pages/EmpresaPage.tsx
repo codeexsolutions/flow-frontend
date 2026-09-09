@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building2, MessageCircle, MapPin, Save, CircleCheck, Factory, Receipt, Truck } from "lucide-react";
+import { Building2, MessageCircle, MapPin, Save, CircleCheck, Factory, Truck } from "lucide-react";
 
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import { useAlert } from "@/shared/ui/Alert";
@@ -18,7 +18,6 @@ import EmpresaEndereco from "@/features/config/components/EmpresaEndereco";
 import PixEmpresa from "@/features/config/components/PixEmpresa";
 import DominioProprio from "@/features/config/components/DominioProprio";
 import ProducaoAutomatica from "@/features/config/components/ProducaoAutomatica";
-import ConfigFiscal from "@/features/config/components/ConfigFiscal";
 import ConfigEnvio from "@/features/config/components/ConfigEnvio";
 import usePlano from "@/shared/plano/plano.store";
 
@@ -32,6 +31,8 @@ type EnterpriseLike = {
   urlLogo?: string;
   notaBackground?: string;
   ocultarCpfNota?: boolean;
+  /** O QR do Pix com que a nota nasce — ver `notaMostrarQr` no domínio. */
+  notaMostrarQr?: boolean;
   producaoAutomatica?: boolean;
   producaoPlanilhaId?: string | null;
   contato?: { email?: string; celular?: string | number; telefone?: string | number; whatsapp?: string | number };
@@ -46,7 +47,7 @@ type EnterpriseLike = {
   };
 };
 
-type TabId = "identificacao" | "contato" | "endereco" | "producao" | "fiscal" | "envio";
+type TabId = "identificacao" | "contato" | "endereco" | "producao" | "envio";
 
 /**
  * A aba de Produção só existe para quem tem o módulo.
@@ -61,9 +62,9 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode; recurso?: string 
   { id: "contato", label: "Contato", icon: <MessageCircle size={15} /> },
   { id: "endereco", label: "Endereço", icon: <MapPin size={15} /> },
   { id: "producao", label: "Produção", icon: <Factory size={15} />, recurso: "producao" },
-  /* Fiscal entra junto de produção, do Professional para cima: é o mesmo
-     perfil de empresa, e é onde a conta do provedor de emissão se paga. */
-  { id: "fiscal", label: "Fiscal", icon: <Receipt size={15} />, recurso: "fiscal" },
+  /* O FISCAL mudou de casa: ele agora é a aba Fiscal do Balcão (PDV).
+     A falta de NCM ou de CSC aparece na hora de emitir o cupom, e é lá que se
+     resolve — não a duas telas de distância. */
   { id: "envio", label: "Envio", icon: <Truck size={15} />, recurso: "correios" },
 ];
 
@@ -284,8 +285,34 @@ const EmpresaPage = () => {
              * nota — e um interruptor que não muda nada é pior que ausente:
              * quem o vê passa a duvidar do que está impresso.
              */}
+            {/* O QR do Pix com que a nota NASCE. Fica ao lado do CPF porque
+                as duas chaves decidem a mesma coisa: o que está impresso no
+                papel que o cliente leva. Dentro da nota o interruptor
+                continua, e é a escolha de lá que fica gravada na venda. */}
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-fg/[0.08] p-3">
+              <input
+                type="checkbox"
+                checked={ent.notaMostrarQr !== false}
+                onChange={(e) => {
+                  if (ent.id) {
+                    updateEnterprise(ent.id, { notaMostrarQr: e.target.checked }).catch((err) =>
+                      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível salvar.")),
+                    );
+                  }
+                }}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[rgb(var(--accent))]"
+              />
+
+              <span className="min-w-0">
+                <span className="block text-[13px] text-ink">Nota nasce com o QR do Pix</span>
+                <span className="mt-0.5 block text-[11.5px] leading-relaxed text-faint">
+                  Vale para as notas novas. Desligue se a sua loja recebe no cartão e o QR só ocupa espaço no papel.
+                </span>
+              </span>
+            </label>
+
             {ehCpf(ent.cpfCnpj) && (
-              <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-fg/[0.08] p-3">
+              <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-fg/[0.08] p-3">
                 <input
                   type="checkbox"
                   checked={ent.ocultarCpfNota !== false}
@@ -314,12 +341,6 @@ const EmpresaPage = () => {
         {tab === "producao" && (
           <SettingsCard corpoRolavel icon={<Factory className="h-4 w-4" />} title="Produção" desc="O que acontece com a venda de serviço depois de registrada">
             <ProducaoAutomatica />
-          </SettingsCard>
-        )}
-
-        {tab === "fiscal" && (
-          <SettingsCard corpoRolavel icon={<Receipt className="h-4 w-4" />} title="Fiscal" desc="O que a empresa precisa para emitir cupom fiscal (NFC-e)">
-            <ConfigFiscal />
           </SettingsCard>
         )}
 

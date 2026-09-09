@@ -5,7 +5,8 @@ import { ShoppingCart, Plus, Receipt, UserCheck, DollarSign, Wallet, AlertCircle
 import { useLocation, useNavigate } from "react-router-dom";
 
 import Invoice from "@/features/vendas/components/Invoice";
-import ConfigNotas from "@/features/vendas/components/ConfigNotas";
+import ConfigFiscal from "@/features/config/components/ConfigFiscal";
+import usePlano from "@/shared/plano/plano.store";
 import { PageScreen, PrimaryAction, GhostAction } from "@/shared/ui/PageShell";
 import SeletorDia from "@/shared/ui/SeletorDia";
 import OrcamentoService, { type Orcamento } from "@/features/orcamentos/services/orcamento.service";
@@ -223,14 +224,20 @@ const PontoDeVenda = () => {
   /* Qual lista a tabela mostra. As abas do topo da página levam para telas
      diferentes; estas trocam o conteúdo sem sair do balcão. */
   /**
-   * A terceira aba é CONFIGURAÇÃO, não lista.
+   * A terceira aba é o FISCAL, não uma lista.
    *
-   * As chaves que decidem o papel que sai para o cliente — QR do Pix, CPF
-   * impresso, papel de parede — moravam só em Configurações › Empresa, a duas
-   * telas de distância de quem emite. Quem percebe que estão erradas é quem
-   * está no balcão, com a nota na mão; arruma-se onde se percebe.
+   * O cadastro que faz o cupom sair — Inscrição Estadual, regime, CSC,
+   * credencial do emissor — e a classificação dos produtos (NCM, CFOP, CST)
+   * moravam em Configurações › Empresa, a duas telas de distância do balcão.
+   * E é no balcão que a falta aparece: na hora em que o cliente pede o cupom e
+   * a emissão responde "o produto X está sem NCM".
+   *
+   * A aba só existe para quem tem o recurso no plano — ver `podeFiscal`. Aba
+   * que abre uma tela que o servidor recusa é pior do que aba ausente.
    */
   const [aba, setAba] = useState<"vendas" | "orcamentos" | "configuracoes">("vendas");
+
+  const podeFiscal = usePlano((s) => s.recurso("fiscal"));
 
   const location = useLocation();
 
@@ -866,7 +873,7 @@ const PontoDeVenda = () => {
                     ? `${formatNumber(vendasFiltradas.length)} ${vendasFiltradas.length === 1 ? "venda" : "vendas"} ${rotuloCurtoDoDia}`
                     : aba === "orcamentos"
                       ? `${formatNumber(orcamentosFiltrados.length)} ${orcamentosFiltrados.length === 1 ? "orçamento" : "orçamentos"}`
-                      : "O papel que sai para o cliente"}
+                      : "O que o cupom fiscal precisa para sair"}
                 </p>
               </div>
             </div>
@@ -921,7 +928,7 @@ const PontoDeVenda = () => {
                   { id: "orcamentos", label: "Orçamentos", icone: <FileText size={13} />, contagem: orcamentos.length },
                   /* Sem contagem: não é uma lista de N coisas, é uma tela de
                      ajustes — e um número ao lado dela prometeria itens. */
-                  { id: "configuracoes", label: "Configurações", icone: <Settings size={13} /> },
+                  ...(podeFiscal ? [{ id: "configuracoes" as const, label: "Fiscal", icone: <Settings size={13} /> }] : []),
                 ]}
               />
             }
@@ -963,7 +970,9 @@ const PontoDeVenda = () => {
           */}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {aba === "configuracoes" ? (
-              <ConfigNotas />
+              <div className="p-4">
+                <ConfigFiscal />
+              </div>
             ) : aba === "vendas" ? (
               vendasFiltradas.length > 0 ? (
                 <>
