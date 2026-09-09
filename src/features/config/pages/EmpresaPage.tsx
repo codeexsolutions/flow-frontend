@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building2, MessageCircle, MapPin, Save, CircleCheck, Factory, Receipt } from "lucide-react";
+import { Building2, MessageCircle, MapPin, Save, CircleCheck, Factory, Receipt, Truck } from "lucide-react";
 
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import { useAlert } from "@/shared/ui/Alert";
@@ -19,6 +19,7 @@ import PixEmpresa from "@/features/config/components/PixEmpresa";
 import DominioProprio from "@/features/config/components/DominioProprio";
 import ProducaoAutomatica from "@/features/config/components/ProducaoAutomatica";
 import ConfigFiscal from "@/features/config/components/ConfigFiscal";
+import ConfigEnvio from "@/features/config/components/ConfigEnvio";
 import usePlano from "@/shared/plano/plano.store";
 
 type EnterpriseLike = {
@@ -45,7 +46,7 @@ type EnterpriseLike = {
   };
 };
 
-type TabId = "identificacao" | "contato" | "endereco" | "producao" | "fiscal";
+type TabId = "identificacao" | "contato" | "endereco" | "producao" | "fiscal" | "envio";
 
 /**
  * A aba de Produção só existe para quem tem o módulo.
@@ -63,6 +64,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode; recurso?: string 
   /* Fiscal entra junto de produção, do Professional para cima: é o mesmo
      perfil de empresa, e é onde a conta do provedor de emissão se paga. */
   { id: "fiscal", label: "Fiscal", icon: <Receipt size={15} />, recurso: "fiscal" },
+  { id: "envio", label: "Envio", icon: <Truck size={15} />, recurso: "correios" },
 ];
 
 const EmpresaPage = () => {
@@ -318,6 +320,12 @@ const EmpresaPage = () => {
         {tab === "fiscal" && (
           <SettingsCard corpoRolavel icon={<Receipt className="h-4 w-4" />} title="Fiscal" desc="O que a empresa precisa para emitir cupom fiscal (NFC-e)">
             <ConfigFiscal />
+          </SettingsCard>
+        )}
+
+        {tab === "envio" && (
+          <SettingsCard corpoRolavel icon={<Truck className="h-4 w-4" />} title="Envio" desc="A conta que cota o frete e compra as etiquetas">
+            <ConfigEnvio />
           </SettingsCard>
         )}
 

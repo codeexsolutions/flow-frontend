@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Package, ClipboardList, CheckCircle2, Clock, MapPin, FileText, XCircle, Printer, Truck } from "lucide-react";
+import { Package, ClipboardList, CheckCircle2, Clock, MapPin, FileText, XCircle, Printer, Truck, Loader2 } from "lucide-react";
 
 import CorreiosService from "@/features/correios/services/correios.service";
-import type { PostagemType, PrePostagemDto, ServicoCorreio } from "@/features/correios/types/correios.types";
+import type { FreteResultado, PostagemType, PrePostagemDto } from "@/features/correios/types/correios.types";
 
 import { TabelaCard, TabelaVazia, ListaCabecalho, ListaLinha, ListaFantasmas } from "@/shared/ui/DataTable";
 import { Kpi, KpiFaixa } from "@/shared/ui/Painel";
@@ -12,7 +12,7 @@ import { TabelaPaginacao } from "@/shared/ui/DataTable";
 import { Form, FormSection, FormGrid, FormActions, TextField, SelectBox } from "@/shared/ui/form/FormKit";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
-import { money } from "@/shared/utils/currency";
+import { money, formatCurrency } from "@/shared/utils/currency";
 import { brDate } from "@/shared/utils/date";
 import { onlyDigits } from "@/shared/utils/format";
 import { maskCep } from "@/shared/validation/masks";
@@ -39,7 +39,9 @@ const TOM_SERVICO: Record<string, TomSelo> = { SEDEX: "info", PAC: "alerta", SED
 const ServicoBadge = ({ servico }: { servico: string }) => <Selo tom={TOM_SERVICO[servico]}>{servico}</Selo>;
 
 type NovaPostagemForm = {
-  servico: ServicoCorreio;
+  /** 0 = ainda não cotou. É o id do serviço no provedor. */
+  servicoId: number;
+  servicoNome: string;
   cepDestino: string;
   logradouro: string;
   numero: string;
@@ -48,6 +50,9 @@ type NovaPostagemForm = {
   cidade: string;
   uf: string;
   peso: string;
+  altura: string;
+  largura: string;
+  comprimento: string;
 };
 
 const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
@@ -65,8 +70,19 @@ const PostagemPage = () => {
 
   const abrirDetalhe = (p: PostagemType) => setDetalheAberto(p);
 
+  /**
+   * As opções de frete da cotação — e a escolhida.
+   *
+   * Elas só existem depois de "Calcular frete": preço e prazo dependem do CEP
+   * e da caixa, e mostrar uma lista fixa de serviços antes disso é oferecer
+   * escolha sobre o que ninguém sabe ainda.
+   */
+  const [opcoes, setOpcoes] = useState<FreteResultado[]>([]);
+  const [cotando, setCotando] = useState(false);
+
   const [form, setForm] = useState<NovaPostagemForm>({
-    servico: "SEDEX",
+    servicoId: 0,
+    servicoNome: "",
     cepDestino: "",
     logradouro: "",
     numero: "",
@@ -75,7 +91,51 @@ const PostagemPage = () => {
     cidade: "",
     uf: "",
     peso: "0.5",
+    altura: "4",
+    largura: "12",
+    comprimento: "18",
   });
+
+  /**
+   * Cota o frete para a caixa e o destino digitados.
+   *
+   * Limpa a escolha anterior de propósito: mudou o CEP ou a caixa, o preço que
+   * estava na tela deixou de valer — e postar com ele seria despachar por um
+   * valor que não existe mais.
+   */
+  const cotarFrete = async () => {
+    if (!form.cepDestino) {
+      alert.warning("Falta o CEP", "Informe o CEP de destino para calcular o frete.");
+      return;
+    }
+
+    setCotando(true);
+    setOpcoes([]);
+    setForm((f) => ({ ...f, servicoId: 0, servicoNome: "" }));
+
+    try {
+      const r = await CorreiosService.calcularFrete({
+        cepOrigem: onlyDigits(enterprise?.endereco?.cep ?? ""),
+        cepDestino: onlyDigits(form.cepDestino),
+        peso: Number(form.peso) || 0.5,
+        altura: Number(form.altura) || 4,
+        largura: Number(form.largura) || 12,
+        comprimento: Number(form.comprimento) || 18,
+      });
+
+      const lista = unwrapList<FreteResultado>(r.data);
+
+      setOpcoes(lista);
+
+      if (!lista.some((o) => !o.erro)) {
+        alert.warning("Nenhuma transportadora atende", "Confira o CEP e as medidas da caixa.");
+      }
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível calcular o frete."));
+    } finally {
+      setCotando(false);
+    }
+  };
 
   const [page, setPage] = useState(1);
 
@@ -125,11 +185,19 @@ const PostagemPage = () => {
       return;
     }
 
+    /* Sem serviço escolhido não há o que comprar — e comprar é o que esta tela
+       faz: o frete sai do saldo da conta assim que a etiqueta é gerada. */
+    if (!form.servicoId) {
+      alert.warning("Falta escolher o frete", "Calcule o frete e escolha uma transportadora antes de gerar a etiqueta.");
+      return;
+    }
+
     setSalvando(true);
     try {
       const payload: PrePostagemDto = {
         contrato: enterprise.codigoEmpresa,
-        servico: form.servico,
+        servicoId: form.servicoId,
+        servico: form.servicoNome,
         remetente: {
           nome: enterprise.nomeFantasia,
           cpfCnpj: enterprise.cpfCnpj,
@@ -156,9 +224,9 @@ const PostagemPage = () => {
         },
         itensDeclaracao: [],
         peso: Number(form.peso) || 0.5,
-        comprimento: 20,
-        altura: 10,
-        largura: 15,
+        comprimento: Number(form.comprimento) || 18,
+        altura: Number(form.altura) || 4,
+        largura: Number(form.largura) || 12,
       };
 
       await CorreiosService.solicitarPostagem(payload);
@@ -329,21 +397,57 @@ const PostagemPage = () => {
             handleCriarPostagem();
           }}
         >
-          <FormSection title="Serviço" icon={<Truck size={14} />}>
-            <div className="flex gap-2">
-              {(["SEDEX", "PAC"] as ServicoCorreio[]).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setForm({ ...form, servico: s })}
-                  className={`focus-ring flex-1 cursor-pointer rounded-lg border px-3 py-2 text-sm transition-colors ${
-                    form.servico === s ? "border-accent/50 bg-accent/15 text-accent-soft" : "border-fg/[0.1] text-faint hover:text-mist"
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+          {/* ─────────────── O FRETE, cotado de verdade ───────────────
+              A escolha vem DEPOIS do preço, não antes. As opções chegam com
+              transportadora, valor e prazo juntos — inclusive as que recusaram
+              a rota, porque "a Jadlog não entrega neste CEP" é resposta, e
+              escondê-la faz procurar por uma opção que nunca vai aparecer. */}
+          <FormSection title="Frete" icon={<Truck size={14} />}>
+            <button
+              type="button"
+              onClick={() => void cotarFrete()}
+              disabled={cotando}
+              className="focus-ring flex h-[38px] cursor-pointer items-center gap-2 rounded-lg border border-fg/[0.1] px-3 text-[12.5px] text-mist transition-colors hover:border-accent/40 hover:text-accent-soft disabled:opacity-50"
+            >
+              {cotando ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+              {opcoes.length ? "Calcular de novo" : "Calcular frete"}
+            </button>
+
+            {opcoes.length > 0 && (
+              <div className="mt-2 flex flex-col gap-1.5">
+                {opcoes.map((o) => {
+                  const indisponivel = Boolean(o.erro);
+                  const escolhido = form.servicoId === o.servicoId;
+
+                  return (
+                    <button
+                      key={`${o.servicoId}-${o.servico}`}
+                      type="button"
+                      disabled={indisponivel}
+                      onClick={() => setForm({ ...form, servicoId: o.servicoId, servicoNome: o.servico })}
+                      className={`focus-ring flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-[12.5px] transition-colors ${
+                        escolhido
+                          ? "border-accent/50 bg-accent/15 text-accent-soft"
+                          : indisponivel
+                            ? "cursor-not-allowed border-fg/[0.06] text-faint"
+                            : "cursor-pointer border-fg/[0.1] text-mist hover:border-accent/40 hover:text-ink"
+                      }`}
+                    >
+                      <span className="min-w-0 truncate">{o.servico}</span>
+
+                      {indisponivel ? (
+                        <span className="shrink-0 text-[11px] text-faint">{o.erro}</span>
+                      ) : (
+                        <span className="shrink-0 nums">
+                          {formatCurrency(o.valor)}
+                          <span className="ml-2 text-faint">{o.prazo} {o.prazo === 1 ? "dia" : "dias"}</span>
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </FormSection>
 
           <FormSection title="Destinatário" icon={<MapPin size={14} />}>
@@ -373,14 +477,40 @@ const PostagemPage = () => {
                 ))}
               </SelectBox>
             </FormGrid>
-            <TextField
-              label="Peso estimado (kg)"
-              type="number"
-              min={0}
-              step="0.1"
-              value={form.peso}
-              onChange={(e) => setForm({ ...form, peso: e.target.value })}
-            />
+            {/* A CAIXA — é ela que define o preço, junto do CEP. Os valores
+                iniciais são os de um envelope pequeno: quem despacha sempre a
+                mesma coisa não precisa mexer. */}
+            <FormGrid cols={2}>
+              <TextField
+                label="Peso (kg)"
+                type="number"
+                min={0}
+                step="0.1"
+                value={form.peso}
+                onChange={(e) => setForm({ ...form, peso: e.target.value })}
+              />
+              <TextField
+                label="Altura (cm)"
+                type="number"
+                min={0}
+                value={form.altura}
+                onChange={(e) => setForm({ ...form, altura: e.target.value })}
+              />
+              <TextField
+                label="Largura (cm)"
+                type="number"
+                min={0}
+                value={form.largura}
+                onChange={(e) => setForm({ ...form, largura: e.target.value })}
+              />
+              <TextField
+                label="Comprimento (cm)"
+                type="number"
+                min={0}
+                value={form.comprimento}
+                onChange={(e) => setForm({ ...form, comprimento: e.target.value })}
+              />
+            </FormGrid>
           </FormSection>
 
           <FormActions onCancel={() => setShowNova(false)} saving={salvando} submitText="Solicitar postagem" />

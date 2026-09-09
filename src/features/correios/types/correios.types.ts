@@ -13,9 +13,17 @@ export type CalcFreteDto = {
 };
 
 export type FreteResultado = {
+  /**
+   * O id do serviço no provedor — é ele que volta na hora de gerar a etiqueta.
+   *
+   * O rótulo ("Correios · PAC") é para a pessoa ler; quem identifica o serviço
+   * na hora de comprar o frete é este número.
+   */
+  servicoId: number;
   servico: string;
   valor: number;
   prazo: number;
+  /** Preenchido quando aquela transportadora recusou a rota. */
   erro?: string;
 };
 
@@ -56,7 +64,16 @@ export type ItemDeclaracaoDto = {
 
 export type PrePostagemDto = {
   contrato: string;
-  servico: ServicoCorreio;
+  /**
+   * O serviço ESCOLHIDO NA COTAÇÃO, pelo id do provedor.
+   *
+   * Era uma constante do sistema ("SEDEX", "PAC") escolhida antes de saber
+   * preço e prazo — e o resultado é que se despachava sem saber quanto ia
+   * custar. Agora a cotação vem primeiro, e o que se escolhe é uma linha dela:
+   * transportadora, preço e prazo juntos.
+   */
+  servicoId: number;
+  servico?: string;
   remetente: RemetenteDto;
   destinatario: DestinatarioDto;
   itensDeclaracao: ItemDeclaracaoDto[];
