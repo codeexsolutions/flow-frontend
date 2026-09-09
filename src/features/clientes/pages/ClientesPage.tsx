@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Users, UserPlus, AlertTriangle, ChevronRight, Cake, RotateCw, MapPin, MessageCircle, Pencil, Phone, ClipboardList, ListFilter } from "lucide-react";
+import { Users, AlertTriangle, ChevronRight, Cake, RotateCw, MapPin, MessageCircle, Pencil, Phone, ClipboardList, ListFilter, LayoutDashboard } from "lucide-react";
 import CustomerService from "@/features/clientes/services/client.service";
 import useClienteStore from "@/features/clientes/store/cliente.store";
 import useSincronizacao from "@/shared/realtime/useSincronizacao";
@@ -18,10 +18,11 @@ import { SkeletonTableRows, SkeletonIdentityCell } from "@/shared/ui/skeleton";
 import { useAutoPageSize, ROW_HEIGHT } from "@/shared/hooks/useAutoPageSize";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import { PageScreen } from "@/shared/ui/PageShell";
+import { AbasTabela } from "@/shared/ui/AbasTabela";
 import { KpiFaixa } from "@/shared/ui/Painel";
 import Select from "@/shared/ui/Select";
 import BuscaSugestoes from "@/shared/ui/BuscaSugestoes";
-import { BarraFiltros, ListaAcao, ListaCabecalho, ListaFantasmas, ListaLinha, TabelaPaginacao } from "@/shared/ui/DataTable";
+import { ListaAcao, ListaCabecalho, ListaFantasmas, ListaLinha, TabelaCard, TabelaPaginacao } from "@/shared/ui/DataTable";
 import { aniversarioBr, diaAniversario, ehAniversarianteDoMes, ehAniversarioHoje } from "@/features/clientes/utils/aniversario";
 
 /** Cartão de número do topo — o mesmo visual do StockPage. */
@@ -78,6 +79,9 @@ const ANIVERSARIOS: { value: Aniversario; label: string }[] = [
  * numa base de clientes: como falar com ele, onde ele está e o quanto a ficha
  * está preenchida.
  */
+/** As duas leituras da base — ver a nota da `AbasTabela`, no render. */
+type AbaCliente = "visao-geral" | "clientes";
+
 const COLS = "grid-cols-[minmax(0,1fr)_148px_152px_84px_104px_104px]";
 /** Soma das colunas fixas + folga para a flexível: abaixo disso a tabela rola. */
 const TABLE_MIN_WIDTH = 824;
@@ -150,6 +154,14 @@ const Clientes = () => {
   const [local, setLocal] = useState("todos");
   const [aniversario, setAniversario] = useState<Aniversario>("todos");
   const [page, setPage] = useState(1);
+
+  /**
+   * Qual leitura está aberta: o panorama ou a lista.
+   *
+   * A lista é o padrão porque é o trabalho do dia — procurar alguém. O
+   * panorama é conferência, e quem quer conferir clica.
+   */
+  const [aba, setAba] = useState<AbaCliente>("clientes");
 
   const [showCreate, setShowCreate] = useState(false);
   /* Cliente em edição pela própria lista — antes era preciso abrir a ficha,
@@ -411,97 +423,47 @@ const Clientes = () => {
         </div>
       )}
 
-      {/* KPIs do topo — o que a base responde de cara. */}
-      {/*
-       * O percentual de ativos mostra a saúde da base; o de incompletos mostra
-       * o que falta melhorar. Ambos saem do filtro aplicado, então refletem o
-       * recorte que a pessoa está olhando — não o catálogo inteiro.
-       */}
-      <KpiFaixa className="shrink-0 sm:grid-cols-4">
-        <Kpi
-          icon={<Users size={16} />}
-          label="Clientes"
-          value={formatNumber(filtered.length)}
-          hint={filtered.length === 1 ? "cliente" : "clientes"}
-        />
-        <Kpi
-          icon={<Users size={16} />}
-          label="Ativos"
-          value={formatNumber(filtered.filter((c) => c.status === eStatus.ATIVO).length)}
-          hint={pctAtivos > 0 ? `${pctAtivos}% da base` : undefined}
-        />
-        <Kpi
-          icon={<Cake size={16} />}
-          label="Aniversários"
-          value={formatNumber(aniversariantes.length)}
-          hint="Este mês"
-        />
-        <Kpi
-          icon={<ClipboardList size={16} />}
-          label="Fichas incompletas"
-          value={formatNumber(ficha.media > 0 ? customers.filter((c) => completudeCliente(c) < 100).length : 0)}
-          hint={ficha.media > 0 ? `${ficha.media}% em média` : undefined}
-          tom={customers.filter((c) => completudeCliente(c) < 100).length > 0 ? "warning" : undefined}
-        />
-      </KpiFaixa>
-
-      {/*
-       * Duas colunas: a lista à esquerda, os painéis à direita.
-       *
-       * Abaixo de `lg` volta a empilhar: em tela estreita não há largura para
-       * duas colunas sem espremer as duas.
-       */}
-      <section className="flex flex-col gap-3 lg:min-h-0 lg:flex-1 lg:flex-row">
-        {/* ---------- Lista ---------- */}
-        {/*
-         * `min-h` no celular, `flex-1` só a partir de `lg`.
+      <TabelaCard
+        title={aba === "visao-geral" ? "Visão geral" : "Todos os clientes"}
+        icon={aba === "visao-geral" ? <LayoutDashboard size={15} /> : <Users size={15} />}
+        /* O panorama não tem contagem: os cartões do topo já são os números, e
+           "N registros" sobre eles não diria de quê. */
+        count={aba === "clientes" ? filtered.length : undefined}
+        countLabel={`${filtered.length === 1 ? "cliente" : "clientes"}${filtered.length !== customers.length ? ` de ${customers.length}` : ""}`}
+        /* A largura mínima é das COLUNAS. Os painéis são fluidos e herdariam
+           dela uma barra de rolagem horizontal no notebook. */
+        minWidth={aba === "clientes" ? TABLE_MIN_WIDTH : 0}
+        /* No celular os painéis empurram o cartão em vez de rolar por dentro
+           dele — ver `corpoLivre`. A lista continua paginando. */
+        corpoLivre={aba === "visao-geral"}
+        bodyRef={bodyRef}
+        onAdd={() => setShowCreate(true)}
+        addLabel="Novo cliente"
+        /*
+         * DUAS abas na mesma barra, como em Vendas.
          *
-         * A lista foi desenhada para ESTICAR até o fim da janela: é assim que
-         * a paginação sabe quantas linhas cabem (ver `useAutoPageSize`) e é
-         * assim que o rodapé fica colado embaixo. No celular não existe "fim
-         * da janela" para esticar — a página inteira rola —, e um `flex-1`
-         * dentro de uma coluna que rola encolhe até a altura do conteúdo mais
-         * curto. O resultado era o cartão com uma linha e meia e o rodapé de
-         * paginação DESENHADO POR CIMA da primeira linha.
-         */}
-        <div className="card glass-sheen flex min-h-[460px] min-w-0 flex-col overflow-hidden rounded-lg lg:min-h-[260px] lg:flex-1">
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-fg/[0.06] px-4 py-3.5">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/[0.15]">
-                <Users className="h-4 w-4 text-accent-soft" />
-              </div>
-              <div>
-                <h2 className="text-[13px] text-ink">Todos os clientes</h2>
-                <p className="text-[11px] text-faint">
-                  {formatNumber(filtered.length)} {filtered.length === 1 ? "resultado" : "resultados"}
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowCreate(true)}
-              className="focus-ring inline-flex h-[38px] shrink-0 cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-br from-accent-soft to-accent px-3 text-[12.5px] text-white shadow-glow transition-all hover:brightness-110 active:scale-[0.98]"
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              Novo cliente
-            </button>
-          </div>
-
-          {/*
-           * Busca e filtros descem para a barra colada na tabela.
-           *
-           * As quatro coisas fazem o mesmo trabalho — restringir a lista — e
-           * ficam na ponta direita, alinhadas com o botão de criar do
-           * cabeçalho. É o mesmo arranjo do estoque, da equipe e do PDV; a
-           * barra é a mesma peça (ver `BarraFiltros`).
-           *
-           * A fileira de botões de situação virou um seletor: com quatro
-           * opções ela já ocupava metade da barra, e não sobrava largura para
-           * os filtros de cidade e aniversário. Fechado, um seletor ocupa o
-           * espaço de uma opção e mostra a contagem de todas.
-           */}
-          <BarraFiltros pagina={{ label: "Clientes", icon: <Users className="h-3.5 w-3.5" /> }}>
+         * Os quatro KPIs e os painéis da direita moravam em cima e ao lado da
+         * tabela, e cobravam o espaço deles de quem estava lendo a LISTA: com
+         * uma coluna de 300px à direita e uma faixa de cartões no topo, sobrava
+         * pouco mais da metade da tela para as seis colunas de cliente. Agora a
+         * leitura de cima é uma aba, e a lista é a outra — cada uma com a tela
+         * inteira quando é a que está aberta.
+         */
+        navegacao={
+          <AbasTabela
+            grupo="abas-clientes"
+            valor={aba}
+            onValor={setAba}
+            abas={[
+              { id: "visao-geral", label: "Visão geral", icone: <LayoutDashboard size={13} /> },
+              { id: "clientes", label: "Clientes", icone: <Users size={13} />, contagem: filtered.length },
+            ]}
+          />
+        }
+        /* Busca e filtros só na LISTA: eles restringem linhas, e o panorama não
+           tem linhas para restringir. */
+        controles={aba === "clientes" ? (
+          <>
           {/*
            * A sugestão ABRE a ficha; ela não filtra a tabela.
            *
@@ -560,19 +522,132 @@ const Clientes = () => {
               Limpar
             </button>
           )}
-          </BarraFiltros>
+          </>
+        ) : undefined}
+        footer={aba === "clientes" ? (
+          <TabelaPaginacao
+            pagina={page}
+            totalPaginas={totalPages}
+            onPagina={setPage}
+            resumo={`${formatNumber(filtered.length)} ${filtered.length === 1 ? "cliente" : "clientes"}`}
+          />
+        ) : undefined}
+      >
+        {aba === "visao-geral" ? (
+          /* ─────────────────────── O PANORAMA ───────────────────────
+             Os mesmos números e painéis de antes, agora com a largura toda em
+             vez de espremidos numa coluna de 300px: o gráfico de crescimento
+             ganha eixo legível, e as listas de aniversário e de fichas cabem
+             lado a lado. */
+          <div className="flex flex-col gap-3 p-3">
+      <KpiFaixa className="shrink-0 sm:grid-cols-4">
+        <Kpi
+          icon={<Users size={16} />}
+          label="Clientes"
+          value={formatNumber(filtered.length)}
+          hint={filtered.length === 1 ? "cliente" : "clientes"}
+        />
+        <Kpi
+          icon={<Users size={16} />}
+          label="Ativos"
+          value={formatNumber(filtered.filter((c) => c.status === eStatus.ATIVO).length)}
+          hint={pctAtivos > 0 ? `${pctAtivos}% da base` : undefined}
+        />
+        <Kpi
+          icon={<Cake size={16} />}
+          label="Aniversários"
+          value={formatNumber(aniversariantes.length)}
+          hint="Este mês"
+        />
+        <Kpi
+          icon={<ClipboardList size={16} />}
+          label="Fichas incompletas"
+          value={formatNumber(ficha.media > 0 ? customers.filter((c) => completudeCliente(c) < 100).length : 0)}
+          hint={ficha.media > 0 ? `${ficha.media}% em média` : undefined}
+          tom={customers.filter((c) => completudeCliente(c) < 100).length > 0 ? "warning" : undefined}
+        />
+      </KpiFaixa>
 
-          {/* Colunas + linhas rolam juntas na horizontal quando a tela é estreita. */}
-          {/* Largura mínima e rolagem horizontal são do DESKTOP: no celular a
-              linha virou cartão e já cabe em pé. */}
-          <div className="flex min-h-0 flex-1 flex-col sm:overflow-x-auto">
-            <div
-              className="flex min-h-0 flex-1 flex-col sm:[min-width:var(--tabela-min)]"
-              style={{ "--tabela-min": `${TABLE_MIN_WIDTH}px` } as React.CSSProperties}
-            >
-              {/* Os rótulos saem de `ROTULOS`, a mesma lista do cartão do
-                  celular. "Ações" é escrito à parte: no cartão os botões ficam
-                  numa faixa própria, sem rótulo. */}
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {/* A curva atravessa as duas colunas: ela é uma série no tempo, e
+                  meia largura devolve o mesmo gráfico com metade dos meses
+                  legíveis. */}
+              <div className="flex min-h-[260px] flex-col lg:col-span-2 [&>*]:h-full">
+                <ClientesGrowthChart customers={customers} />
+              </div>
+
+          {/* ---- Aniversariantes do mês ---- */}
+          <PainelLateral
+            icon={<Cake className="h-4 w-4" />}
+            title="Aniversariantes do mês"
+            meta={aniversariantes.length > 0 ? `${aniversariantes.length} ${aniversariantes.length === 1 ? "cliente" : "clientes"}` : undefined}
+          >
+            {aniversariantes.length === 0 ? (
+              <p className="text-[11.5px] leading-relaxed text-faint">Ninguém faz aniversário este mês — ou a data de nascimento ainda não foi preenchida nas fichas.</p>
+            ) : (
+              <ul className="flex max-h-[240px] flex-col gap-1 overflow-y-auto">
+                {aniversariantes.slice(0, 12).map((c) => {
+                  const hoje = ehAniversarioHoje(c.dataNascimento);
+
+                  return (
+                    <li key={c.id ?? c.nome}>
+                      <button
+                        type="button"
+                        onClick={() => c.id && navigate(`/clientes/${c.id}`)}
+                        className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-fg/[0.04]"
+                      >
+                        {/* O dia é o dado que decide a ação — por isso vem primeiro
+                            e em caixa própria, não escondido no fim da linha. */}
+                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] tabular-nums ${hoje ? "bg-accent text-white" : "bg-fg/[0.05] text-mist"}`}>
+                          {diaAniversario(c.dataNascimento)}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[12.5px] text-mist">{c.nome}</span>
+                        {hoje && <span className="shrink-0 text-[10px] uppercase tracking-wide text-accent-soft">hoje</span>}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </PainelLateral>
+
+          {/* ---- Saúde das fichas + composição da base ---- */}
+          <PainelLateral icon={<ClipboardList className="h-4 w-4" />} title="Fichas da base" meta={`${ficha.media}% preenchidas em média`}>
+            <div className="flex h-2.5 overflow-hidden rounded-full bg-fg/[0.05]">
+              <div className="bg-gradient-to-r from-accent-soft to-accent transition-all" style={{ width: `${ficha.media}%` }} />
+            </div>
+
+            {ficha.lacuna && (
+              <button
+                type="button"
+                onClick={() => setFiltro("incompletos")}
+                className="mt-3 flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-fg/[0.06] px-3 py-2 text-left text-[11.5px] text-mist transition-colors hover:bg-fg/[0.04] hover:text-ink"
+              >
+                <span className="min-w-0 truncate">
+                  {formatNumber(ficha.lacuna.faltam)} sem {ficha.lacuna.label.toLowerCase()}
+                </span>
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted" />
+              </button>
+            )}
+
+            <div className="mt-4 flex items-center justify-between border-t border-fg/[0.06] pt-3 text-[12px]">
+              <span className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-success" />
+                <span className="text-mist">Ativos</span>
+                <span className="tabular-nums text-ink">{formatNumber(stats.ativos)}</span>
+                <span className="tabular-nums text-faint">({pctAtivos}%)</span>
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-faint" />
+                <span className="text-mist">Inativos</span>
+                <span className="tabular-nums text-ink">{formatNumber(stats.inativos)}</span>
+              </span>
+            </div>
+          </PainelLateral>
+            </div>
+          </div>
+        ) : (
+          <>
               <ListaCabecalho cols={COLS}>
                 {ROTULOS.slice(0, 5).map((r, i) => (
                   <p key={r} className={i >= 4 ? "text-right" : undefined}>{r}</p>
@@ -584,7 +659,6 @@ const Clientes = () => {
               {/* `overflow-hidden` é do desktop, que mostra exatamente as
                   linhas que couberem; no celular os cartões são mais altos e o
                   resto da página rola aqui. */}
-              <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto sm:overflow-hidden">
                 {loading ? (
                   <SkeletonRows count={perPage} />
                 ) : filtered.length === 0 ? (
@@ -721,94 +795,9 @@ const Clientes = () => {
                     <ListaFantasmas quantidade={emptySlots} altura={ROW_HEIGHT} />
                   </>
                 )}
-              </div>
-            </div>
-          </div>
-
-          <TabelaPaginacao
-            pagina={page}
-            totalPaginas={totalPages}
-            onPagina={setPage}
-            resumo={`${formatNumber(filtered.length)} ${filtered.length === 1 ? "cliente" : "clientes"}`}
-          />
-        </div>
-
-        {/* ---------- Painéis ---------- */}
-        <aside className="flex shrink-0 flex-col gap-3 overflow-y-auto lg:w-[300px]">
-          <div className="flex min-h-[240px] flex-col [&>*]:h-full">
-            <ClientesGrowthChart customers={customers} />
-          </div>
-
-          {/* ---- Aniversariantes do mês ---- */}
-          <PainelLateral
-            icon={<Cake className="h-4 w-4" />}
-            title="Aniversariantes do mês"
-            meta={aniversariantes.length > 0 ? `${aniversariantes.length} ${aniversariantes.length === 1 ? "cliente" : "clientes"}` : undefined}
-          >
-            {aniversariantes.length === 0 ? (
-              <p className="text-[11.5px] leading-relaxed text-faint">Ninguém faz aniversário este mês — ou a data de nascimento ainda não foi preenchida nas fichas.</p>
-            ) : (
-              <ul className="flex max-h-[168px] flex-col gap-1 overflow-y-auto">
-                {aniversariantes.slice(0, 12).map((c) => {
-                  const hoje = ehAniversarioHoje(c.dataNascimento);
-
-                  return (
-                    <li key={c.id ?? c.nome}>
-                      <button
-                        type="button"
-                        onClick={() => c.id && navigate(`/clientes/${c.id}`)}
-                        className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-fg/[0.04]"
-                      >
-                        {/* O dia é o dado que decide a ação — por isso vem primeiro
-                            e em caixa própria, não escondido no fim da linha. */}
-                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] tabular-nums ${hoje ? "bg-accent text-white" : "bg-fg/[0.05] text-mist"}`}>
-                          {diaAniversario(c.dataNascimento)}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-[12.5px] text-mist">{c.nome}</span>
-                        {hoje && <span className="shrink-0 text-[10px] uppercase tracking-wide text-accent-soft">hoje</span>}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </PainelLateral>
-
-          {/* ---- Saúde das fichas + composição da base ---- */}
-          <PainelLateral icon={<ClipboardList className="h-4 w-4" />} title="Fichas da base" meta={`${ficha.media}% preenchidas em média`}>
-            <div className="flex h-2.5 overflow-hidden rounded-full bg-fg/[0.05]">
-              <div className="bg-gradient-to-r from-accent-soft to-accent transition-all" style={{ width: `${ficha.media}%` }} />
-            </div>
-
-            {ficha.lacuna && (
-              <button
-                type="button"
-                onClick={() => setFiltro("incompletos")}
-                className="mt-3 flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-fg/[0.06] px-3 py-2 text-left text-[11.5px] text-mist transition-colors hover:bg-fg/[0.04] hover:text-ink"
-              >
-                <span className="min-w-0 truncate">
-                  {formatNumber(ficha.lacuna.faltam)} sem {ficha.lacuna.label.toLowerCase()}
-                </span>
-                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted" />
-              </button>
-            )}
-
-            <div className="mt-4 flex items-center justify-between border-t border-fg/[0.06] pt-3 text-[12px]">
-              <span className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-success" />
-                <span className="text-mist">Ativos</span>
-                <span className="tabular-nums text-ink">{formatNumber(stats.ativos)}</span>
-                <span className="tabular-nums text-faint">({pctAtivos}%)</span>
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-faint" />
-                <span className="text-mist">Inativos</span>
-                <span className="tabular-nums text-ink">{formatNumber(stats.inativos)}</span>
-              </span>
-            </div>
-          </PainelLateral>
-        </aside>
-      </section>
+          </>
+        )}
+      </TabelaCard>
 
       {showCreate && <ClienteForm saving={saving} onClose={() => setShowCreate(false)} onSubmit={handleCreate} />}
 
