@@ -65,6 +65,28 @@ type TextFieldProps = {
 
 export const TextField = React.forwardRef<HTMLInputElement, TextFieldProps>(({ label, hint, icon, error, className = "", id, ...props }, ref) => {
   const fieldId = id ?? props.name;
+
+  /*
+   * Campo de NÚMERO seleciona o conteúdo ao receber o foco.
+   *
+   * Número quase sempre se TROCA por inteiro — a quantidade, o estoque
+   * mínimo, o número de parcelas. Sem a seleção, o campo que está com 0 (ou
+   * com o valor anterior) recebe o dígito ao lado do que já havia: digita-se
+   * "1" e fica "01", "02", "03", e para corrigir é preciso selecionar e apagar
+   * antes de cada troca.
+   *
+   * Só em `number`: em texto o normal é EMENDAR — completar um nome, corrigir
+   * o fim de um endereço —, e selecionar tudo ali faria a primeira tecla
+   * apagar o que a pessoa queria manter.
+   *
+   * `onFocus` explícito de quem chama continua valendo: o padrão só entra
+   * quando ninguém pediu outra coisa.
+   */
+  const selecionarSeNumero =
+    props.type === "number" && !props.onFocus
+      ? (e: React.FocusEvent<HTMLInputElement>) => e.currentTarget.select()
+      : props.onFocus;
+
   return (
     <div className="flex flex-col">
       <label htmlFor={fieldId} className={labelCls}>
@@ -72,7 +94,7 @@ export const TextField = React.forwardRef<HTMLInputElement, TextFieldProps>(({ l
       </label>
       <div className={shell(error)}>
         {icon && <span className="shrink-0 text-muted">{icon}</span>}
-        <input id={fieldId} ref={ref} aria-invalid={!!error} {...props} className={`${inputCls} ${className}`} />
+        <input id={fieldId} ref={ref} aria-invalid={!!error} {...props} onFocus={selecionarSeNumero} className={`${inputCls} ${className}`} />
       </div>
       <FieldMessage error={error} hint={hint} />
     </div>

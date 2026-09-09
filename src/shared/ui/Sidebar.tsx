@@ -517,6 +517,7 @@ const Sidebar = () => {
                */}
               {item("producao", <Factory size={16} />, "Produção", false, !temRecurso("producao"))}
 
+
               {/* Equipe só existe em plano que comporta mais de um usuário:
                   mostrar para quem tem uma vaga só seria oferecer porta que
                   não abre. `planoTemEquipe` vale por CIMA da trava de plano —

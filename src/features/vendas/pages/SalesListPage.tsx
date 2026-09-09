@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type LegacyRef } from "react";
-import { ShoppingCart, UserRound, AlertTriangle, ListFilter, FileText, CalendarClock, LayoutDashboard } from "lucide-react";
+import { ShoppingCart, UserRound, AlertTriangle, ListFilter, FileText, CalendarClock, LayoutDashboard, Factory } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { Modal } from "@/shared/ui/Modal";
 import Invoice from "@/features/vendas/components/Invoice";
 import NotaResumo from "@/features/vendas/components/NotaResumo";
-import { ControlesPagina, ListaCabecalho, ListaFantasmas, ListaLinha, TabelaCard, TabelaVazia } from "@/shared/ui/DataTable";
+import { ControlesPagina, ListaAcao, ListaCabecalho, ListaFantasmas, ListaLinha, TabelaCard, TabelaVazia } from "@/shared/ui/DataTable";
 import { AbasTabela } from "@/shared/ui/AbasTabela";
 import AgendaCobrancas from "@/features/vendas/components/AgendaCobrancas";
 import ContaForm from "@/features/financeiro/components/ContaForm";
@@ -15,7 +15,7 @@ import BuscaSugestoes from "@/shared/ui/BuscaSugestoes";
 import { useAutoPageSize } from "@/shared/hooks/useAutoPageSize";
 import { getInitials } from "@/shared/utils/format";
 import { formatCurrency } from "@/shared/utils/currency";
-import { type PedidoClienteType, estaAberto, estaCancelado, estaQuitado, totalDoPedido, valorPagoDoPedido, valorPendenteDoPedido } from "@/shared/domain/pedido";
+import { type PedidoClienteType, estaAberto, estaCancelado, estaQuitado, totalDoPedido, recebidoDoPedido, valorPendenteDoPedido } from "@/shared/domain/pedido";
 import { formatDateShort } from "@/shared/utils/date";
 import { PedidoStatusBadge } from "@/shared/ui/StatusBadge";
 import useAuth from "@/features/auth/store/auth.store";
@@ -25,8 +25,11 @@ import SalesOverviewPage from "@/features/vendas/pages/SalesOverviewPage";
 import SeletorPeriodo, { PERIODO_TUDO, type Periodo } from "@/shared/ui/SeletorPeriodo";
 import { mesesComMovimento, vendasAtivas } from "@/shared/domain/serieVendas";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
-import { baixarNotaPdf } from "@/shared/ui/downloadNota";
-import MenuDownloadNota from "@/shared/ui/MenuDownloadNota";
+import { abrirDocumento } from "@/shared/ui/downloadNota";
+import ProducaoService from "@/features/producao/services/producao.service";
+import { useAlert } from "@/shared/ui/Alert";
+import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
+import BotaoVerDocumento from "@/shared/ui/BotaoVerDocumento";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import ContaService, { type NovaConta, type PrazoVenda } from "@/features/financeiro/services/conta.service";
 import ListaOrcamentos from "@/features/orcamentos/components/ListaOrcamentos";
@@ -75,16 +78,16 @@ const TITULO_ABA: Record<AbaVenda, string> = {
  * As colunas. A do cliente é a que estica; as de dinheiro têm largura fixa
  * para que os valores fiquem alinhados entre si de linha em linha.
  */
-const COLS = "grid-cols-[minmax(190px,1.7fr)_96px_120px_minmax(140px,1fr)_120px_120px_124px_56px]";
+const COLS = "grid-cols-[minmax(190px,1.7fr)_96px_120px_minmax(140px,1fr)_120px_120px_124px_124px]";
 
 /**
  * Os rótulos das colunas, em UMA lista.
  *
  * Servem ao cabeçalho do desktop e ao cartão do celular (ver `ListaLinha`). A
- * última é vazia: aquela coluna só reserva a largura do botão de baixar a nota,
- * e no cartão ela não tem o que rotular.
+ * última é a coluna de AÇÕES: nomeada no cabeçalho do desktop e omitida do
+ * cartão do celular, onde os botões já vão numa faixa no pé — ver `ListaLinha`.
  */
-const ROTULOS = ["Cliente", "Data", "Situação", "Vencimento", "Total", "Pago", "Pendente", undefined];
+const ROTULOS = ["Cliente", "Data", "Situação", "Vencimento", "Total", "Pago", "Pendente", "Ações"];
 
 const ALTURA_LINHA = 60;
 
@@ -178,7 +181,39 @@ const SalesList = () => {
   const [baixandoNota, setBaixandoNota] = useState(false);
   const refNotaDownload = useRef<HTMLDivElement>(null);
 
-  const baixarNota = async (v: PedidoClienteType, formato: "png" | "pdf" = "png") => {
+  /**
+   * Leva a venda para a produção — o "converter" da fileira de ações.
+   *
+   * O automático só pega venda com item de SERVIÇO (ver
+   * `ProducaoAutomaticaService`). Este botão é para o resto: a venda de
+   * estoque que, daquela vez, deu trabalho — a estampa pedida depois, o
+   * ajuste, a montagem. Aqui quem decide é a pessoa, então nenhuma regra de
+   * "o que merece produção" se aplica.
+   *
+   * Clicar duas vezes não cria duas linhas: o servidor devolve `criado: false`
+   * quando a venda já está lá, e a mensagem dele é o que a tela mostra.
+   */
+  const alert = useAlert();
+  const [enviandoProducao, setEnviandoProducao] = useState<string | null>(null);
+
+  const levarParaProducao = async (v: PedidoClienteType) => {
+    const id = String(v.pedido.pedidoId);
+
+    setEnviandoProducao(id);
+
+    try {
+      const r = await ProducaoService.daVenda(id);
+
+      if (r.criado) alert.success("Ordem gerada!", `A venda de ${v.nomeCliente} virou uma ordem de serviço.`);
+      else alert.info("Nada a fazer", r.mensagem);
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível gerar a ordem."));
+    } finally {
+      setEnviandoProducao(null);
+    }
+  };
+
+  const abrirNotaDoc = async (v: PedidoClienteType) => {
     if (baixandoNota) return;
 
     setBaixandoNota(true);
@@ -188,18 +223,7 @@ const SalesList = () => {
       await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
       const blob = await gerarBlobNota(refNotaDownload);
 
-      if (formato === "pdf") {
-        await baixarNotaPdf(blob, enterprise?.nomeFantasia ?? "nota");
-      } else {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.download = `nota-${v.pedido.pedidoId}.png`;
-        link.href = url;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-      }
+      await abrirDocumento(blob, `nota-${v.pedido.pedidoId}`, enterprise?.nomeFantasia ?? "nota");
     } catch {
       /* Falha de download não trava a tabela — o usuário tenta de novo. */
     } finally {
@@ -680,7 +704,10 @@ const SalesList = () => {
 
             {daPagina.map((v) => {
               const total = totalDoPedido(v);
-              const pago = valorPagoDoPedido(v);
+              /* A linha diz "pago" pelo mesmo critério do painel: a nota
+                 quitada antes do extrato existir tem `valor_pago` zerado, e
+                 mostrava selo de paga com R$ 0,00 ao lado. */
+              const pago = recebidoDoPedido(v);
               const pendente = valorPendenteDoPedido(v);
               const idCurto = v.pedido.pedidoId?.slice(-6).toUpperCase() ?? "—";
               const baixandoEsta = baixandoNota && notaDownload?.pedido.pedidoId === v.pedido.pedidoId;
@@ -700,13 +727,23 @@ const SalesList = () => {
                   destaque={atrasada ? "danger" : undefined}
                   onClick={() => abrirNota({ id: v.pedido.pedidoId, clienteId: v.clienteId, nome: v.nomeCliente })}
                   acoes={
-                    <MenuDownloadNota
+                    <>
+                    {/* Converter: a venda vira uma linha na produção. */}
+                    <ListaAcao
+                      icon={<Factory size={14} />}
+                      label="Gerar ordem de serviço"
+                      ocupado={enviandoProducao === String(v.pedido.pedidoId)}
+                      onClick={() => void levarParaProducao(v)}
+                    />
+
+                    <BotaoVerDocumento
                       variante="linha"
-                      titulo="Baixar nota"
+                      titulo="Ver ou baixar a nota"
                       documento="nota"
                       ocupado={baixandoEsta}
-                      onEscolher={(formato) => void baixarNota(v, formato)}
+                      onAbrir={() => void abrirNotaDoc(v)}
                     />
+                    </>
                   }
                 >
                   {/* Cliente e número da nota na mesma célula: o código sozinho

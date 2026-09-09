@@ -4,7 +4,7 @@ import { AlertTriangle, Building2, CalendarDays, Check, IdCard, MapPin, User, Wa
 import type { Funcionario } from "@/shared/domain/funcionario";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import { Modal } from "@/shared/ui/Modal";
-import MenuDownloadNota from "@/shared/ui/MenuDownloadNota";
+import BotaoVerDocumento from "@/shared/ui/BotaoVerDocumento";
 import AssinaturaPad from "@/shared/ui/AssinaturaPad";
 import ReciboSalario, { type DadosReciboSalario } from "@/shared/ui/ReciboSalario";
 import { FormGrid, FormSection, TextField, CurrencyField } from "@/shared/ui/form/FormKit";
@@ -373,11 +373,11 @@ const ReciboSalarioModal = ({ funcionario, open, onClose }: Props) => {
               <AlertTriangle size={13} className="shrink-0" /> {impedimento}
             </span>
           ) : (
-            <MenuDownloadNota
+            <BotaoVerDocumento
               refNota={refRecibo}
               nomeEmpresa={empregadorNome || "empresa"}
               prefixo={`recibo-salario-${onlyDigits(competencia)}`}
-              titulo="Baixar o recibo"
+              titulo="Ver ou baixar o recibo"
               documento="recibo"
             />
           )}

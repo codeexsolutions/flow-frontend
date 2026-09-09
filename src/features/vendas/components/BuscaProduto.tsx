@@ -320,8 +320,10 @@ const BuscaProduto = ({ produtos, carregando = false, onAdicionar, onCadastrar, 
            *
            * "Não está no estoque" deixa de ser um beco: o primeiro caminho
            * oferecido passa a ser escrever a linha assim mesmo, que é o que se
-           * quer em nove de cada dez orçamentos. Cadastrar continua ali, de
-           * propósito em segundo plano — é a decisão maior das duas.
+           * quer na maioria das vezes — tanto na proposta quanto na nota, onde
+           * o item avulso é o frete, a mão de obra, a peça encomendada.
+           * Cadastrar continua ali, de propósito em segundo plano: é a decisão
+           * maior das duas, e ela pode esperar o fim do atendimento.
            */}
           {onItemAvulso ? (
             <>

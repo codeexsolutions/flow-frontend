@@ -3,14 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { Check, FileText, ShoppingCart, Trash2, X } from "lucide-react";
 
 import OrcamentoService, { type Orcamento, type StatusOrcamento } from "@/features/orcamentos/services/orcamento.service";
+import type { TomSelo } from "@/shared/ui/StatusBadge";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import { formatCurrency } from "@/shared/utils/currency";
 import { formatDate } from "@/shared/utils/date";
 import { SkeletonListaPainel } from "@/shared/ui/skeleton";
+import { ListaCabecalho, ListaLinha } from "@/shared/ui/DataTable";
+import { Selo } from "@/shared/ui/StatusBadge";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
-import { baixarNotaPdf } from "@/shared/ui/downloadNota";
-import MenuDownloadNota from "@/shared/ui/MenuDownloadNota";
+import { abrirDocumento } from "@/shared/ui/downloadNota";
+import BotaoVerDocumento from "@/shared/ui/BotaoVerDocumento";
 import { Modal } from "@/shared/ui/Modal";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
@@ -39,28 +42,34 @@ import { filtrarOrcamentos } from "@/features/orcamentos/utils/fila";
  * recusar, excluir.
  */
 
-const SITUACAO: Record<StatusOrcamento, { label: string; cls: string }> = {
-  ABERTO: { label: "Aguardando", cls: "border-warning/40 bg-warning/15 text-warning" },
-  APROVADO: { label: "Aprovado", cls: "border-success/40 bg-success/15 text-success" },
-  RECUSADO: { label: "Recusado", cls: "border-danger/40 bg-danger/15 text-danger" },
-  EXPIRADO: { label: "Expirado", cls: "border-fg/[0.12] bg-fg/[0.04] text-mist" },
+const SITUACAO: Record<StatusOrcamento, { label: string; tom: TomSelo }> = {
+  ABERTO: { label: "Aguardando", tom: "alerta" },
+  APROVADO: { label: "Aprovado", tom: "sucesso" },
+  RECUSADO: { label: "Recusado", tom: "perigo" },
+  EXPIRADO: { label: "Expirado", tom: "neutro" },
   /* Não aparece na lista — fica aqui para o selo não quebrar caso um
      convertido chegue por outro caminho (busca por código, link direto). */
-  CONVERTIDO: { label: "Virou venda", cls: "border-accent/40 bg-accent/15 text-accent-soft" },
+  CONVERTIDO: { label: "Virou venda", tom: "info" },
 };
 
-/** Baixa o PNG já rasterizado com o nome do orçamento. */
-const baixarPng = (blob: Blob, filename: string) => {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-
-  link.download = filename;
-  link.href = url;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-};
+/*
+ * ─────────────────────── As colunas da lista ───────────────────────
+ *
+ * A lista era desenhada à mão — um `flex` com um selo redondo próprio e
+ * nenhum cabeçalho. Agora são as mesmas peças da lista de vendas e da tabela
+ * de produção: a fileira de rótulos em cima, a zebra que impede ler o total
+ * de uma proposta na altura de outra, o cartão rotulado no celular e a coluna
+ * de AÇÕES de verdade, no lugar do botão pendurado ao lado da linha.
+ *
+ * O selo de situação também deixou de ser desenhado aqui e passou a ser o
+ * `Selo` do sistema — eram duas gramáticas de cor para a mesma ideia.
+ *
+ * A última coluna é a de AÇÕES: nomeada no cabeçalho do desktop e omitida do
+ * cartão do celular, onde os botões já vão numa faixa no pé — ver `ListaLinha`.
+ */
+const COLS = "grid-cols-[minmax(170px,1.7fr)_112px_minmax(96px,120px)_88px]";
+const ROTULOS = ["Proposta", "Situação", "Total", "Ações"];
+const ALTURA_LINHA = 60;
 
 type Props = {
   busca: string;
@@ -132,7 +141,7 @@ const ListaOrcamentos = ({ busca, filtro, onCarregado }: Props) => {
    */
   const orcamentoAlvo = filtrados.find((o) => o.id === baixandoId) ?? visualizando;
 
-  const baixar = async (o: Orcamento, formato: "png" | "pdf" = "png") => {
+  const abrir = async (o: Orcamento) => {
     setBaixandoId(o.id);
 
     try {
@@ -141,15 +150,13 @@ const ListaOrcamentos = ({ busca, filtro, onCarregado }: Props) => {
 
       const blob = await gerarBlobNota(refNotaBaixada);
 
-      /* O PDF sai do MESMO PNG que o download de imagem — uma página A4 com a
-         imagem colada —, então o documento é idêntico nos dois caminhos. */
-      if (formato === "pdf") {
-        await baixarNotaPdf(blob, enterprise?.nomeFantasia ?? "orcamento");
-      } else {
-        baixarPng(blob, `orcamento-${o.codigo}.png`);
-      }
+      /* A proposta abre numa guia, com os dois botões de baixar lá dentro —
+         conferir não deveria custar um arquivo na pasta de downloads. Os dois
+         formatos saem do MESMO PNG rasterizado, então o documento é idêntico
+         nos dois, e o nome também: `orcamento-<nº>`. */
+      await abrirDocumento(blob, `orcamento-${o.codigo}`, enterprise?.nomeFantasia ?? "orcamento");
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível baixar o orçamento."));
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir o orçamento."));
     } finally {
       setBaixandoId(null);
     }
@@ -214,16 +221,38 @@ const ListaOrcamentos = ({ busca, filtro, onCarregado }: Props) => {
           </p>
         </div>
       ) : (
-        filtrados.map((o) => {
-          const s = SITUACAO[o.status] ?? SITUACAO.ABERTO;
+        <>
+          <ListaCabecalho cols={COLS}>
+            {ROTULOS.map((r, i) => (
+              <span key={r ?? `vazio-${i}`} className={r && i >= 2 ? "text-right" : undefined}>{r}</span>
+            ))}
+          </ListaCabecalho>
 
-          return (
-            <div key={o.id} className="border-b border-fg/[0.04] last:border-0">
-              <div className="flex items-center gap-1">
-                <button onClick={() => setVisualizando(o)} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-fg/[0.03]">
+          {filtrados.map((o) => {
+            const s = SITUACAO[o.status] ?? SITUACAO.ABERTO;
+
+            return (
+              <ListaLinha
+                key={o.id}
+                cols={COLS}
+                rotulos={ROTULOS}
+                altura={ALTURA_LINHA}
+                ariaLabel={`Ver a proposta de ${o.clienteNome}`}
+                onClick={() => setVisualizando(o)}
+                acoes={
+                  <BotaoVerDocumento
+                    variante="linha"
+                    titulo="Ver ou baixar o orçamento"
+                    documento="orçamento"
+                    ocupado={baixandoId === o.id}
+                    onAbrir={() => void abrir(o)}
+                  />
+                }
+              >
+                <span className="flex min-w-0 items-center gap-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-fg/[0.05] text-[11px] tabular-nums text-mist">#{o.codigo}</span>
 
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0">
                     <span className="block truncate text-[13px] text-ink">{o.clienteNome}</span>
                     <span className="block truncate text-[11px] text-faint">
                       {formatDate(o.criadoEm)}
@@ -231,25 +260,17 @@ const ListaOrcamentos = ({ busca, filtro, onCarregado }: Props) => {
                       {o.itens.length ? ` · ${o.itens.length} ${o.itens.length === 1 ? "item" : "itens"}` : ""}
                     </span>
                   </span>
-
-                  <span className={`hidden shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] sm:inline-flex ${s.cls}`}>{s.label}</span>
-
-                  <span className="shrink-0 text-right text-[13px] tabular-nums text-ink">{formatCurrency(o.total)}</span>
-                </button>
-
-                <span className="mr-2 shrink-0">
-                  <MenuDownloadNota
-                    variante="linha"
-                    titulo="Baixar orçamento"
-                    documento="orçamento"
-                    ocupado={baixandoId === o.id}
-                    onEscolher={(formato) => void baixar(o, formato)}
-                  />
                 </span>
-              </div>
-            </div>
-          );
-        })
+
+                <span className="flex"><Selo tom={s.tom}>{s.label}</Selo></span>
+
+                <span className="text-right text-[13px] tabular-nums text-ink">{formatCurrency(o.total)}</span>
+
+                <span />
+              </ListaLinha>
+            );
+          })}
+        </>
       )}
 
       {/* Modal de visualização do orçamento — clicar na linha abre aqui. */}
@@ -275,7 +296,22 @@ const ListaOrcamentos = ({ busca, filtro, onCarregado }: Props) => {
 
             {/* Rodapé de ações */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-fg/[0.06] pt-3">
-              <MenuDownloadNota refNota={refNotaBaixada} nomeEmpresa={enterprise?.nomeFantasia ?? "orcamento"} prefixo="orcamento" titulo="Baixar orçamento" documento="orçamento" />
+              {/*
+                O MESMO caminho do botão da linha, e não um download próprio.
+
+                Aqui o botão gerava o arquivo por conta — mesmo nó, mas com o
+                nome montado do outro jeito (`orcamento-<empresa>`, e no PDF
+                `nota-<empresa>-<data>`). O resultado é que baixar a proposta
+                pelo modal e baixar a mesma proposta pela tabela entregava
+                arquivos com nomes diferentes para o mesmo documento. Delegando
+                em `onEscolher`, os dois botões são literalmente a mesma função.
+              */}
+              <BotaoVerDocumento
+                titulo="Ver ou baixar o orçamento"
+                documento="orçamento"
+                ocupado={baixandoId === visualizando.id}
+                onAbrir={() => void abrir(visualizando)}
+              />
 
               <div className="flex flex-wrap items-center gap-2">
                 {/* Um botão só, como no balcão: aprovar já é começar a venda.

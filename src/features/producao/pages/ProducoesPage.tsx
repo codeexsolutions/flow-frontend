@@ -68,10 +68,11 @@ const TABLE_MIN_WIDTH = 856;
  * Os rótulos das colunas, em UMA lista.
  *
  * Servem ao cabeçalho do desktop e ao cartão do celular (ver `ListaLinha`). A
- * última posição é vazia de propósito: aquela coluna só reserva a largura das
- * ações, e no cartão ela não tem o que rotular.
+ * A última posição é a coluna de AÇÕES: ela aparece no cabeçalho do desktop e
+ * é omitida do cartão do celular, onde os botões já vão numa faixa própria no
+ * pé — ver `ListaLinha`.
  */
-const ROTULOS = ["Cliente", "Produção", "Aberturas", "Validade", "Situação", undefined];
+const ROTULOS = ["Cliente", "Produção", "Aberturas", "Validade", "Situação", "Ações"];
 
 const SkeletonRows = ({ count }: { count: number }) => (
   <SkeletonTableRows count={count} cols={COLS} rowHeight={ROW_HEIGHT}>

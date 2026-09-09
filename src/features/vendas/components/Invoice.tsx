@@ -20,7 +20,7 @@ import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler"
 import BuscaProduto from "@/features/vendas/components/BuscaProduto";
 import { ProdutoForm } from "@/features/estoque/components/ProdutoForm";
 import type { ProductFormData } from "@/features/estoque/schema/product.schema";
-import MenuDownloadNota from "@/shared/ui/MenuDownloadNota";
+import BotaoVerDocumento from "@/shared/ui/BotaoVerDocumento";
 import UploadImagem from "@/shared/ui/UploadImagem";
 import BotaoRecibo from "@/shared/ui/BotaoRecibo";
 import FundoNota from "@/shared/ui/FundoNota";
@@ -80,6 +80,17 @@ type InvoiceProps = {
    * cima em vez de criar uma segunda proposta com o mesmo conteúdo.
    */
   orcamentoId?: string;
+  /**
+   * Telefone e vencimento da proposta que está sendo REESCRITA.
+   *
+   * Sem eles, reabrir um orçamento para corrigir a quantidade de um item
+   * salvaria por cima com o telefone em branco e a validade recalculada a
+   * partir de hoje — a correção de um item mudaria o prazo combinado com o
+   * cliente. Em proposta nova não vêm, e os campos nascem do cadastro do
+   * cliente e do prazo padrão.
+   */
+  contatoInicial?: string | null;
+  validadeInicial?: string | null;
   /**
    * Orçamento que esta venda substitui — ele é APAGADO quando a nota nasce.
    *
@@ -164,7 +175,7 @@ type InvoiceProps = {
  * ----------------------------------------------------------------------------
  * `PainelPagamento` (a coluna de dinheiro no desktop), `PagamentoForm`,
  * `RecebimentosNota` (o extrato que corrige e apaga cada pagamento),
- * `MenuDownloadNota` e `BotaoRecibo`, `FundoNota` (o wallpaper), `PrazoNota`.
+ * `BotaoVerDocumento` e `BotaoRecibo`, `FundoNota` (o wallpaper), `PrazoNota`.
  *
  * Os números de linha envelhecem; os nomes dos handlers, não.
  */
@@ -177,9 +188,27 @@ const STATUS_STYLE: Record<string, string> = {
   CANCELADO: "bg-danger/25 text-danger ring-danger/25",
 };
 
+/**
+ * Quanto tempo uma proposta vale, quando ninguém diz o contrário.
+ *
+ * Quinze dias é o prazo que a loja consegue sustentar: curto o bastante para o
+ * preço não envelhecer junto com o custo do fornecedor, e longo o bastante
+ * para o cliente pensar, pesquisar e voltar. Quem precisar de outro prazo
+ * troca a data no campo — o padrão só evita que a proposta saia sem prazo
+ * nenhum, que era o que acontecia.
+ */
+const PRAZO_PADRAO_DIAS = 15;
+
+/** `aaaa-mm-dd` daqui a N dias — o formato que o `<input type="date">` usa. */
+const emDias = (dias: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 
-const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = false, itensIniciais, orcamentoId, converterOrcamentoId, conversaId }: InvoiceProps) => {
+
+const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = false, itensIniciais, orcamentoId, contatoInicial, validadeInicial, converterOrcamentoId, conversaId }: InvoiceProps) => {
   const alert = useAlert();
   const notaRef = useRef<HTMLDivElement>(null);
 
@@ -231,12 +260,39 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
     : "";
   const emailCliente = clienteCadastro?.contato?.email ?? "";
 
-  const telefoneCliente = (() => {
+  const telefoneCadastro = (() => {
     const alvo = clientes.find((c) => c.id === clienteId);
     const contato = alvo?.contato;
     const numero = contato?.celular || contato?.whatsapp || contato?.telefone || "";
     return numero ? maskPhone(String(numero)) : "";
   })();
+
+  /*
+   * ─── Os dois dados que só a PROPOSTA tem: telefone e validade ───
+   *
+   * A nota de venda os dispensa: ela nasce de um cliente CADASTRADO (o
+   * telefone vem de lá) e vale no ato. O orçamento não — ele é montado para um
+   * nome livre, muitas vezes de alguém que nunca comprou, e o preço dele
+   * precisa vencer.
+   *
+   * Sem estes campos a proposta saía sem telefone nenhum quando o cliente não
+   * tinha cadastro, e SEMPRE sem validade: o papel que o cliente guardava não
+   * dizia até quando aquele preço valia, e a loja não tinha como recusar um
+   * orçamento de três meses atrás.
+   */
+  const [contatoOrcamento, setContatoOrcamento] = useState(() => (contatoInicial ? maskPhone(String(contatoInicial)) : ""));
+  const [validadeOrcamento, setValidadeOrcamento] = useState(() => (validadeInicial ? String(validadeInicial).slice(0, 10) : emDias(PRAZO_PADRAO_DIAS)));
+
+  /* O cadastro preenche o campo vazio — sem apagar o que já foi digitado à
+     mão, que é o caso de quem escreveu o número de um cliente sem ficha. */
+  useEffect(() => {
+    if (!modoOrcamento || !telefoneCadastro) return;
+    setContatoOrcamento((atual) => atual || telefoneCadastro);
+  }, [modoOrcamento, telefoneCadastro]);
+
+  /* O que vai IMPRESSO: no orçamento, o que está no campo; na nota, o
+     cadastro, como sempre foi. */
+  const telefoneCliente = modoOrcamento ? contatoOrcamento : telefoneCadastro;
 
   /*
    * Cadastro de produto sem sair da nota.
@@ -453,16 +509,25 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   /**
    * Um item que não está no estoque — e que não precisa estar.
    *
-   * Orçar é dizer um preço por algo que muitas vezes ainda não é produto:
-   * "banner 2x1 em lona", "arte + 200 cartões", "conserto da placa". Até aqui
-   * escrever essa linha exigia parar a proposta, abrir o cadastro e preencher
-   * uma ficha inteira — para um item que o cliente pode recusar, e que ficaria
-   * no catálogo de qualquer jeito.
+   * Vender e orçar é, muitas vezes, dizer um preço por algo que ainda não é
+   * produto: "banner 2x1 em lona", "arte + 200 cartões", "conserto da placa",
+   * "frete". Escrever essa linha exigia parar o atendimento, abrir o cadastro e
+   * preencher uma ficha inteira — com o cliente no balcão esperando, por um
+   * item que muitas vezes se vende uma vez só.
+   *
+   * VALE NA NOTA TAMBÉM, e não só na proposta. Era só do orçamento por uma
+   * razão que já não existia: a venda precisa de produto de verdade (é dele que
+   * sai a baixa de estoque e a soma do relatório), e a ponte para isso —
+   * `materializarAvulsos` — já estava pronta e já rodava em toda nota, porque
+   * a proposta convertida chegava aqui cheia de avulsos. Quem lançava a linha
+   * pelo caminho do orçamento vendia; quem estava na nota, não. Era a mesma
+   * venda barrada pela porta de entrada.
    *
    * A linha nasce sem `produtoId`, com preço zero para a pessoa digitar na
-   * própria tabela. Nada é criado no estoque agora: se a proposta virar venda,
-   * `materializarAvulsos` cria o produto ali — quando ele passa a ter motivo
-   * para existir.
+   * própria tabela. Nada é criado no estoque agora: quando a nota for gravada,
+   * `materializarAvulsos` cria o produto ali — no instante em que ele passa a
+   * ter motivo para existir. Proposta recusada e nota abandonada não deixam
+   * nada no catálogo.
    *
    * Sem somar com linha igual, ao contrário do produto de catálogo: dois
    * "Banner" num orçamento costumam ser dois banners diferentes, cada um com
@@ -673,7 +738,8 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
       const proposta = {
         clienteNome: nomeCliente,
         clienteId: clienteId ?? null,
-        clienteContato: telefoneCliente || null,
+        clienteContato: contatoOrcamento.trim() || null,
+        validade: validadeOrcamento || null,
         itens: itens.map((l) => ({
           produtoId: String(l.produto.produtoId ?? "") || null,
           nomeProduto: l.produto.nomeProduto,
@@ -712,10 +778,18 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
    * Então o produto é criado AQUI, e não lá atrás: proposta recusada não
    * deixa nada no catálogo, e só o que foi de fato vendido vira cadastro.
    *
-   * Nasce SEM controle de estoque, de propósito. Um "banner 2x1" criado neste
-   * segundo teria saldo zero, e a própria venda que o criou seria recusada por
-   * falta de estoque — o item existiria só para bloquear a si mesmo. Sem
-   * contagem, ele se comporta como o que é: algo que se faz sob encomenda.
+   * Nasce como SERVIÇO, e sem controle de estoque.
+   *
+   * O tipo não é detalhe de cadastro: um "banner 2x1" criado neste segundo
+   * teria saldo zero, e a própria venda que o criou seria recusada por falta de
+   * estoque — o item existiria só para bloquear a si mesmo. `SERVICO` não tem o
+   * que estocar (ver `Produto.Tipo`), o que resolve isso e diz a verdade sobre
+   * a linha: quem digita "conserto da placa" ou "arte + 200 cartões" está
+   * vendendo trabalho, não tirando peça da prateleira.
+   *
+   * E é esse tipo que faz a venda virar produção: o quadro recebe a nota que
+   * tem serviço, e não a que só entrega estoque pronto. Ver
+   * `ProducaoAutomaticaService` na API.
    *
    * Antes de criar, procura pelo nome: orçar "banner 2x1" para dez clientes
    * não pode render dez produtos iguais no estoque.
@@ -739,16 +813,17 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
 
       await ProductService.create({
         nome: nomeItem,
-        tipo: "PRODUTO",
+        tipo: "SERVICO",
         valorCompra: 0,
         valorVenda: preco,
         quantidade: 0,
-        /* O ponto todo: sem contagem, a venda que acabou de criar o item não
-           esbarra no saldo zero dele. */
+        /* Sem contagem, a venda que acabou de criar o item não esbarra no
+           saldo zero dele. Explícito e não herdado do tipo: é a garantia que
+           não depende de o cadastro decidir o que fazer com serviço. */
         controlaEstoque: false,
         permiteVendaSemEstoque: false,
         estoqueMinimo: null,
-        observacoes: "Criado a partir de um item avulso de orçamento.",
+        observacoes: "Criado a partir de um item avulso lançado na nota.",
       });
     }
 
@@ -1225,6 +1300,54 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
               cliente ficava a meia tela do valor, e a tabela de itens virava
               linhas com um vão enorme no meio. 900px é o suficiente para as
               cinco colunas de item sem espalhar. */}
+          {/*
+            Os dados da proposta — FORA do documento, de propósito.
+
+            São dois campos de quem atende, não linhas do papel: o `notaRef`
+            começa logo abaixo, então nada daqui entra no PNG. Ficariam dentro
+            com `data-sem-foto`, mas campo de formulário é o caso em que o
+            `html-to-image` mais escorrega (o clone não leva o valor digitado),
+            e o risco de um orçamento sair com o telefone em branco não paga a
+            economia de uma faixa.
+
+            O que se digita aqui aparece impresso logo abaixo, na
+            identificação: telefone na linha do telefone, data na de validade.
+          */}
+          {modoOrcamento && (
+            <div className="mx-auto mb-3 flex w-full max-w-[900px] flex-wrap items-end gap-3 rounded-xl border border-fg/[0.06] bg-fg/[0.02] px-4 py-3">
+              <label className="flex min-w-[180px] flex-1 flex-col gap-1">
+                <span className="text-[10.5px] uppercase tracking-[0.1em] text-faint">Telefone do cliente</span>
+                <input
+                  value={contatoOrcamento}
+                  onChange={(e) => setContatoOrcamento(maskPhone(e.target.value))}
+                  inputMode="tel"
+                  placeholder="(00) 00000-0000"
+                  className="h-10 w-full rounded-lg border border-fg/[0.08] bg-surface px-3 text-[14px] text-ink outline-none focus:border-accent/60"
+                />
+              </label>
+
+              <label className="flex min-w-[160px] flex-col gap-1">
+                <span className="text-[10.5px] uppercase tracking-[0.1em] text-faint">Válido até</span>
+                <input
+                  type="date"
+                  value={validadeOrcamento}
+                  onChange={(e) => setValidadeOrcamento(e.target.value)}
+                  className="h-10 w-full rounded-lg border border-fg/[0.08] bg-surface px-3 text-[14px] text-ink outline-none focus:border-accent/60"
+                />
+              </label>
+
+              {/* O prazo padrão de volta num clique: quem mexeu na data e se
+                  perdeu não precisa contar quinze dias no calendário. */}
+              <button
+                type="button"
+                onClick={() => setValidadeOrcamento(emDias(PRAZO_PADRAO_DIAS))}
+                className="h-10 shrink-0 rounded-lg border border-fg/[0.08] px-3 text-[12px] text-mist transition-colors hover:border-accent/40 hover:text-accent-soft"
+              >
+                {PRAZO_PADRAO_DIAS} dias
+              </button>
+            </div>
+          )}
+
           <div ref={notaRef} className="relative mx-auto flex w-full max-w-[900px] flex-col overflow-hidden bg-surface">
             {/* Wallpaper da nota: imagem de fundo com overlay translúcido —
                 bonito e transparente, com o conteúdo legível por cima. Entra
@@ -1281,7 +1404,16 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                 {[
                   { rotulo: "Cliente", valor: pedido?.nomeCliente || nome || "—", extra: documentoCliente },
                   { rotulo: "Telefone", valor: telefoneCliente || "Não informado", extra: emailCliente },
-                  { rotulo: "Vendedor", valor: vendedor, extra: dataEmissao },
+                  /* Na proposta, o lugar do vendedor é do PRAZO — ver a nota
+                     do `OrcamentoNota` sobre por que o nome de quem vendeu não
+                     vai no papel que o cliente leva. */
+                  modoOrcamento
+                    ? {
+                        rotulo: "Validade",
+                        valor: validadeOrcamento ? `Válido até ${formatDate(validadeOrcamento)}` : "Sem prazo definido",
+                        extra: `Emitido em ${dataEmissao}`,
+                      }
+                    : { rotulo: "Vendedor", valor: vendedor, extra: dataEmissao },
                 ].map((linha) => (
                   <div key={linha.rotulo} className="min-w-0">
                     <dt className="text-[10.5px] uppercase tracking-[0.1em] text-faint">{linha.rotulo}</dt>
@@ -1391,7 +1523,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
             */}
             <div data-sem-foto className="hidden px-6 pt-6 md:block">
               <div className="max-w-md">
-                <BuscaProduto produtos={products} carregando={loadingProdutos} onAdicionar={adicionarProduto} onCadastrar={setNovoProduto} onItemAvulso={modoOrcamento ? adicionarAvulso : undefined} />
+                <BuscaProduto produtos={products} carregando={loadingProdutos} onAdicionar={adicionarProduto} onCadastrar={setNovoProduto} onItemAvulso={adicionarAvulso} />
               </div>
             </div>
 
@@ -1455,6 +1587,14 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                                 min={0}
                                 inputMode="numeric"
                                 value={item.quantidadeItem}
+                                /* Clicar já seleciona o que está lá, e digitar
+                                   SUBSTITUI. Sem isto, o campo com 0 (ou com a
+                                   quantidade anterior) recebia o dígito ao lado
+                                   do que já havia — "0" virava "01", "02" — e
+                                   corrigir custava selecionar e apagar antes de
+                                   cada troca. Numa nota de dez itens isso é dez
+                                   vezes o mesmo trabalho. */
+                                onFocus={(e) => e.currentTarget.select()}
                                 onChange={(e) => atualizarLinha(item.itemPedidoId, { quantidadeItem: Math.max(0, Number(e.target.value) || 0) })}
                                 /* Número menor que o texto da linha: a caixa continua
                                    com alvo de toque confortável, mas o valor para de
@@ -1484,9 +1624,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                           <td colSpan={5} className="py-12 text-center text-mist">
                             <p className="text-sm">{modoOrcamento ? "Nenhum item no orçamento" : "Nenhum produto na nota"}</p>
                             <p className="mt-2 text-[12px] text-faint">
-                              {modoOrcamento
-                                ? "Busque no estoque — ou digite o item e tecle Enter para lançar avulso."
-                                : "Use a busca acima para adicionar produtos."}
+                              Busque no estoque — ou digite o item e tecle Enter para lançar avulso.
                             </p>
                           </td>
                         </tr>
@@ -1499,7 +1637,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
 
             {/* Mobile — busca de produtos, fora da foto da nota */}
             <div data-sem-foto className="px-6 pt-5 md:hidden">
-              <BuscaProduto produtos={products} carregando={loadingProdutos} onAdicionar={adicionarProduto} onCadastrar={setNovoProduto} onItemAvulso={modoOrcamento ? adicionarAvulso : undefined} />
+              <BuscaProduto produtos={products} carregando={loadingProdutos} onAdicionar={adicionarProduto} onCadastrar={setNovoProduto} onItemAvulso={adicionarAvulso} />
             </div>
 
             {/* Mobile */}
@@ -1534,6 +1672,10 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                           min={0}
                           inputMode="numeric"
                           value={item.quantidadeItem}
+                          /* Mesma regra do desktop — ver a nota lá. No celular
+                             pesa ainda mais: posicionar o cursor antes do zero
+                             com o dedo é quase impossível. */
+                          onFocus={(e) => e.currentTarget.select()}
                           onChange={(e) => atualizarLinha(item.itemPedidoId, { quantidadeItem: Math.max(0, Number(e.target.value) || 0) })}
                           className="h-10 w-full rounded-lg border border-fg/[0.06] bg-fg/[0.03] px-2 text-center tabular-nums text-ink outline-none"
                         />
@@ -1557,7 +1699,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
               )}
               {!loadingPedido && itens.length === 0 && (
                 <p className="py-2 text-center text-[12px] text-faint">
-                  {modoOrcamento ? "Busque no estoque — ou digite o item e tecle Enter para lançar avulso." : "Use a busca acima para adicionar produtos."}
+                  Busque no estoque — ou digite o item e tecle Enter para lançar avulso.
                 </p>
               )}
             </div>
@@ -1812,7 +1954,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
              * sem fechar nada — e o que ele baixa é o documento de verdade.
              */}
             {(modoOrcamento ? Boolean(orcamentoId) : Boolean(id)) && (
-              <MenuDownloadNota refNota={notaRef} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Baixar orçamento" : "Baixar nota"} documento={modoOrcamento ? "orçamento" : "nota"} />
+              <BotaoVerDocumento refNota={notaRef} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Baixar orçamento" : "Baixar nota"} documento={modoOrcamento ? "orçamento" : "nota"} />
             )}
 
             {/* Recibo: só depois de quitada. Antes disso não há o que

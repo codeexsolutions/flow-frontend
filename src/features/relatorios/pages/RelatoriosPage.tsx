@@ -11,7 +11,7 @@ import useClienteStore from "@/features/clientes/store/cliente.store";
 import useProdutoStore, { stockLevel } from "@/features/estoque/store/produto.store";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 
-import { estaAberto, estaCancelado, estaQuitado, totalDoPedido, valorPagoDoPedido, type PedidoClienteType } from "@/shared/domain/pedido";
+import { estaAberto, estaCancelado, estaQuitado, totalDoPedido, recebidoDoPedido, type PedidoClienteType } from "@/shared/domain/pedido";
 import { formatCurrency } from "@/shared/utils/currency";
 import { MESES_EXTENSO, formatDate, formatDateTime, toDate } from "@/shared/utils/date";
 import { formatDocument, formatNumber } from "@/shared/utils/format";
@@ -151,7 +151,10 @@ const RelatoriosPage = () => {
 
   const totais = useMemo(() => {
     const faturado = noRecorte.reduce((acc, v) => acc + totalDoPedido(v), 0);
-    const recebido = noRecorte.reduce((acc, v) => acc + valorPagoDoPedido(v), 0);
+    /* `recebidoDoPedido`, e não `valorPagoDoPedido`: a nota quitada antes de
+       existir o extrato tem `valor_pago` zerado (migration 068) e sumia do
+       recebido, embora a lista a mostre como paga. Mesma regra do Início. */
+    const recebido = noRecorte.reduce((acc, v) => acc + recebidoDoPedido(v), 0);
 
     return {
       faturado,
@@ -187,7 +190,7 @@ const RelatoriosPage = () => {
 
       atual.pedidos += 1;
       atual.total += totalDoPedido(v);
-      atual.recebido += valorPagoDoPedido(v);
+      atual.recebido += recebidoDoPedido(v);
 
       mapa.set(chave, atual);
     });
@@ -225,7 +228,7 @@ const RelatoriosPage = () => {
 
       atual.pedidos += 1;
       atual.total += totalDoPedido(v);
-      atual.recebido += valorPagoDoPedido(v);
+      atual.recebido += recebidoDoPedido(v);
 
       mapa.set(chave, atual);
     });
@@ -310,7 +313,7 @@ const RelatoriosPage = () => {
    */
   const exportarExcel = () => {
     const somaTotal = (lista: PedidoClienteType[]) => lista.reduce((acc, v) => acc + totalDoPedido(v), 0);
-    const somaRecebido = (lista: PedidoClienteType[]) => lista.reduce((acc, v) => acc + valorPagoDoPedido(v), 0);
+    const somaRecebido = (lista: PedidoClienteType[]) => lista.reduce((acc, v) => acc + recebidoDoPedido(v), 0);
 
     const agora = new Date();
     const janelas: { rotulo: string; inicio: Date }[] = [
@@ -375,7 +378,7 @@ const RelatoriosPage = () => {
         Vendedor: v.nomeVendedor?.trim() || "—",
         Status: estaAberto(v) ? "Em aberto" : "Pago",
         Total: totalDoPedido(v),
-        Pago: valorPagoDoPedido(v),
+        Pago: recebidoDoPedido(v),
       })),
     );
     wsVendas["!cols"] = [{ wch: 12 }, { wch: 28 }, { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 14 }];

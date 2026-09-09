@@ -6,14 +6,38 @@ import { formatCurrency } from "@/shared/utils/currency";
 import { formatDate } from "@/shared/utils/date";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 
-import { type PedidoClienteType, totalDoPedido, valorPagoDoPedido, valorPendenteDoPedido, estaCancelado } from "@/shared/domain/pedido";
+import { type PedidoClienteType, totalDoPedido, recebidoDoPedido, valorPendenteDoPedido, estaCancelado } from "@/shared/domain/pedido";
 
 /**
  * A nota de venda para o download rápido na tabela de Vendas.
  *
- * É a mesma linguagem da nota completa (`Invoice`), mas leve: recebe o
- * `PedidoClienteType` já carregado e não monta nenhum controle. O botão da
- * linha a rasteriza com `handleDownload` — sem abrir a tela da nota.
+ * É o MESMO documento que a nota aberta (`Invoice`) manda para o PNG e para o
+ * PDF — e "mesmo" aqui é literal, não parecido. Quem baixa pela linha da lista
+ * e quem baixa de dentro da nota tem de receber o mesmo papel; o cliente que
+ * recebe os dois não sabe (nem deveria saber) por qual caminho a loja gerou o
+ * arquivo.
+ *
+ * ---------------------------------------------------------------------------
+ * O que faltava aqui, e por que importa
+ * ---------------------------------------------------------------------------
+ * O resumo tinha três caixas — Total, Pago, Pendente. A nota tem SEIS:
+ * T. Bruto, Desconto, T. Líquido, T. Pago, Pendente e Forma de pagamento. O
+ * que sumia no caminho era justamente o que o cliente confere primeiro: o
+ * DESCONTO. Quem negociou R$ 80 numa venda de R$ 100 recebia um PDF que dizia
+ * só "Total R$ 80" — o abatimento combinado no balcão não aparecia em lugar
+ * nenhum, e a próxima conversa começa com o cliente perguntando se o desconto
+ * entrou.
+ *
+ * Pelo mesmo motivo o preço de tabela riscado voltou para a linha do item: é
+ * ele que mostra o desconto item a item, e não só na soma.
+ *
+ * ---------------------------------------------------------------------------
+ * Grade de 6 colunas FIXA, sem breakpoint
+ * ---------------------------------------------------------------------------
+ * A nota usa `lg:grid-cols-6`, que olha a largura da JANELA. Aqui isso seria
+ * um defeito: este componente só existe dentro do nó escondido de 900px, e o
+ * arquivo tem de sair igual no celular e no desktop. Com breakpoint, a mesma
+ * venda baixada do celular sairia com o resumo em duas colunas.
  *
  * Totalmente estático, como o `OrcamentoNota`: só o que vai para o PNG.
  */
@@ -24,11 +48,26 @@ type Props = {
 };
 
 const NotaResumo = ({ venda: v, refNota }: Props) => {
-  const total = totalDoPedido(v);
-  const pago = valorPagoDoPedido(v);
+  const itens = v.pedido.itensPedido ?? [];
+
+  /* As mesmas três contas do `Invoice`, com os mesmos nomes — quando uma
+     mudar, é para as duas mudarem juntas. O líquido sai de `totalDoPedido`
+     (o total gravado, que já cai na soma dos itens quando falta). */
+  const totalLiquido = totalDoPedido(v);
+  const totalBruto = itens.reduce((acc, i) => acc + Number(i.produto?.valorProduto ?? 0) * Number(i.quantidadeItem ?? 0), 0);
+  const totalDesconto = Math.max(totalBruto - totalLiquido, 0);
+  const temDesconto = totalDesconto > 0 && totalBruto > 0;
+
+  const pago = recebidoDoPedido(v);
   const pendente = valorPendenteDoPedido(v);
   const cancelada = estaCancelado(v);
+  const formaPagamento = v.pedido.formaPagamento?.trim() || "Não consta";
+
   const enterprise = useEnterprise((s) => s.enterprise);
+
+  /* Os mesmos rótulos e valores do resumo da nota. */
+  const lblResumo = "block text-[11px] uppercase tracking-[0.08em] text-faint";
+  const valResumo = "mt-1 block truncate text-sm text-ink";
 
   return (
     <div ref={refNota} className="relative flex w-full flex-col overflow-hidden bg-surface">
@@ -76,23 +115,44 @@ const NotaResumo = ({ venda: v, refNota }: Props) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-fg/[0.05]">
-              {(v.pedido.itensPedido ?? []).length > 0 ? (
-                (v.pedido.itensPedido ?? []).map((item) => (
-                  <tr key={item.itemPedidoId}>
-                    <td className="max-w-[280px] p-2 align-middle">
-                      <p className="truncate px-1 text-ink" title={item.produto.nomeProduto}>{item.produto.nomeProduto}</p>
-                    </td>
-                    <td className="p-2 align-middle">
-                      <p className="px-1 tabular-nums text-ink">{Number(item.quantidadeItem)}</p>
-                    </td>
-                    <td className="p-2 align-middle">
-                      <p className="px-1 tabular-nums text-ink">{formatCurrency(Number(item.valorVendaItem))}</p>
-                    </td>
-                    <td className="p-2 align-middle">
-                      <p className="px-1 tabular-nums text-ink">{formatCurrency(Number(item.valorVendaItem) * Number(item.quantidadeItem))}</p>
-                    </td>
-                  </tr>
-                ))
+              {itens.length > 0 ? (
+                itens.map((item) => {
+                  const unitario = Number(item.valorVendaItem);
+                  const tabela = Number(item.produto?.valorProduto ?? 0);
+
+                  return (
+                    <tr key={item.itemPedidoId}>
+                      <td className="max-w-[280px] p-2 align-middle">
+                        <p className="truncate px-1 text-ink" title={item.produto.nomeProduto}>
+                          {item.produto.nomeProduto}
+                          {/* A variação vira selo ao lado do nome: sem ela, duas
+                              linhas de "Camiseta preta" ficam idênticas na nota
+                              e o cliente não sabe o que levou. */}
+                          {item.variacaoDescricao && (
+                            <span className="ml-1.5 rounded bg-fg/[0.07] px-1.5 py-px text-[10px] text-mist">{item.variacaoDescricao}</span>
+                          )}
+                        </p>
+                      </td>
+                      <td className="p-2 align-middle">
+                        <p className="px-1 tabular-nums text-ink">{Number(item.quantidadeItem)}</p>
+                      </td>
+                      <td className="p-2 align-middle">
+                        {/* O preço de tabela riscado ao lado do praticado — é o
+                            desconto item a item, do mesmo jeito que a nota
+                            aberta mostra. */}
+                        <div className="flex items-center gap-1.5 px-1">
+                          <span className="tabular-nums text-ink">{formatCurrency(unitario)}</span>
+                          {tabela > 0 && unitario !== tabela && (
+                            <span className="text-[10px] text-mist line-through">{formatCurrency(tabela)}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2 align-middle">
+                        <p className="px-1 tabular-nums text-ink">{formatCurrency(unitario * Number(item.quantidadeItem))}</p>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={4} className="py-12 text-center text-mist">
@@ -121,25 +181,41 @@ const NotaResumo = ({ venda: v, refNota }: Props) => {
         </div>
       )}
 
-      {/* Resumo — total, pago e pendente */}
-      <div className="flex flex-wrap justify-end gap-2 p-6">
-        <div className="min-w-[150px] rounded-xl border border-fg/[0.06] bg-fg/[0.03] p-4 text-right">
-          <span className="text-[10.5px] uppercase tracking-wide text-faint">Total</span>
-          <span className={`mt-1 block text-xl tabular-nums ${cancelada ? "text-mist line-through" : "text-ink"}`}>{formatCurrency(total)}</span>
-        </div>
+      {/* Resumo — as SEIS caixas da nota, na mesma ordem e com o mesmo desenho */}
+      <div className="p-5 pt-6">
+        <div className="grid grid-cols-6 gap-2">
+          <div className="rounded-xl border border-fg/[0.06] bg-fg/[0.03] p-3">
+            <span className={lblResumo}>T. Bruto</span>
+            <span className={`${valResumo} tabular-nums`}>{formatCurrency(totalBruto)}</span>
+          </div>
 
-        {!cancelada && (
-          <>
-            <div className="min-w-[120px] rounded-xl border border-success/20 bg-success/[0.1] p-4 text-right">
-              <span className="text-[10.5px] uppercase tracking-wide text-faint">Pago</span>
-              <span className="mt-1 block text-xl tabular-nums text-success">{formatCurrency(pago)}</span>
-            </div>
-            <div className={`min-w-[120px] rounded-xl border p-4 text-right ${pendente > 0 ? "border-warning/20 bg-warning/[0.1]" : "border-success/20 bg-success/[0.1]"}`}>
-              <span className="text-[10.5px] uppercase tracking-wide text-faint">Pendente</span>
-              <span className={`mt-1 block text-xl tabular-nums ${pendente > 0 ? "text-warning" : "text-success"}`}>{formatCurrency(pendente)}</span>
-            </div>
-          </>
-        )}
+          <div className={`rounded-xl border p-3 ${temDesconto ? "border-warning/20 bg-warning/[0.12]" : "border-fg/[0.06] bg-fg/[0.03]"}`}>
+            <span className={`${lblResumo} ${temDesconto ? "text-warning" : "text-faint"}`}>Desconto</span>
+            <span className={`mt-1 block truncate text-sm tabular-nums ${temDesconto ? "text-warning" : "text-ink"}`}>{temDesconto ? `- ${formatCurrency(totalDesconto)}` : formatCurrency(0)}</span>
+          </div>
+
+          <div className="rounded-xl border border-fg/[0.06] bg-fg/[0.03] p-3">
+            <span className={lblResumo}>T. Líquido</span>
+            {/* Nota cancelada risca o líquido: é o único lugar do documento em
+                que o cancelamento precisa aparecer para quem lê. */}
+            <span className={`mt-1 block truncate text-sm tabular-nums ${cancelada ? "text-mist line-through" : "text-ink"}`}>{formatCurrency(totalLiquido)}</span>
+          </div>
+
+          <div className="rounded-xl border border-fg/[0.06] bg-fg/[0.03] p-3">
+            <span className={lblResumo}>T. Pago</span>
+            <span className={`${valResumo} tabular-nums`}>{formatCurrency(pago)}</span>
+          </div>
+
+          <div className={`rounded-xl border p-3 ${pendente > 0 ? "border-warning/20 bg-warning/[0.12]" : "border-success/20 bg-success/[0.12]"}`}>
+            <span className={`${lblResumo} ${pendente > 0 ? "text-warning" : "text-success"}`}>Pendente</span>
+            <span className={`mt-1 block truncate text-sm tabular-nums ${pendente > 0 ? "text-warning" : "text-success"}`}>{formatCurrency(pendente)}</span>
+          </div>
+
+          <div className="rounded-xl border border-fg/[0.06] bg-fg/[0.03] p-3">
+            <span className={lblResumo}>F. Pagamento</span>
+            <span className={valResumo}>{formaPagamento}</span>
+          </div>
+        </div>
       </div>
       </div>
     </div>

@@ -3,7 +3,7 @@ import type { LegacyRef } from "react";
 import HeaderInterprise from "@/shared/ui/HeaderInterprise";
 import FundoNota from "@/shared/ui/FundoNota";
 import { formatCurrency } from "@/shared/utils/currency";
-import { formatDate } from "@/shared/utils/date";
+import { formatDate, formatDateTime, toDate } from "@/shared/utils/date";
 import { maskPhone } from "@/shared/validation/masks";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 
@@ -17,6 +17,12 @@ import type { Orcamento } from "@/features/orcamentos/services/orcamento.service
  * "Nota de Venda". Nada de pagamento/Pix aqui — orçamento é proposta, não
  * cobrança.
  *
+ * A identificação segue o MESMO desenho da `NotaResumo`: lista empilhada, com
+ * rótulo pequeno, valor legível e uma linha fina de apoio embaixo. Antes era
+ * uma grade de duas colunas com outra tipografia e outra caixa de total — o
+ * arquivo baixado não parecia ter saído do mesmo sistema que a nota, que é
+ * justamente o que o cliente compara quando recebe os dois.
+ *
  * O componente é 100% estático: não há nada editável. É só o que vai para o
  * PNG no download (o botão da linha o rasteriza com `handleDownload`).
  */
@@ -27,12 +33,30 @@ type Props = {
   refNota?: LegacyRef<HTMLDivElement>;
 };
 
+/** Dias inteiros entre a emissão e o vencimento — o PRAZO da proposta. */
+const prazoEmDias = (criadoEm: string, validade?: string | null): number | null => {
+  const inicio = toDate(criadoEm);
+  const fim = toDate(validade);
+
+  if (!inicio || !fim) return null;
+
+  const dia = 24 * 60 * 60 * 1000;
+  const zerar = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+  return Math.round((zerar(fim) - zerar(inicio)) / dia);
+};
+
 const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
   const subtotal = (i: { quantidade: number; valorUnitario: number; subtotal?: number }) =>
     Number(i.subtotal ?? Number(i.valorUnitario) * Number(i.quantidade));
 
   const telefone = o.clienteContato ? maskPhone(String(o.clienteContato)) : "";
   const enterprise = useEnterprise((s) => s.enterprise);
+
+  /* O prazo por extenso ao lado da data: "válido até 23/09" sozinho obriga
+     quem lê a contar no calendário para saber quanto tempo ainda tem. */
+  const dias = prazoEmDias(o.criadoEm, o.validade);
+  const prazo = dias === null ? "" : dias === 1 ? "Prazo de 1 dia" : `Prazo de ${dias} dias`;
 
   return (
     <div ref={refNota} className="relative flex w-full flex-col overflow-hidden bg-surface">
@@ -50,7 +74,8 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
       </div>
 
       {/*
-        Identificação — quem é o cliente e até quando a proposta vale.
+        Identificação — quem é o cliente, quando a proposta saiu e até quando
+        ela vale.
 
         O vendedor SAIU daqui. A proposta é da empresa, não da pessoa que a
         digitou: o nome do funcionário no papel que vai para o cliente convida
@@ -59,27 +84,32 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
         Quem vendeu continua gravado e visível por DENTRO — na lista de
         orçamentos e nos relatórios —, que é onde a informação serve.
 
-        Aqui havia, à direita, uma caixa tracejada de 176px com a situação da
-        proposta: mesma posição, mesmo tamanho e mesma moldura do QR da nota de
-        venda. Na tela isso lia como um QR que não carregou, e no documento que
-        o cliente recebe ela não tinha o que fazer — a situação é informação de
-        quem vende (está na tabela, com selo colorido), não de quem recebe a
-        proposta.
-
-        Sem ela, os dados ocupam a largura toda em duas colunas: menos altura,
-        e nada de vão à direita.
+        No lugar dele entrou o que FALTAVA para a proposta se defender sozinha:
+        o telefone digitado no balcão, o número da proposta, a hora da emissão
+        e o prazo de validade. Sem a emissão e o prazo, o papel que o cliente
+        guarda não diz de quando é nem até quando aquele preço vale — e é
+        exatamente essa a discussão que aparece quando ele volta um mês depois.
       */}
-      <div className="grid grid-cols-1 gap-x-8 gap-y-3.5 px-6 pt-6 sm:grid-cols-2">
-        {[
-          { rotulo: "Cliente", valor: o.clienteNome || "—" },
-          { rotulo: "Telefone", valor: telefone || "Não informado" },
-          { rotulo: "Validade", valor: o.validade ? formatDate(o.validade) : "—" },
-        ].map((linha) => (
-          <div key={linha.rotulo} className="min-w-0">
-            <dt className="text-[10.5px] uppercase tracking-[0.1em] text-faint">{linha.rotulo}</dt>
-            <dd className="mt-0.5 min-w-0 truncate text-[14.5px] leading-snug text-ink">{linha.valor}</dd>
-          </div>
-        ))}
+      <div className="flex flex-col gap-4 px-6 pt-6">
+        <dl className="flex min-w-0 flex-1 flex-col gap-3.5">
+          {[
+            { rotulo: "Cliente", valor: o.clienteNome || "—", extra: "" },
+            { rotulo: "Telefone", valor: telefone || "Não informado", extra: "" },
+            { rotulo: "Código", valor: `#${o.codigo}`, extra: "" },
+            { rotulo: "Emitido em", valor: formatDateTime(o.criadoEm), extra: "" },
+            {
+              rotulo: "Validade",
+              valor: o.validade ? `Válido até ${formatDate(o.validade)}` : "Sem prazo definido",
+              extra: o.validade ? prazo : "Combine o prazo com o cliente antes de fechar.",
+            },
+          ].map((linha) => (
+            <div key={linha.rotulo} className="min-w-0">
+              <dt className="text-[10.5px] uppercase tracking-[0.1em] text-faint">{linha.rotulo}</dt>
+              <dd className="mt-0.5 min-w-0 truncate text-[14.5px] leading-snug text-ink">{linha.valor}</dd>
+              {linha.extra && <dd className="truncate text-[11.5px] text-faint">{linha.extra}</dd>}
+            </div>
+          ))}
+        </dl>
       </div>
 
       {/* Tabela de itens */}
@@ -132,11 +162,14 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
         </div>
       )}
 
-      {/* Total — o único número que importa para a proposta */}
-      <div className="flex justify-end p-6">
-        <div className="min-w-[200px] rounded-xl border border-fg/[0.06] bg-fg/[0.03] p-4 text-right">
+      {/* Total — o único número que importa para a proposta.
+          Mesma caixa do resumo da nota (`NotaResumo`): mesma largura mínima,
+          mesmo corpo de texto, mesmo canto. O que muda é só não haver "Pago" e
+          "Pendente" ao lado — proposta não tem dinheiro recebido. */}
+      <div className="flex flex-wrap justify-end gap-2 p-6">
+        <div className="min-w-[150px] rounded-xl border border-fg/[0.06] bg-fg/[0.03] p-4 text-right">
           <span className="text-[10.5px] uppercase tracking-wide text-faint">Total do orçamento</span>
-          <span className="mt-1 block text-2xl tabular-nums text-ink">{formatCurrency(o.total)}</span>
+          <span className="mt-1 block text-xl tabular-nums text-ink">{formatCurrency(o.total)}</span>
         </div>
       </div>
       </div>

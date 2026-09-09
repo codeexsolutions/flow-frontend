@@ -108,7 +108,7 @@ const PostagemPage = () => {
   }), [postagens]);
 
   /* Paginação — mesmo padrão de Clientes e Estoque. */
-  const ROTULOS = ["Objeto", "Serviço", "Valor", "Data", "Status", undefined];
+  const ROTULOS = ["Objeto", "Serviço", "Valor", "Data", "Status", "Ações"];
   const COLS = "grid-cols-[minmax(160px,1.2fr)_120px_110px_110px_120px_100px]";
   const ALTURA_LINHA = 56;
   const { bodyRef, perPage } = useAutoPageSize<HTMLDivElement>({ rowHeight: ALTURA_LINHA + 1, offset: 40 });

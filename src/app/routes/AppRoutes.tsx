@@ -30,7 +30,8 @@ import FuncionariosPage from "@/features/funcionarios/pages/FuncionariosPage";
 import FuncionarioDetalhe from "@/features/funcionarios/pages/FuncionarioDetailPage";
 import OrcamentosPage from "@/features/orcamentos/pages/OrcamentosPage";
 import AjudaPage from "@/features/ajuda/pages/AjudaPage";
-import ProducoesPage from "@/features/producao/pages/ProducoesPage";
+import PedidosProducaoPage from "@/features/producao/pages/PedidosPage";
+import OrdensServicoPage from "@/features/producao/pages/OrdensServicoPage";
 import KanbanPage from "@/features/producao/pages/KanbanPage";
 import AcompanharProducaoPage from "@/features/acompanhamento/pages/AcompanharProducaoPage";
 import BaterPontoPage from "@/features/ponto/pages/BaterPontoPage";
@@ -379,9 +380,13 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
           {/*
             Produção é uma SEÇÃO, e não uma tela: duas abas sob a mesma casca.
 
-              • `/producao`         — a lista de clientes e o link de
-                                      acompanhamento de cada um;
-              • `/producao/kanban`  — o trabalho, em planilha ou em quadro.
+              • `/producao`         — PEDIDOS: toda venda que entrou, e a ação
+                                      que gera a ordem de serviço de cada uma;
+              • `/producao/os`      — ORDEM DE SERVIÇO: as ordens geradas, com
+                                      o documento que vai impresso para a bancada;
+              • `/producao/kanban`  — o trabalho, em planilha ou em quadro. É a
+                                      PLANILHA, e continua sendo: Pedidos e OS
+                                      entraram ao lado dela, sem tirar nada.
 
             As planilhas moraram em `/planilhas` como destino próprio do menu.
             Elas não sumiram: viraram uma das duas leituras do Kanban, porque
@@ -401,7 +406,18 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
                 recurso="producao"
                 promessa="Acompanhe cada pedido por etapa, monte a produção em tabela ou quadro e mande a cada cliente o link do pedido dele."
               >
-                <ProducoesPage />
+                <PedidosProducaoPage />
+              </RecursoDoPlano>
+            }
+          />
+          <Route
+            path="producao/os"
+            element={
+              <RecursoDoPlano
+                recurso="producao"
+                promessa="Acompanhe cada pedido por etapa, monte a produção em tabela ou quadro e mande a cada cliente o link do pedido dele."
+              >
+                <OrdensServicoPage />
               </RecursoDoPlano>
             }
           />

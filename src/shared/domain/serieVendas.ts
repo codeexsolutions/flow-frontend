@@ -1,5 +1,5 @@
 import type { Periodo } from "@/shared/ui/SeletorPeriodo";
-import { type PedidoClienteType, estaCancelado, estaQuitado, totalDoPedido } from "@/shared/domain/pedido";
+import { type PedidoClienteType, estaCancelado, recebidoDoPedido, totalDoPedido } from "@/shared/domain/pedido";
 import { MONTHS, toDate } from "@/shared/utils/date";
 
 /**
@@ -124,7 +124,12 @@ export const serieDeVendas = (vendas: PedidoClienteType[], periodo: Periodo): { 
     const valor = totalDoPedido(v);
 
     balde.faturado += valor;
-    if (estaQuitado(v)) balde.recebido += valor;
+
+    /* A linha verde é DINHEIRO, não status: o recebimento parcial entra no dia
+       em que entrou. Antes ela só subia quando a nota inteira era baixada, e o
+       gráfico ficava rente ao zero numa loja que recebe metade na entrada e
+       metade na entrega. Mesma regra do KPI ao lado — ver `recebidoDoPedido`. */
+    balde.recebido += recebidoDoPedido(v);
 
     baldes.set(chave, balde);
   }

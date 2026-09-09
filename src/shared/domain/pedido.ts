@@ -145,6 +145,39 @@ export const valorPagoDoPedido = (v: PedidoClienteType): number =>
   Number(v.pedido.valorPago ?? 0);
 
 /**
+ * QUANTO ENTROU desta venda — a pergunta que todo painel faz.
+ *
+ * ---------------------------------------------------------------------------
+ * Por que não basta `valorPagoDoPedido`, nem basta o status
+ * ---------------------------------------------------------------------------
+ * As telas respondiam isso de dois jeitos, e os dois erravam metade dos casos:
+ *
+ * • Somar o TOTAL das notas quitadas (o que o Início fazia) ignora pagamento
+ *   parcial por completo. A venda de R$ 500 com R$ 300 recebidos contava
+ *   ZERO — o dinheiro estava no caixa e o painel dizia que não tinha entrado.
+ *   Era o que fazia o número só se mexer "quando a nota é dada baixa".
+ *
+ * • Somar só `valor_pago` erra no sentido contrário nas notas antigas: as que
+ *   foram quitadas antes de existir o extrato de recebimentos ficaram com
+ *   `valor_pago` zerado (ver a migration 068), e some do painel dinheiro que
+ *   entrou de verdade.
+ *
+ * Esta função responde as duas: o recebido é o que o extrato acumulou e, na
+ * nota que o sistema dá por quitada, nunca menos que o total dela.
+ *
+ * `Math.max` e não um `if`: se as duas fontes discordarem, quem vale é a
+ * maior — subestimar caixa recebido é o erro que faz alguém cobrar de novo um
+ * cliente que já pagou.
+ */
+export const recebidoDoPedido = (v: PedidoClienteType): number => {
+  if (estaCancelado(v)) return 0;
+
+  const pago = valorPagoDoPedido(v);
+
+  return estaQuitado(v) ? Math.max(pago, totalDoPedido(v)) : pago;
+};
+
+/**
  * Valor ainda pendente.
  * Pedidos cancelados ou totalmente pagos/fechados ficam zerados.
  */

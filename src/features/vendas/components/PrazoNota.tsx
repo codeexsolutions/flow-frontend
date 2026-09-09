@@ -358,6 +358,9 @@ const PrazoNota = ({ pedidoId, pendente, clienteNome, acordo, carregando = false
             min={1}
             max={120}
             value={parcelas}
+            /* Trocar 1 por 6 é o gesto; sem a seleção vira "16". Mesma regra
+               do `TextField` numérico e do campo de quantidade da nota. */
+            onFocus={(e) => e.currentTarget.select()}
             onChange={(e) => setParcelas(Math.max(1, Math.min(120, Number(e.target.value) || 1)))}
             className={`${campo} tabular-nums`}
           />
@@ -416,6 +419,7 @@ const PrazoNota = ({ pedidoId, pendente, clienteNome, acordo, carregando = false
                     max={100}
                     step={0.5}
                     value={taxa}
+                    onFocus={(e) => e.currentTarget.select()}
                     onChange={(e) => setTaxa(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
                     className={`${campo} tabular-nums`}
                   />

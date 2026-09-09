@@ -11,7 +11,7 @@ import Invoice from "@/features/vendas/components/Invoice";
 import { ChartTip, Kpi, Legenda, Painel, PainelVazio, type Tom, KpiFaixa } from "@/shared/ui/Painel";
 import { usePainelCores } from "@/shared/ui/painelCores";
 import { formatCurrency } from "@/shared/utils/currency";
-import { estaAberto, estaCancelado, estaQuitado, totalDoPedido, valorPagoDoPedido, valorPendenteDoPedido } from "@/shared/domain/pedido";
+import { estaAberto, estaCancelado, estaQuitado, totalDoPedido, recebidoDoPedido, valorPendenteDoPedido } from "@/shared/domain/pedido";
 import { noPeriodo, serieDeVendas, vendasAtivas } from "@/shared/domain/serieVendas";
 import { PERIODO_TUDO, type Periodo } from "@/shared/ui/SeletorPeriodo";
 import useVendaStore from "@/features/vendas/store/venda.store";
@@ -105,7 +105,7 @@ const SalesOverviewPage = ({ periodo = PERIODO_TUDO }: Props) => {
     const doPeriodo = noPeriodo(naoCanceladas, periodo);
 
     const faturadoMes = doPeriodo.reduce((acc, v) => acc + totalDoPedido(v), 0);
-    const recebidoMes = doPeriodo.reduce((acc, v) => acc + valorPagoDoPedido(v), 0);
+    const recebidoMes = doPeriodo.reduce((acc, v) => acc + recebidoDoPedido(v), 0);
     const percentualRecebido = faturadoMes ? (recebidoMes / faturadoMes) * 100 : 0;
 
     /* A receber ignora o recorte de propósito: dívida é do AGORA. Quem deve

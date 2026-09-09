@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building2, MessageCircle, MapPin, Save, CircleCheck } from "lucide-react";
+import { Building2, MessageCircle, MapPin, Save, CircleCheck, Factory } from "lucide-react";
 
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import { useAlert } from "@/shared/ui/Alert";
@@ -17,6 +17,8 @@ import EmpresaContato from "@/features/config/components/EmpresaContato";
 import EmpresaEndereco from "@/features/config/components/EmpresaEndereco";
 import PixEmpresa from "@/features/config/components/PixEmpresa";
 import DominioProprio from "@/features/config/components/DominioProprio";
+import ProducaoAutomatica from "@/features/config/components/ProducaoAutomatica";
+import usePlano from "@/shared/plano/plano.store";
 
 type EnterpriseLike = {
   id?: string;
@@ -28,6 +30,8 @@ type EnterpriseLike = {
   urlLogo?: string;
   notaBackground?: string;
   ocultarCpfNota?: boolean;
+  producaoAutomatica?: boolean;
+  producaoPlanilhaId?: string | null;
   contato?: { email?: string; celular?: string | number; telefone?: string | number; whatsapp?: string | number };
   endereco?: {
     cep?: string;
@@ -40,12 +44,21 @@ type EnterpriseLike = {
   };
 };
 
-type TabId = "identificacao" | "contato" | "endereco";
+type TabId = "identificacao" | "contato" | "endereco" | "producao";
 
-const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+/**
+ * A aba de Produção só existe para quem tem o módulo.
+ *
+ * Ela configura uma automação da produção, e produção é módulo do plano
+ * Professional para cima. Mostrá-la a quem não tem seria oferecer uma chave
+ * que não liga nada — e o lugar de anunciar o que falta no plano é a tela de
+ * planos, não uma aba de configuração que não faz efeito.
+ */
+const TABS: { id: TabId; label: string; icon: React.ReactNode; recurso?: string }[] = [
   { id: "identificacao", label: "Identificação", icon: <Building2 size={15} /> },
   { id: "contato", label: "Contato", icon: <MessageCircle size={15} /> },
   { id: "endereco", label: "Endereço", icon: <MapPin size={15} /> },
+  { id: "producao", label: "Produção", icon: <Factory size={15} />, recurso: "producao" },
 ];
 
 const EmpresaPage = () => {
@@ -53,6 +66,11 @@ const EmpresaPage = () => {
   const ent = (enterprise ?? {}) as EnterpriseLike;
   const alert = useAlert();
   const [tab, setTab] = useState<TabId>("identificacao");
+
+  /* Plano ainda não carregado esconde a aba paga: melhor ela aparecer um
+     instante depois do que piscar e sumir para quem não a tem. */
+  const meuPlano = usePlano((s) => s.meu);
+  const abas = TABS.filter((t) => !t.recurso || meuPlano?.recursos?.[t.recurso] === true);
 
   /* ─── Save states individuais ─── */
   const [saving, setSaving] = useState<TabId | null>(null);
@@ -237,7 +255,7 @@ const EmpresaPage = () => {
     <div className="grid grid-cols-1 items-start gap-4 pb-2 xl:min-h-0 xl:flex-1 xl:grid-cols-3 xl:items-stretch xl:pb-0">
       <div className="flex min-w-0 flex-col gap-4 xl:col-span-2 xl:min-h-0">
         <div className="flex w-fit shrink-0 items-center gap-1 rounded-lg border border-fg/[0.07] bg-fg/[0.03] p-1">
-          {TABS.map((t) => (
+          {abas.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
@@ -284,6 +302,12 @@ const EmpresaPage = () => {
                 </span>
               </label>
             )}
+          </SettingsCard>
+        )}
+
+        {tab === "producao" && (
+          <SettingsCard corpoRolavel icon={<Factory className="h-4 w-4" />} title="Produção" desc="O que acontece com a venda de serviço depois de registrada">
+            <ProducaoAutomatica />
           </SettingsCard>
         )}
 

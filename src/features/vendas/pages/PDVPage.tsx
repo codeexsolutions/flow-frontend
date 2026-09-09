@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LegacyRef, ReactNode } from "react";
-import { ShoppingCart, Plus, Receipt, UserCheck, DollarSign, Wallet, AlertCircle, Hash, TrendingUp, ChevronRight, Search, UserPlus, PackagePlus, FileText, Check, X, Trash2, CalendarDays } from "lucide-react";
+import { ShoppingCart, Plus, Receipt, UserCheck, DollarSign, Wallet, AlertCircle, Hash, TrendingUp, ChevronRight, Search, UserPlus, PackagePlus, FileText, Check, X, Trash2, CalendarDays, Factory } from "lucide-react";
 
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -20,17 +20,18 @@ import type { ProductFormData } from "@/features/estoque/schema/product.schema";
 import type { ClienteFormData } from "@/features/clientes/schema/cliente.schema";
 import { KpiFaixa } from "@/shared/ui/Painel";
 import { Modal } from "@/shared/ui/Modal";
-import { BarraFiltros, ListaAcao } from "@/shared/ui/DataTable";
+import { BarraFiltros, ListaAcao, ListaCabecalho, ListaLinha } from "@/shared/ui/DataTable";
 import { AbasTabela } from "@/shared/ui/AbasTabela";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import { formatCurrency } from "@/shared/utils/currency";
 
-import MenuDownloadNota from "@/shared/ui/MenuDownloadNota";
+import BotaoVerDocumento from "@/shared/ui/BotaoVerDocumento";
 import NotaResumo from "@/features/vendas/components/NotaResumo";
 import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
-import { baixarNotaPdf } from "@/shared/ui/downloadNota";
+import { abrirDocumento } from "@/shared/ui/downloadNota";
+import ProducaoService from "@/features/producao/services/producao.service";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 
 import { estaAberto as estaAberta, totalDoPedido, type ItemPedidoType, type PedidoClienteType } from "@/shared/domain/pedido";
@@ -49,6 +50,9 @@ type NotaAberta = {
   itens?: ItemPedidoType[];
   /** Reescrevendo esta proposta em vez de criar outra. */
   orcamentoId?: string;
+  /** Telefone e vencimento da proposta reaberta — ver `abrirProposta`. */
+  contato?: string;
+  validade?: string;
   /** Proposta que esta venda substitui — apagada quando a nota for gerada. */
   converterOrcamentoId?: string;
 };
@@ -70,8 +74,8 @@ type NotaAberta = {
  * ----------------------------------------------------------------------------
  * COMO O ARQUIVO ESTÁ DIVIDIDO
  * ----------------------------------------------------------------------------
- *   1. COMPONENTES LOCAIS — `Kpi`, `StatusBadge`, `Avatar`, `SearchBox` e
- *      `LinhaAcoes`. São desta tela e não subiram para `shared/ui` porque ainda
+ *   1. COMPONENTES LOCAIS — `Kpi`, `StatusBadge`, `Avatar` e `SearchBox`. São
+ *      desta tela e não subiram para `shared/ui` porque ainda
  *      não tiveram um segundo consumidor; se você precisar de um deles noutra
  *      tela, o certo é subir, não copiar — foi o que se fez com o `AcaoLinha`
  *      daqui, que era o `ListaAcao` compartilhado com duas cores a mais.
@@ -93,8 +97,8 @@ type NotaAberta = {
  *   • O status de pagamento é DERIVADO do valor já pago, não lido do campo de
  *     status: nota parcialmente paga continua ABERTA no banco.
  *   • Os botões da linha ficam SOBREPOSTOS à direita, fora do botão da linha
- *     (`LinhaAcoes`). Botão dentro de botão é HTML inválido e, na prática,
- *     clicar em "aprovar" abriria a nota junto.
+ *     (o `acoes` da `ListaLinha`). Botão dentro de botão é HTML inválido e,
+ *     na prática, clicar em "aprovar" abriria a nota junto.
  *
  * Os números de linha envelhecem; os nomes, não.
  */
@@ -147,24 +151,40 @@ const SearchBox = ({ value, onChange, placeholder, className = "" }: { value: st
   </div>
 );
 
-/**
- * Linha da lista com botões próprios.
- *
- * As ações ficam FORA do botão da linha, sobrepostas à direita: botão dentro
- * de botão é HTML inválido e, na prática, clicar em "aprovar" abriria também
- * a nota — a pessoa pediria uma coisa e receberia outra. O vão entre os
- * ícones continua sendo área clicável da linha.
- */
-const LinhaAcoes = ({ children }: { children: ReactNode }) => (
-  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4">
-    <div className="pointer-events-auto flex items-center gap-1 opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">{children}</div>
-  </div>
-);
-
 
 /* --------------------------------- Página --------------------------------- */
 
 /** Vocabulário dos orçamentos — o mesmo da tela de Orçamentos. */
+/*
+ * ─────────────── As colunas das duas listas do balcão ───────────────
+ *
+ * As listas daqui eram desenhadas à mão: uma `<button>` com `flex` e um
+ * `<span>` vazio no fim reservando a largura dos botões sobrepostos. Isso
+ * significava, na prática, uma tabela sem cabeçalho — a coluna do total não
+ * tinha rótulo, as colunas não alinhavam entre as duas abas, e no celular a
+ * linha continuava sendo uma linha, com o valor espremido contra a borda.
+ *
+ * Agora são `ListaCabecalho` + `ListaLinha`, as mesmas peças da lista de
+ * vendas, do estoque, dos clientes e da produção. O que se ganha não é só
+ * desenho igual: vem junto a fileira de rótulos, a zebra que impede ler o
+ * valor de uma linha na altura de outra, a virada para cartão no celular (com
+ * cada valor rotulado) e a coluna de AÇÕES de verdade — em vez de um vão em
+ * branco que a gente reservava na mão e que descolava a cada ajuste.
+ *
+ * A última coluna é a de AÇÕES: nomeada no cabeçalho do desktop e omitida do
+ * cartão do celular, onde os botões já vão numa faixa no pé — ver `ListaLinha`.
+ */
+const COLS_VENDAS = "grid-cols-[minmax(170px,1.7fr)_112px_minmax(96px,120px)_minmax(96px,120px)_124px]";
+const ROTULOS_VENDAS = ["Cliente", "Situação", "Total", "Pago", "Ações"];
+
+/* A faixa de ações do orçamento é maior porque são até três botões além do
+   "Ver": aprovar, recusar (ou apagar) e o documento. */
+const COLS_ORCAMENTOS = "grid-cols-[minmax(170px,1.7fr)_112px_minmax(96px,120px)_136px]";
+const ROTULOS_ORCAMENTOS = ["Proposta", "Situação", "Total", "Ações"];
+
+/** Mesma altura da lista de vendas — as duas telas se leem em sequência. */
+const ALTURA_LINHA = 60;
+
 const SITUACAO_ORCAMENTO: Record<string, { label: string; tom: TomSelo }> = {
   ABERTO: { label: "Aguardando", tom: "alerta" },
   APROVADO: { label: "Aprovado", tom: "sucesso" },
@@ -589,6 +609,11 @@ const PontoDeVenda = () => {
           clienteNome: o.clienteNome,
           clienteId,
           clienteContato: o.clienteContato ?? null,
+          /* O `Atualizar` reescreve a linha inteira: o que não for enviado
+             volta nulo. Sem repetir estes dois aqui, amarrar a proposta ao
+             cadastro apagava a validade e a observação dela. */
+          observacao: o.observacao ?? null,
+          validade: o.validade ?? null,
           itens: (o.itens ?? []).map((i) => ({
             produtoId: i.produtoId ?? null,
             nomeProduto: i.nomeProduto,
@@ -650,7 +675,18 @@ const PontoDeVenda = () => {
       return;
     }
 
-    abrirNota({ clienteId: o.clienteId ? String(o.clienteId) : undefined, nome: o.clienteNome, orcamento: true, itens: itensDoOrcamento(o), orcamentoId: o.id });
+    abrirNota({
+      clienteId: o.clienteId ? String(o.clienteId) : undefined,
+      nome: o.clienteNome,
+      orcamento: true,
+      itens: itensDoOrcamento(o),
+      orcamentoId: o.id,
+      /* Telefone e prazo vêm junto: sem eles, corrigir um item salvaria a
+         proposta por cima com o contato em branco e a validade recontada a
+         partir de hoje. */
+      contato: o.clienteContato ?? undefined,
+      validade: o.validade ?? undefined,
+    });
   };
 
   /* ------------------------------- Downloads ------------------------------- */
@@ -663,8 +699,7 @@ const PontoDeVenda = () => {
    * para a impressora. Os dois saem do MESMO PNG rasterizado — o PDF é essa
    * imagem colada numa A4 —, então o documento é idêntico nos dois caminhos.
    */
-  const baixarDaLinha = async (
-    formato: "png" | "pdf",
+  const abrirDaLinha = async (
     chave: string,
     preparar: () => void,
     limpar: () => void,
@@ -684,19 +719,10 @@ const PontoDeVenda = () => {
 
       const blob = await gerarBlobNota(ref);
 
-      if (formato === "pdf") {
-        await baixarNotaPdf(blob, nome);
-      } else {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-
-        link.download = `${nome}.png`;
-        link.href = url;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-      }
+      /* O mesmo `nome` nos dois formatos: só a extensão muda. Sem passá-lo ao
+         PDF, o orçamento nº 12 saía como `orcamento-12.png` de um lado e
+         `nota-orcamento-12-2026-09-08.pdf` do outro. */
+      await abrirDocumento(blob, nome, enterprise?.nomeFantasia ?? nome);
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível gerar o arquivo."));
     } finally {
@@ -705,12 +731,31 @@ const PontoDeVenda = () => {
     }
   };
 
-  const baixarOrcamento = (o: Orcamento, formato: "png" | "pdf") =>
-    baixarDaLinha(formato, o.id, () => setOrcamentoDownload(o), () => setOrcamentoDownload(null), refOrcamentoDownload, `orcamento-${o.codigo}`);
+  const abrirOrcamentoDoc = (o: Orcamento) =>
+    abrirDaLinha(o.id, () => setOrcamentoDownload(o), () => setOrcamentoDownload(null), refOrcamentoDownload, `orcamento-${o.codigo}`);
 
-  const baixarNota = (v: PedidoClienteType, formato: "png" | "pdf") =>
-    baixarDaLinha(
-      formato,
+  /** Converter: a venda vira linha na produção. Ver a nota em `SalesListPage`. */
+  const [enviandoProducao, setEnviandoProducao] = useState<string | null>(null);
+
+  const levarParaProducao = async (v: PedidoClienteType) => {
+    const id = String(v.pedido.pedidoId);
+
+    setEnviandoProducao(id);
+
+    try {
+      const r = await ProducaoService.daVenda(id);
+
+      if (r.criado) alert.success("Ordem gerada!", `A venda de ${v.nomeCliente} virou uma ordem de serviço.`);
+      else alert.info("Nada a fazer", r.mensagem);
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível gerar a ordem."));
+    } finally {
+      setEnviandoProducao(null);
+    }
+  };
+
+  const abrirNotaDoc = (v: PedidoClienteType) =>
+    abrirDaLinha(
       String(v.pedido.pedidoId),
       () => setNotaDownload(v),
       () => setNotaDownload(null),
@@ -894,54 +939,72 @@ const PontoDeVenda = () => {
           <div className="min-h-0 flex-1 overflow-y-auto">
             {aba === "vendas" ? (
               vendasFiltradas.length > 0 ? (
-                vendasFiltradas.map((venda) => {
-                  const total = totalDoPedido(venda);
-                  const statusPag = statusPagamentoVenda(venda, total);
-                  const pagoVenda = Number(venda.pedido.valorPago ?? 0);
+                <>
+                  <ListaCabecalho cols={COLS_VENDAS}>
+                    {ROTULOS_VENDAS.map((r, i) => (
+                      <span key={r ?? `vazio-${i}`} className={r && i >= 2 ? "text-right" : undefined}>{r}</span>
+                    ))}
+                  </ListaCabecalho>
 
-                  return (
-                    <div key={venda.pedido.pedidoId} className="group relative">
-                      <button
+                  {vendasFiltradas.map((venda) => {
+                    const total = totalDoPedido(venda);
+                    const statusPag = statusPagamentoVenda(venda, total);
+                    const pagoVenda = Number(venda.pedido.valorPago ?? 0);
+
+                    return (
+                      <ListaLinha
+                        key={venda.pedido.pedidoId}
+                        cols={COLS_VENDAS}
+                        rotulos={ROTULOS_VENDAS}
+                        altura={ALTURA_LINHA}
+                        ariaLabel={`Abrir a nota de ${venda.nomeCliente}`}
                         onClick={() => abrirNota({ id: venda.pedido.pedidoId, clienteId: venda.clienteId, nome: venda.nomeCliente })}
-                        className="relative flex w-full items-center gap-3 border-b border-fg/[0.04] px-5 py-3.5 text-left transition-colors before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:rounded-r before:bg-accent before:opacity-0 before:transition-opacity hover:bg-fg/[0.03] hover:before:opacity-100"
-                      >
-                        <Avatar name={venda.nomeCliente} />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] text-ink">{venda.nomeCliente}</p>
-                          <p className="text-[11px] text-faint">
-                            {horaVenda(venda.pedido.dataPedido)}
-                            {statusPag === "PARCIAL" && ` · pago ${formatCurrency(pagoVenda)} de ${formatCurrency(total)}`}
-                          </p>
-                        </div>
+                        /* A nota sem abrir a nota: é o pedido que mais chega no
+                           balcão ("me manda a nota"), e atravessar o modal para
+                           responder custava quatro cliques. */
+                        acoes={
+                          <>
+                            <ListaAcao
+                              icon={<Factory size={14} />}
+                              label="Gerar ordem de serviço"
+                              ocupado={enviandoProducao === String(venda.pedido.pedidoId)}
+                              onClick={() => void levarParaProducao(venda)}
+                            />
 
-                        <span className="hidden sm:block">
-                          <StatusBadge status={statusPag} />
+                            <BotaoVerDocumento
+                              variante="linha"
+                              titulo="Ver ou baixar a nota"
+                              documento="nota"
+                              ocupado={ocupado === String(venda.pedido.pedidoId)}
+                              onAbrir={() => void abrirNotaDoc(venda)}
+                            />
+                          </>
+                        }
+                      >
+                        <span className="flex min-w-0 items-center gap-3">
+                          <Avatar name={venda.nomeCliente} />
+                          <span className="min-w-0">
+                            <span className="block truncate text-[13px] text-ink">{venda.nomeCliente}</span>
+                            <span className="block text-[11px] text-faint">{horaVenda(venda.pedido.dataPedido)}</span>
+                          </span>
                         </span>
 
-                        <div className="text-right">
-                          <p className="text-[13px] tabular-nums text-ink">{formatCurrency(total)}</p>
-                          <p className={`text-[11px] tabular-nums ${statusPag === "PAGA" ? "text-success" : statusPag === "PARCIAL" ? "text-accent-soft" : "text-warning"}`}>{statusPag === "PAGA" ? "paga" : statusPag === "PARCIAL" ? "parcial" : "aberta"}</p>
-                        </div>
+                        <span className="flex"><StatusBadge status={statusPag} /></span>
 
-                        {/* Espaço para os botões sobrepostos não taparem o valor. */}
-                        <span className="w-[38px] shrink-0" />
-                      </button>
+                        <span className="text-right text-[13px] tabular-nums text-ink">{formatCurrency(total)}</span>
 
-                      {/* A nota em PDF sem abrir a nota: é o pedido que mais
-                          chega no balcão ("me manda a nota"), e atravessar o
-                          modal para responder custava quatro cliques. */}
-                      <LinhaAcoes>
-                        <MenuDownloadNota
-                          variante="linha"
-                          titulo="Baixar nota"
-                          documento="nota"
-                          ocupado={ocupado === String(venda.pedido.pedidoId)}
-                          onEscolher={(formato) => void baixarNota(venda, formato)}
-                        />
-                      </LinhaAcoes>
-                    </div>
-                  );
-                })
+                        {/* O quanto já entrou, e não o rótulo repetido do selo
+                            ao lado: "parcial" a gente lê na situação; o que a
+                            linha não dizia era QUANTO falta. */}
+                        <span className={`text-right text-[13px] tabular-nums ${statusPag === "PAGA" ? "text-success" : statusPag === "PARCIAL" ? "text-accent-soft" : "text-faint"}`}>
+                          {formatCurrency(pagoVenda)}
+                        </span>
+
+                        <span />
+                      </ListaLinha>
+                    );
+                  })}
+                </>
               ) : (
                 <div className="flex h-full items-center justify-center py-10">
                   <div className="flex max-w-xs flex-col items-center gap-3 text-center text-faint">
@@ -961,7 +1024,18 @@ const PontoDeVenda = () => {
                 </div>
               )
             ) : orcamentosPorDia.length > 0 ? (
-              orcamentosPorDia.map((grupo) => (
+              /* O cabeçalho de colunas vem UMA vez, acima de todos os dias:
+                 repetido a cada bloco, ele competiria com a própria barra de
+                 data — que é o que separa um dia do outro. As datas continuam
+                 grudando no topo enquanto o bloco rola. */
+              <>
+              <ListaCabecalho cols={COLS_ORCAMENTOS}>
+                {ROTULOS_ORCAMENTOS.map((r, i) => (
+                  <span key={r ?? `vazio-${i}`} className={r && i >= 2 ? "text-right" : undefined}>{r}</span>
+                ))}
+              </ListaCabecalho>
+
+              {orcamentosPorDia.map((grupo) => (
                 <section key={grupo.data}>
                   {/* A data gruda no topo enquanto o bloco rola: numa lista que
                       atravessa semanas, saber de quando é a proposta que está
@@ -983,46 +1057,23 @@ const PontoDeVenda = () => {
                     const nesteMomento = ocupado === o.id;
 
                     return (
-                      <div key={o.id} className="group relative">
-                        <button
-                          onClick={() => abrirProposta(o)}
-                          title={o.status === "ABERTO" ? "Editar a proposta" : "Ver a proposta"}
-                          className="relative flex w-full items-center gap-3 border-b border-fg/[0.04] px-5 py-3.5 text-left transition-colors before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:rounded-r before:bg-warning before:opacity-0 before:transition-opacity hover:bg-fg/[0.03] hover:before:opacity-100"
-                        >
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-warning/25 bg-warning/[0.12] text-[11px] tabular-nums text-warning">
-                            #{o.codigo}
-                          </span>
-
-                          <div className="min-w-0 flex-1">
-                            {/* Sem selo de "sem cadastro": converter cria a ficha
-                                sozinho, então a falta dela deixou de ser um
-                                impedimento sobre o qual avisar. */}
-                            <p className="truncate text-[13px] text-ink">{o.clienteNome}</p>
-                            <p className="text-[11px] text-faint">
-                              {horaVenda(o.criadoEm)} · {o.itens?.length ?? 0} {(o.itens?.length ?? 0) === 1 ? "item" : "itens"}
-                            </p>
-                          </div>
-
-                          <span className="hidden lg:block">
-                            <Selo tom={situacao.tom}>{situacao.label}</Selo>
-                          </span>
-
-                          <p className="text-right text-[13px] tabular-nums text-ink">{formatCurrency(o.total)}</p>
-
-                          {/* Reserva a faixa dos botões sobrepostos. */}
-                          <span className="w-[128px] shrink-0 sm:w-[160px]" />
-                        </button>
-
-                        {/*
+                      <ListaLinha
+                        key={o.id}
+                        cols={COLS_ORCAMENTOS}
+                        rotulos={ROTULOS_ORCAMENTOS}
+                        altura={ALTURA_LINHA}
+                        ariaLabel={o.status === "ABERTO" ? `Editar a proposta de ${o.clienteNome}` : `Ver a proposta de ${o.clienteNome}`}
+                        onClick={() => abrirProposta(o)}
+                        /*
                          * Tudo o que se faz com uma proposta, na própria linha.
                          *
                          * A ordem segue a conversa real: o cliente responde
-                         * (aprovar), fecha (converter), aí falta o cadastro,
-                         * o documento e a correção. Cada botão some quando não
-                         * cabe — aprovar num orçamento já aprovado e editar um
-                         * já respondido seriam portas que não abrem.
-                         */}
-                        <LinhaAcoes>
+                         * (aprovar), fecha (converter), aí falta o documento e
+                         * a correção. Cada botão some quando não cabe —
+                         * aprovar num orçamento já aprovado e editar um já
+                         * respondido seriam portas que não abrem.
+                         */
+                        acoes={<>
                           {/*
                            * Um botão, não dois.
                            *
@@ -1052,13 +1103,36 @@ const PontoDeVenda = () => {
                             <ListaAcao icon={<Trash2 size={14} />} label="Apagar" tom="perigo" ocupado={nesteMomento} onClick={() => void excluirOrcamento(o)} />
                           )}
 
-                          <MenuDownloadNota variante="linha" titulo="Baixar orçamento" documento="orçamento" ocupado={nesteMomento} onEscolher={(formato) => void baixarOrcamento(o, formato)} />
-                        </LinhaAcoes>
-                      </div>
+                          <BotaoVerDocumento variante="linha" titulo="Ver ou baixar o orçamento" documento="orçamento" ocupado={nesteMomento} onAbrir={() => void abrirOrcamentoDoc(o)} />
+                        </>}
+                      >
+                        <span className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-warning/25 bg-warning/[0.12] text-[11px] tabular-nums text-warning">
+                            #{o.codigo}
+                          </span>
+
+                          {/* Sem selo de "sem cadastro": converter cria a ficha
+                              sozinho, então a falta dela deixou de ser um
+                              impedimento sobre o qual avisar. */}
+                          <span className="min-w-0">
+                            <span className="block truncate text-[13px] text-ink">{o.clienteNome}</span>
+                            <span className="block text-[11px] text-faint">
+                              {horaVenda(o.criadoEm)} · {o.itens?.length ?? 0} {(o.itens?.length ?? 0) === 1 ? "item" : "itens"}
+                            </span>
+                          </span>
+                        </span>
+
+                        <span className="flex"><Selo tom={situacao.tom}>{situacao.label}</Selo></span>
+
+                        <span className="text-right text-[13px] tabular-nums text-ink">{formatCurrency(o.total)}</span>
+
+                        <span />
+                      </ListaLinha>
                     );
                   })}
                 </section>
-              ))
+              ))}
+              </>
             ) : (
               <div className="flex h-full items-center justify-center py-10">
                 <div className="flex max-w-xs flex-col items-center gap-3 text-center text-faint">
@@ -1167,7 +1241,7 @@ const PontoDeVenda = () => {
         subtitle={notaAberta?.nome}
         size="full"
       >
-        {notaAberta && <Invoice id={notaAberta.id} clienteId={notaAberta.clienteId} nome={notaAberta.nome} onSaved={fecharNota} modoOrcamento={notaAberta.orcamento} itensIniciais={notaAberta.itens} orcamentoId={notaAberta.orcamentoId} converterOrcamentoId={notaAberta.converterOrcamentoId} />}
+        {notaAberta && <Invoice id={notaAberta.id} clienteId={notaAberta.clienteId} nome={notaAberta.nome} onSaved={fecharNota} modoOrcamento={notaAberta.orcamento} itensIniciais={notaAberta.itens} orcamentoId={notaAberta.orcamentoId} contatoInicial={notaAberta.contato} validadeInicial={notaAberta.validade} converterOrcamentoId={notaAberta.converterOrcamentoId} />}
       </Modal>
 
       {/* Modal de nome do orçamento no desktop. */}
@@ -1221,8 +1295,24 @@ const PontoDeVenda = () => {
           size="xl"
         >
           {visualizando && (
-            <div className="overflow-hidden rounded-lg border border-fg/[0.06]">
-              <OrcamentoNota orcamento={visualizando} />
+            <div className="flex flex-col gap-4">
+              <div className="overflow-hidden rounded-lg border border-fg/[0.06]">
+                <OrcamentoNota orcamento={visualizando} />
+              </div>
+
+              {/* Baixar de dentro da leitura, pelo MESMO caminho do botão da
+                  linha (`baixarOrcamento`). Abrir a proposta para conferir e
+                  precisar fechar o modal para poder baixá-la era duas viagens
+                  para um gesto só — e é justo depois de conferir que se manda
+                  o arquivo para o cliente. */}
+              <div className="flex justify-end border-t border-fg/[0.06] pt-3">
+                <BotaoVerDocumento
+                  titulo="Ver ou baixar o orçamento"
+                  documento="orçamento"
+                  ocupado={ocupado === visualizando.id}
+                  onAbrir={() => void abrirOrcamentoDoc(visualizando)}
+                />
+              </div>
             </div>
           )}
         </Modal>

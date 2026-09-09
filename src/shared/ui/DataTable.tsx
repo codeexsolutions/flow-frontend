@@ -362,6 +362,10 @@ export const ListaLinha = ({
    * Rótulo de cada célula, na ordem das colunas — o que o cartão do celular
    * escreve antes de cada valor. A primeira posição é a identidade e não
    * recebe rótulo; posição vazia esconde a célula no cartão.
+   *
+   * A ÚLTIMA posição de uma linha com `acoes` é a coluna dos botões: escreva
+   * "Ações" nela. Ela aparece no cabeçalho do desktop e é omitida do cartão do
+   * celular — ver o `resto.map` mais abaixo.
    */
   rotulos?: (string | undefined)[];
   onClick?: () => void;
@@ -429,8 +433,24 @@ export const ListaLinha = ({
           {resto.map((celula, i) => {
             const rotulo = rotulos?.[i + 1];
 
-            /* Sem rótulo, a célula não entra: é o caso da coluna que só
-               reserva a largura das ações, que no cartão não existe. */
+            /*
+             * A ÚLTIMA célula de uma linha com ações não entra no cartão.
+             *
+             * Ela é o vão que reserva a largura dos botões no desktop — vazia
+             * por definição —, e no celular os botões já estão na faixa do pé
+             * do cartão. Sem esta regra, dar nome a essa coluna ("Ações", que
+             * é o que o cabeçalho do desktop precisa) criaria no celular um
+             * campo "Ações" sem nada embaixo.
+             *
+             * Antes o critério era a FALTA de rótulo, e era ele que obrigava a
+             * coluna a ficar anônima no cabeçalho: rotulá-la a fazia aparecer
+             * no cartão. Pela posição, o cabeçalho ganha o nome e o cartão
+             * continua limpo.
+             */
+            if (acoes && i === resto.length - 1) return null;
+
+            /* Sem rótulo, a célula não entra — vale para qualquer coluna que
+               exista só para ocupar espaço. */
             if (!rotulo) return null;
 
             return (
@@ -448,19 +468,35 @@ export const ListaLinha = ({
   if (!acoes) return linha;
 
   return (
-    /* `group` também aqui: as ações são irmãs do botão da linha, e o
-       `group-hover` delas precisa de um ancestral comum aos dois. */
+    /* `group` também aqui: as ações são irmãs do botão da linha, e o hover da
+       linha (a faixa lateral, o fundo) precisa de um ancestral comum aos
+       dois — senão passar o mouse sobre um botão apagaria o realce da linha
+       que ele pertence. */
     <div className="group relative" style={{ "--linha-altura": `${altura}px` } as CSSProperties}>
       {linha}
 
       {/*
-        No desktop as ações se sobrepõem à direita e só acendem no hover.
-        No celular não existe hover — e um botão que só aparece ao passar o
-        dedo é um botão que ninguém encontra. Então elas ficam de pé, numa
-        faixa própria no pé do cartão.
+        No desktop as ações se sobrepõem à direita da linha. No celular não
+        existe hover, então elas ficam numa faixa própria no pé do cartão.
+
+        ─────────────────────────────────────────────────────────────────
+        Elas ficam ACESAS. O `opacity-60` que havia aqui era um botão que
+        não existe.
+        ─────────────────────────────────────────────────────────────────
+        A ideia do desbotado era não poluir a lista: os ícones só ganhavam
+        cor quando o cursor passava. Só que 60% de opacidade sobre o fundo
+        da linha some — e o que a operação relatou foi exatamente isso,
+        "cadê as ações?", numa tela em que elas estavam na frente dela o
+        tempo todo. Ninguém passa o mouse à toa numa coluna que parece
+        vazia; para descobrir o botão era preciso já saber que ele existia.
+
+        A discrição continua onde ela cabe: o `ListaAcao` é cinza e só cora
+        no hover (o `perigo` inclusive), então a fileira não vira um alarme
+        de ícones vermelhos. O que mudou é a diferença entre discreto e
+        ausente.
       */}
       <div className="pointer-events-none absolute inset-y-0 right-0 hidden items-center pr-4 sm:flex">
-        <div className="pointer-events-auto flex items-center gap-1 opacity-60 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+        <div className="pointer-events-auto flex items-center gap-1">
           {acoes}
         </div>
       </div>

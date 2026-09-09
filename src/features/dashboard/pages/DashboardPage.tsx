@@ -37,7 +37,7 @@ import useClienteStore from "@/features/clientes/store/cliente.store";
 import useProdutoStore, { stockLevel } from "@/features/estoque/store/produto.store";
 import { ehVendavel } from "@/shared/domain/produto";
 
-import { estaAberto, estaQuitado, estaCancelado, totalDoPedido } from "@/shared/domain/pedido";
+import { estaAberto, estaCancelado, totalDoPedido, recebidoDoPedido, valorPendenteDoPedido } from "@/shared/domain/pedido";
 import { mesesComMovimento as mesesComVenda, serieDeVendas } from "@/shared/domain/serieVendas";
 import { formatCurrency } from "@/shared/utils/currency";
 import { formatNumber, getInitials } from "@/shared/utils/format";
@@ -422,16 +422,36 @@ const DashboardPage = () => {
 
     const soma = (lista: typeof ativas) => lista.reduce((acc, v) => acc + totalDoPedido(v), 0);
 
+    /*
+     * O recebido conta PAGAMENTO, não status.
+     *
+     * Era `soma(noPeriodo.filter(estaQuitado))`: o total das notas já baixadas,
+     * e nada mais. O sinal de R$ 300 recebidos numa venda de R$ 500 não
+     * chegava aqui — a nota continuava aberta, então ela valia zero no painel,
+     * e o número só se mexia no instante em que alguém dava baixa. Quem
+     * recebeu metade de dez vendas via o Início dizer que não entrou nada.
+     *
+     * `recebidoDoPedido` é a mesma regra que Relatórios, Vendas e o panorama
+     * já usam — a diferença entre as telas era esta linha. Ver o domínio.
+     */
+    const somaRecebida = (lista: typeof ativas) => lista.reduce((acc, v) => acc + recebidoDoPedido(v), 0);
+
     const faturado = soma(noPeriodo);
-    const recebido = soma(noPeriodo.filter(estaQuitado));
+    const recebido = somaRecebida(noPeriodo);
 
     /* A receber e notas em aberto ignoram o período de propósito: dívida é do
        AGORA, não do recorte. Quem deve de março continua devendo quando a tela
-       está mostrando junho. */
-    const aReceber = soma(ativas.filter(estaAberto));
+       está mostrando junho.
+
+       E é o SALDO, não o total da nota: a venda de R$ 500 com R$ 300 já
+       recebidos deve R$ 200. Somando o total, o "a receber" cobrava de novo o
+       dinheiro que já estava no caixa — e ainda deixava de fora a nota
+       PENDENTE, que `estaAberto` não alcança. `valorPendenteDoPedido` zera
+       sozinho o que está quitado ou cancelado. */
+    const aReceber = ativas.reduce((acc, v) => acc + valorPendenteDoPedido(v), 0);
 
     const faturadoAnterior = soma(noAnterior);
-    const recebidoAnterior = soma(noAnterior.filter(estaQuitado));
+    const recebidoAnterior = somaRecebida(noAnterior);
 
     /* Hoje: o recorte que responde "como está indo o dia", que o período
        esconde. Fica fora do filtro pelo mesmo motivo — é o subtítulo da tela,
@@ -496,10 +516,17 @@ const DashboardPage = () => {
     /* Mix de recebimento. `formaPagamento` é a do último pagamento da nota — o
        subtítulo do painel diz isso, para ninguém ler como rateio exato. */
     const porForma = new Map<string, { total: number; notas: number }>();
-    noPeriodo.filter(estaQuitado).forEach((v) => {
+    noPeriodo.forEach((v) => {
+      const entrou = recebidoDoPedido(v);
+
+      /* Nota sem um centavo recebido não tem forma de recebimento para
+         informar — entraria como "Não informado" e inflaria a fatia de quem
+         ainda não pagou nada. */
+      if (entrou <= 0) return;
+
       const f = v.pedido.formaPagamento?.trim() || "Não informado";
       const atual = porForma.get(f) ?? { total: 0, notas: 0 };
-      atual.total += totalDoPedido(v);
+      atual.total += entrou;
       atual.notas += 1;
       porForma.set(f, atual);
     });

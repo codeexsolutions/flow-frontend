@@ -57,24 +57,21 @@ function diasAtePrazo(prazo: string | null): number | null {
  * O CONTROLE DE PRODUÇÃO ANTIGO — fora da navegação.
  *
  * ---------------------------------------------------------------------------
- * Por que ele saiu
+ * Por que ele saiu, e por que continua aqui
  * ---------------------------------------------------------------------------
  * Esta tela tem tabelas próprias (`producao_itens`, `producao_etapas`), que são
- * OUTRA produção: o que se digitava na planilha não aparecia aqui, e o que se
- * arrastava aqui não chegava lá. A pergunta "onde está o pedido da dona
- * Marlene?" tinha duas respostas conforme a tela aberta.
+ * OUTRA produção: o que se digita na planilha não aparece aqui, e o que se
+ * arrasta aqui não chega lá. A produção da loja é a PLANILHA — é ela que tem
+ * os registros e a gente treinada —, e a aba Kanban mostra ela.
  *
- * A produção passou a ser uma só, a da planilha: o backlog em cartões virou uma
- * VISÃO dela — as mesmas linhas agrupadas por uma coluna de seleção, arrastar
- * grava na célula da etapa. Ver `QuadroPlanilha` e `PlanilhasPage`.
+ * Houve uma tentativa de trazer este quadro de volta para o lugar da planilha.
+ * Foi revertida no mesmo dia: um quadro vazio no lugar de uma produção com
+ * histórico não é uma versão nova, é a perda do que funcionava.
  *
- * ---------------------------------------------------------------------------
- * Por que o arquivo continua aqui
- * ---------------------------------------------------------------------------
- * Nenhuma rota o alcança, mas ele é a única interface que existe para os dados
- * já gravados em `producao_itens`. Apagá-lo tornaria esse conteúdo inalcançável
- * sem passar pelo banco — e quem decide migrar ou descartar esses registros é
- * o dono do sistema, não este refactor. Ele fica de pé, e sem porta.
+ * O arquivo fica porque `producao_itens` voltou a ter uso: é onde vivem as
+ * ORDENS DE SERVIÇO geradas na aba Pedidos. Esta tela é a única interface que
+ * existe para mexer nelas por etapa, e apagá-la tornaria esse conteúdo
+ * inalcançável sem passar pelo banco.
  */
 /**
  * As props sobraram do arranjo anterior, em que esta tela era a visão

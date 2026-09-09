@@ -1,7 +1,7 @@
 import { useRef } from "react";
 
 import Recibo, { type DadosRecibo } from "@/shared/ui/Recibo";
-import MenuDownloadNota from "@/shared/ui/MenuDownloadNota";
+import BotaoVerDocumento from "@/shared/ui/BotaoVerDocumento";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 
 /**
@@ -21,11 +21,11 @@ const BotaoRecibo = ({ dados }: { dados: DadosRecibo }) => {
 
   return (
     <>
-      <MenuDownloadNota
+      <BotaoVerDocumento
         refNota={refRecibo}
         nomeEmpresa={empresa?.nomeFantasia ?? "recibo"}
         prefixo={`recibo-${dados.numero}`}
-        titulo="Baixar recibo"
+        titulo="Ver ou baixar o recibo"
         documento="recibo"
       />
 

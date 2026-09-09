@@ -15,6 +15,27 @@ interface EnterpriseType {
    * dado pessoal, e a nota é um documento que circula por WhatsApp e balcão.
    */
   ocultarCpfNota?: boolean;
+  /**
+   * `true` (padrão) faz a venda COM SERVIÇO virar uma linha na produção.
+   *
+   * Só tem efeito para quem tem produção no plano — a trava do módulo é do
+   * plano, esta é a preferência de quem já tem direito a ele.
+   */
+  producaoAutomatica?: boolean;
+  /**
+   * Qual planilha recebe as vendas.
+   *
+   * `null` não é "desligado", é "não escolhi": nesse caso o servidor usa a
+   * única planilha da empresa, e não faz nada quando há mais de uma.
+   */
+  producaoPlanilhaId?: string | null;
+  /**
+   * Chave do MODELO DE ORDEM DE SERVIÇO adotado. `null` = documento padrão.
+   *
+   * Os modelos disponíveis vêm do painel (`/producao/os-modelos`); o desenho
+   * de cada um mora em `features/producao/modelos`.
+   */
+  osModelo?: string | null;
   ativo: boolean;
   endereco?: {
     logradouro: string;

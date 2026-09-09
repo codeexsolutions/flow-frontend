@@ -61,7 +61,19 @@ const MoneyInput = ({ value, onChange, className = "", placeholder = "R$ 0,00", 
     }
   }, []);
 
-  const displayValue = value === 0 && !inputRef.current?.value ? "" : formatReal(value);
+  /*
+   * Zero aparece VAZIO, e o placeholder diz o que se espera ali.
+   *
+   * Um campo mostrando "R$ 0,00" obriga a apagar o zero antes de digitar — e
+   * quem não apaga acaba com o valor colado no zero. É a mesma queixa do campo
+   * de quantidade: "está com 0, eu digito e fica 01".
+   *
+   * Aqui isso já era a intenção, mas a condição LIA O DOM durante o render
+   * (`!inputRef.current?.value`), o que é impuro e não confiável: no primeiro
+   * render o ref ainda é nulo, e depois de digitar "00" o campo voltava a
+   * escrever "R$ 0,00" em vez de esvaziar. A regra agora é só o valor.
+   */
+  const displayValue = value === 0 ? "" : formatReal(value);
 
   return (
     <input

@@ -138,10 +138,11 @@ const LISTA_MIN_WIDTH = 792;
  * Os rótulos das colunas, em UMA lista.
  *
  * Servem ao cabeçalho do desktop e ao cartão do celular (ver `ListaLinha`). A
- * última posição é vazia de propósito: aquela coluna só reserva a largura das
- * ações, e no cartão ela não tem o que rotular.
+ * A última posição é a coluna de AÇÕES: ela aparece no cabeçalho do desktop e
+ * é omitida do cartão do celular, onde os botões já vão numa faixa própria no
+ * pé — ver `ListaLinha`.
  */
-const LISTA_ROTULOS = ["Produção", "Período", "Colunas", "Linhas", "Preenchidas", undefined];
+const LISTA_ROTULOS = ["Produção", "Período", "Colunas", "Linhas", "Preenchidas", "Ações"];
 
 /**
  * Como cada evento do histórico se lê.
