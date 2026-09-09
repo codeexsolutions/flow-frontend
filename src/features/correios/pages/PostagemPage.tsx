@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Package, ClipboardList, CheckCircle2, Clock, MapPin, FileText, XCircle, Printer, Truck, Loader2 } from "lucide-react";
 
 import CorreiosService from "@/features/correios/services/correios.service";
-import type { FreteResultado, PostagemType, PrePostagemDto } from "@/features/correios/types/correios.types";
+import type { AgenciaEnvio, FreteResultado, PostagemType, PrePostagemDto } from "@/features/correios/types/correios.types";
 
 import { TabelaCard, TabelaVazia, ListaCabecalho, ListaLinha, ListaFantasmas } from "@/shared/ui/DataTable";
 import { Kpi, KpiFaixa } from "@/shared/ui/Painel";
@@ -80,6 +80,19 @@ const PostagemPage = () => {
   const [opcoes, setOpcoes] = useState<FreteResultado[]>([]);
   const [cotando, setCotando] = useState(false);
 
+  /**
+   * As AGÊNCIAS da transportadora escolhida.
+   *
+   * Boa parte do aéreo (Azul Cargo, LATAM) e a Loggi não coletam nem aceitam
+   * postagem em agência dos Correios: o objeto é entregue num ponto da própria
+   * transportadora, e a compra é RECUSADA sem esse ponto escolhido. Elas só
+   * são buscadas quando a opção escolhida exige — pedir sempre seria uma
+   * chamada e uma lista inúteis na maioria das etiquetas.
+   */
+  const [agencias, setAgencias] = useState<AgenciaEnvio[]>([]);
+  const [agenciaId, setAgenciaId] = useState("");
+  const [buscandoAgencias, setBuscandoAgencias] = useState(false);
+
   const [form, setForm] = useState<NovaPostagemForm>({
     servicoId: 0,
     servicoNome: "",
@@ -96,6 +109,40 @@ const PostagemPage = () => {
     comprimento: "18",
   });
 
+  /** Carrega os pontos de postagem da transportadora escolhida. */
+  const carregarAgencias = async (opcao: FreteResultado) => {
+    setBuscandoAgencias(true);
+    setAgencias([]);
+    setAgenciaId("");
+
+    try {
+      const r = await CorreiosService.listarAgencias({
+        transportadora: opcao.transportadoraId,
+        /* Filtra pela UF da EMPRESA: a agência é onde ela vai deixar a caixa,
+           não onde o cliente vai buscá-la. */
+        uf: enterprise?.endereco?.uf ?? undefined,
+        cidade: enterprise?.endereco?.cidade ?? undefined,
+      });
+
+      setAgencias(unwrapList<AgenciaEnvio>(r.data));
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível listar as agências."));
+    } finally {
+      setBuscandoAgencias(false);
+    }
+  };
+
+  /** Escolhe a opção de frete — e busca agência quando ela exigir. */
+  const escolherOpcao = (o: FreteResultado) => {
+    setForm({ ...form, servicoId: o.servicoId, servicoNome: o.servico });
+
+    if (o.exigeAgencia) void carregarAgencias(o);
+    else {
+      setAgencias([]);
+      setAgenciaId("");
+    }
+  };
+
   /**
    * Cota o frete para a caixa e o destino digitados.
    *
@@ -111,6 +158,8 @@ const PostagemPage = () => {
 
     setCotando(true);
     setOpcoes([]);
+    setAgencias([]);
+    setAgenciaId("");
     setForm((f) => ({ ...f, servicoId: 0, servicoNome: "" }));
 
     try {
@@ -192,6 +241,15 @@ const PostagemPage = () => {
       return;
     }
 
+    /* A transportadora que exige ponto de postagem recusa a compra sem ele — e
+       recusar aqui é melhor do que descobrir depois do débito na carteira. */
+    const escolhida = opcoes.find((o) => o.servicoId === form.servicoId);
+
+    if (escolhida?.exigeAgencia && !agenciaId) {
+      alert.warning("Falta o ponto de postagem", `${escolhida.transportadora ?? "Esta transportadora"} exige escolher onde a encomenda será deixada.`);
+      return;
+    }
+
     setSalvando(true);
     try {
       const payload: PrePostagemDto = {
@@ -223,6 +281,7 @@ const PostagemPage = () => {
           cep: onlyDigits(form.cepDestino),
         },
         itensDeclaracao: [],
+        agenciaId: agenciaId || undefined,
         peso: Number(form.peso) || 0.5,
         comprimento: Number(form.comprimento) || 18,
         altura: Number(form.altura) || 4,
@@ -424,7 +483,7 @@ const PostagemPage = () => {
                       key={`${o.servicoId}-${o.servico}`}
                       type="button"
                       disabled={indisponivel}
-                      onClick={() => setForm({ ...form, servicoId: o.servicoId, servicoNome: o.servico })}
+                      onClick={() => escolherOpcao(o)}
                       className={`focus-ring flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-[12.5px] transition-colors ${
                         escolhido
                           ? "border-accent/50 bg-accent/15 text-accent-soft"
@@ -433,7 +492,12 @@ const PostagemPage = () => {
                             : "cursor-pointer border-fg/[0.1] text-mist hover:border-accent/40 hover:text-ink"
                       }`}
                     >
-                      <span className="min-w-0 truncate">{o.servico}</span>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        {o.transportadoraLogo && (
+                          <img src={o.transportadoraLogo} alt="" className="h-4 w-4 shrink-0 rounded object-contain" />
+                        )}
+                        <span className="min-w-0 truncate">{o.servico}</span>
+                      </span>
 
                       {indisponivel ? (
                         <span className="shrink-0 text-[11px] text-faint">{o.erro}</span>
@@ -446,6 +510,36 @@ const PostagemPage = () => {
                     </button>
                   );
                 })}
+              </div>
+            )}
+
+            {/* A agência só aparece quando a transportadora exige — ver
+                `carregarAgencias`. Sem ela escolhida, a compra é recusada
+                depois de a pessoa já ter escolhido o frete. */}
+            {(buscandoAgencias || agencias.length > 0) && (
+              <div className="mt-3 flex flex-col gap-1.5">
+                <span className="text-[10px] uppercase tracking-[0.7px] text-faint">
+                  Ponto de postagem {buscandoAgencias && "· buscando..."}
+                </span>
+
+                <select
+                  value={agenciaId}
+                  onChange={(e) => setAgenciaId(e.target.value)}
+                  className="h-[38px] w-full cursor-pointer rounded-lg border border-fg/[0.1] bg-fg/[0.04] px-3 text-[12.5px] text-ink outline-none focus:border-accent/50"
+                >
+                  <option value="">Escolha onde deixar a encomenda</option>
+                  {agencias.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {[a.nome, a.endereco, a.cidade].filter(Boolean).join(" — ")}
+                    </option>
+                  ))}
+                </select>
+
+                {!buscandoAgencias && agencias.length === 0 && (
+                  <span className="text-[11px] text-warning">
+                    Esta transportadora exige um ponto de postagem e nenhum foi encontrado na sua cidade.
+                  </span>
+                )}
               </div>
             )}
           </FormSection>

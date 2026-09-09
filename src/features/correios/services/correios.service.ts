@@ -17,7 +17,11 @@ import type { CalcFreteDto, PrePostagemDto } from "@/features/correios/types/cor
 const CorreiosService = {
   /* ─── Preços ─── */
   calcularFrete: (data: CalcFreteDto) => sysgrafix.post("/correios/calcular-frete", data),
+  /** O catálogo: toda transportadora e todo serviço que a conta tem. */
   listarServicos: () => sysgrafix.get("/correios/servicos"),
+  /** Pontos de postagem — o aéreo e a Loggi exigem um antes de comprar. */
+  listarAgencias: (filtro: { transportadora?: number; uf?: string; cidade?: string }) =>
+    sysgrafix.get("/correios/agencias", { params: filtro }),
 
   /* ─── Pré-Postagem ─── */
   solicitarPostagem: (data: PrePostagemDto) => sysgrafix.post("/correios/pre-postagem", data),

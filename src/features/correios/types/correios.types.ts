@@ -9,7 +9,18 @@ export type CalcFreteDto = {
   comprimento: number;
   altura: number;
   largura: number;
-  servico?: ServicoCorreio;
+  /**
+   * Filtra a cotação a estes serviços. VAZIO = todas as transportadoras da
+   * conta, que é o padrão — Correios, Jadlog, Azul Cargo, LATAM, Loggi.
+   *
+   * A tela pedia SEDEX, PAC e SEDEX 12 em três chamadas separadas: uma lista
+   * fixa dos Correios escrita no código, que escondia todo o resto do
+   * catálogo. Uma chamada sem filtro traz tudo.
+   */
+  servicos?: number[];
+  valorSegurado?: number;
+  avisoRecebimento?: boolean;
+  maoPropria?: boolean;
 };
 
 export type FreteResultado = {
@@ -20,11 +31,55 @@ export type FreteResultado = {
    * na hora de comprar o frete é este número.
    */
   servicoId: number;
+  /** "Correios · PAC", "Azul Cargo · Amanhã" — transportadora e serviço juntos. */
   servico: string;
+  transportadora?: string;
+  transportadoraLogo?: string;
+  transportadoraId?: number;
+  /**
+   * "normal" ou "express".
+   *
+   * NÃO diz se é aéreo: o provedor classifica por VELOCIDADE. Quem é aéreo se
+   * reconhece pela transportadora — Azul Cargo, LATAM Cargo —, e é por isso
+   * que o nome dela aparece no cartão.
+   */
+  tipo?: string;
+  /** A transportadora exige escolher um ponto de postagem antes de comprar. */
+  exigeAgencia?: boolean;
   valor: number;
   prazo: number;
   /** Preenchido quando aquela transportadora recusou a rota. */
   erro?: string;
+};
+
+/** O que muda o preço além da caixa. */
+export type OpcoesFrete = {
+  /** Valor declarado para o seguro. 0 = sem seguro. */
+  valorSegurado?: number;
+  /** Aviso de recebimento: o papel assinado que volta. */
+  avisoRecebimento?: boolean;
+  /** Só o destinatário recebe, com documento. */
+  maoPropria?: boolean;
+};
+
+/** Um serviço do catálogo do provedor. */
+export type ServicoDisponivel = {
+  id: number;
+  nome: string;
+  transportadora: string;
+  logo?: string | null;
+  tipo?: string | null;
+  alcance?: string | null;
+};
+
+/** Um ponto de postagem da transportadora. */
+export type AgenciaEnvio = {
+  id: string;
+  nome: string;
+  empresa?: string | null;
+  endereco?: string | null;
+  cidade?: string | null;
+  uf?: string | null;
 };
 
 /* ─────────── API Pré-Postagem ─────────── */
@@ -82,6 +137,11 @@ export type PrePostagemDto = {
   altura: number;
   largura: number;
   notaFiscal?: string;
+  /** Obrigatória quando a transportadora exige ponto de postagem. */
+  agenciaId?: string;
+  valorSegurado?: number;
+  avisoRecebimento?: boolean;
+  maoPropria?: boolean;
 };
 
 export type PostagemResultado = {

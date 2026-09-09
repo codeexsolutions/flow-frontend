@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import { Calculator, MapPin, Weight, Ruler, Timer, AlertTriangle, RotateCw, CheckCircle2, TrendingUp } from "lucide-react";
+import { Calculator, MapPin, Weight, Ruler, Timer, AlertTriangle, RotateCw, CheckCircle2, TrendingUp, ShieldCheck } from "lucide-react";
 
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import CorreiosService from "@/features/correios/services/correios.service";
-import type { CalcFreteDto, FreteResultado, ServicoCorreio } from "@/features/correios/types/correios.types";
+import type { CalcFreteDto, FreteResultado } from "@/features/correios/types/correios.types";
 
 import { money } from "@/shared/utils/currency";
 import { onlyDigits } from "@/shared/utils/format";
@@ -13,12 +13,18 @@ import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 
 
-const SERVICO_CORES: Record<string, string> = {
-  SEDEX: "border-accent/40 bg-accent/15 text-accent-soft ring-accent/20",
-  PAC: "border-warning/40 bg-warning/15 text-warning ring-warning/20",
-  SEDEX12: "border-success/40 bg-success/15 text-success ring-success/20",
-  SEDEX10: "border-danger/40 bg-danger/15 text-danger ring-danger/20",
-};
+/**
+ * A cor do selo vem da TRANSPORTADORA, não do nome do serviço.
+ *
+ * Era um mapa de "SEDEX", "PAC", "SEDEX12" — os quatro serviços dos Correios
+ * escritos no código. Com Jadlog, Azul, LATAM e Loggi no mesmo resultado,
+ * qualquer lista fixa deixa a maioria dos cartões sem cor; então o que colore
+ * é a velocidade, que toda transportadora informa.
+ */
+const corDoCartao = (tipo?: string) =>
+  tipo === "express"
+    ? "border-accent/40 bg-accent/15 text-accent-soft ring-accent/20"
+    : "border-fg/10 bg-fg/[0.04] text-mist ring-fg/10";
 
 const campoBase = "h-11 w-full rounded-xl border border-fg/[0.08] bg-fg/[0.04] px-3 text-sm text-ink placeholder-mist outline-none transition-colors focus:border-accent/60 focus:bg-fg/[0.06]";
 
@@ -31,7 +37,12 @@ const PrecosPrazosPage = () => {
   const [comprimento, setComprimento] = useState("20");
   const [altura, setAltura] = useState("10");
   const [largura, setLargura] = useState("15");
-  const [servico, setServico] = useState<ServicoCorreio | "TODOS">("TODOS");
+
+  /* As opções que mexem no preço além da caixa. Todas nascem desligadas: são
+     serviços a mais, e ninguém deve pagar por um que não pediu. */
+  const [valorSegurado, setValorSegurado] = useState("");
+  const [avisoRecebimento, setAvisoRecebimento] = useState(false);
+  const [maoPropria, setMaoPropria] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [resultados, setResultados] = useState<FreteResultado[]>([]);
   const [jaConsultou, setJaConsultou] = useState(false);
@@ -52,26 +63,28 @@ const PrecosPrazosPage = () => {
     setCarregando(true);
     setResultados([]);
 
-    const servicos: ServicoCorreio[] = servico === "TODOS" ? ["SEDEX", "PAC", "SEDEX12"] : [servico];
-
     try {
-      const promises = servicos.map((s) =>
-        CorreiosService.calcularFrete({
-          cepOrigem: onlyDigits(cepOrigem),
-          cepDestino: onlyDigits(cepDestino),
-          peso: Number(peso) || 0.5,
-          comprimento: Number(comprimento) || 20,
-          altura: Number(altura) || 10,
-          largura: Number(largura) || 15,
-          servico: s,
-        } as CalcFreteDto),
-      );
+      /*
+       * UMA chamada, sem filtro de serviço.
+       *
+       * Eram três — SEDEX, PAC e SEDEX 12 —, uma lista dos Correios escrita no
+       * código, e o resultado é que Jadlog, Azul Cargo, LATAM e Loggi nunca
+       * apareciam mesmo estando habilitadas na conta. Sem `servicos`, o
+       * provedor devolve tudo o que atende a rota.
+       */
+      const r = await CorreiosService.calcularFrete({
+        cepOrigem: onlyDigits(cepOrigem),
+        cepDestino: onlyDigits(cepDestino),
+        peso: Number(peso) || 0.5,
+        comprimento: Number(comprimento) || 20,
+        altura: Number(altura) || 10,
+        largura: Number(largura) || 15,
+        valorSegurado: Number(valorSegurado.replace(",", ".")) || 0,
+        avisoRecebimento,
+        maoPropria,
+      } as CalcFreteDto);
 
-      const responses = await Promise.all(promises);
-      const todos = responses.flatMap((r) => {
-        const lista = unwrapList<FreteResultado>(r.data);
-        return lista.length > 0 ? lista : [];
-      });
+      const todos = unwrapList<FreteResultado>(r.data);
 
       if (todos.length === 0) {
         alert.warning("Sem resposta", "Não foi possível calcular o frete. Verifique os dados.");
@@ -138,20 +151,19 @@ const PrecosPrazosPage = () => {
             </div>
           </div>
 
-          {/* Serviço */}
+          {/* Valor declarado — o seguro, que é opção de preço e não de serviço. */}
           <div className="flex flex-col">
-            <label className="mb-1.5 text-[10px] uppercase tracking-[0.08em] text-faint">Serviço</label>
-            <select
-              value={servico}
-              onChange={(e) => setServico(e.target.value as ServicoCorreio | "TODOS")}
-              className={`${campoBase} appearance-none cursor-pointer`}
-            >
-              <option value="TODOS">Comparar todos</option>
-              <option value="SEDEX">SEDEX</option>
-              <option value="PAC">PAC</option>
-              <option value="SEDEX12">SEDEX 12</option>
-              <option value="SEDEX10">SEDEX 10</option>
-            </select>
+            <label className="mb-1.5 text-[10px] uppercase tracking-[0.08em] text-faint">Valor declarado (R$)</label>
+            <div className={`${campoBase} flex items-center`}>
+              <ShieldCheck size={15} className="shrink-0 text-muted" />
+              <input
+                value={valorSegurado}
+                onChange={(e) => setValorSegurado(e.target.value)}
+                inputMode="decimal"
+                placeholder="sem seguro"
+                className="w-full bg-transparent outline-none text-ink placeholder-mist"
+              />
+            </div>
           </div>
         </div>
 
@@ -180,6 +192,30 @@ const PrecosPrazosPage = () => {
           </div>
         </div>
 
+        {/* Os adicionais dos Correios. Desligados por padrão: são serviços a
+            mais, e o preço sobe com eles. */}
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-mist">
+            <input
+              type="checkbox"
+              checked={avisoRecebimento}
+              onChange={(e) => setAvisoRecebimento(e.target.checked)}
+              className="h-4 w-4 accent-[rgb(var(--accent))]"
+            />
+            Aviso de recebimento
+          </label>
+
+          <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-mist">
+            <input
+              type="checkbox"
+              checked={maoPropria}
+              onChange={(e) => setMaoPropria(e.target.checked)}
+              className="h-4 w-4 accent-[rgb(var(--accent))]"
+            />
+            Mão própria
+          </label>
+        </div>
+
         <div className="mt-5 flex justify-end">
           <button
             onClick={handleCalcular}
@@ -204,11 +240,12 @@ const PrecosPrazosPage = () => {
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {resultados.map((r) => {
-                  const isMelhor = melhorResultado && r.valor === melhorResultado.valor;
-                  const cor = SERVICO_CORES[r.servico] ?? "border-fg/10 bg-fg/[0.04] text-mist ring-fg/10";
+                  const indisponivel = Boolean(r.erro);
+                  const isMelhor = !indisponivel && melhorResultado && r.valor === melhorResultado.valor;
+                  const cor = corDoCartao(r.tipo);
                   return (
                     <div
-                      key={r.servico}
+                      key={`${r.servicoId}-${r.servico}`}
                       className={`relative overflow-hidden rounded-xl border p-5 transition-all hover:shadow-md ${
                         isMelhor ? "border-accent/40 bg-gradient-to-br from-accent/[0.08] to-transparent ring-1 ring-accent/20" : "border-fg/[0.07] bg-surface"
                       }`}
@@ -221,10 +258,27 @@ const PrecosPrazosPage = () => {
                         </div>
                       )}
 
-                      <div className="mb-3">
-                        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] ${cor}`}>{r.servico}</span>
+                      {/* O logo da transportadora — é por ele que se reconhece a
+                          linha de relance, mais do que pelo nome do serviço. */}
+                      <div className="mb-3 flex items-center gap-2">
+                        {r.transportadoraLogo && (
+                          <img src={r.transportadoraLogo} alt={r.transportadora ?? ""} className="h-5 w-5 shrink-0 rounded object-contain" />
+                        )}
+                        <span className={`inline-flex min-w-0 items-center rounded-full border px-2.5 py-0.5 text-[11px] ${cor}`}>
+                          <span className="truncate">{r.servico}</span>
+                        </span>
+                        {r.tipo === "express" && <span className="shrink-0 text-[10px] uppercase tracking-wider text-accent-soft">expresso</span>}
                       </div>
 
+                      {indisponivel ? (
+                        /* A transportadora que recusou a rota fica no resultado
+                           com o motivo: "não atende este CEP" é resposta, e
+                           escondê-la faz procurar por uma opção que não existe. */
+                        <p className="flex items-start gap-1.5 text-[12px] leading-relaxed text-faint">
+                          <AlertTriangle size={13} className="mt-0.5 shrink-0 text-warning" />
+                          {r.erro}
+                        </p>
+                      ) : (
                       <div className="flex items-end justify-between">
                         <div>
                           <p className="text-[11px] uppercase tracking-[0.08em] text-faint">Valor</p>
@@ -236,8 +290,10 @@ const PrecosPrazosPage = () => {
                             <Timer size={14} className="text-accent-soft" />
                             {r.prazo} {r.prazo === 1 ? "dia útil" : "dias úteis"}
                           </p>
+                          {r.exigeAgencia && <p className="mt-1 text-[10.5px] text-faint">exige agência na postagem</p>}
                         </div>
                       </div>
+                      )}
                     </div>
                   );
                 })}
