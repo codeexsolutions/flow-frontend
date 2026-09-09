@@ -171,11 +171,12 @@ const Sidebar = () => {
    * exatamente isso — o destino existia e estava a um toque invisível de
    * distância.
    *
-   * Entregas continua fechada: lá dentro só há o Correios, que ainda é "em
-   * breve". Abrir uma gaveta para mostrar uma porta que não abre é pior que
-   * deixá-la fechada.
+   * Entregas abre junto: ela ficou fechada enquanto o Correios era só uma
+   * promessa — gaveta que mostra porta que não abre é pior que gaveta fechada.
+   * Com a tela de pé, esconder o despacho é esconder metade do que acontece
+   * depois da venda.
    */
-  const [abertas, setAbertas] = useState<Record<IdSecao, boolean>>({ gestao: true, atendimento: true, entregas: false });
+  const [abertas, setAbertas] = useState<Record<IdSecao, boolean>>({ gestao: true, atendimento: true, entregas: true });
 
   /* A seção da tela aberta se escancara — e só ela, e só quando entra: quem
      fechou uma seção continua com ela fechada enquanto navega dentro dela. */
@@ -561,10 +562,11 @@ const Sidebar = () => {
             "Entregas",
             "O que sai da loja e vira encomenda: postagem, frete e rastreio até a mão do cliente.",
             <>
-              {/* Correios está "Em breve" enquanto o módulo é finalizado. Não é
-                  "Plano": o cadeado promete uma tela que o upgrade destrava
-                  hoje, e essa ainda não está de pé. */}
-              {item("correios", <Truck size={16} />, "Correios", true)}
+              {/* Deixou de ser "Em breve": a seção tem backend — cotação,
+                  etiqueta e rastreio pelo Melhor Envio. Agora o cadeado é o do
+                  PLANO, como nos outros itens pagos, e ele promete uma tela que
+                  o upgrade destrava de verdade. */}
+              {item("correios", <Truck size={16} />, "Correios", false, !temRecurso("correios"))}
             </>,
           )}
         </nav>
