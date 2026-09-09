@@ -47,6 +47,7 @@ import PagamentoForm from "@/shared/ui/PagamentoForm";
 import RecebimentosNota from "@/features/financeiro/components/RecebimentosNota";
 import ContaService, { type AcordoVenda } from "@/features/financeiro/services/conta.service";
 import NotaResumo from "@/features/vendas/components/NotaResumo";
+import BotaoCupomFiscal from "@/features/fiscal/components/BotaoCupomFiscal";
 
 const gerarUID = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -2037,6 +2038,12 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
             {(modoOrcamento ? Boolean(orcamentoId) : Boolean(id)) && (
               <BotaoVerDocumento refNota={modoOrcamento ? notaRef : refDocumento} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Baixar orçamento" : "Baixar nota"} documento={modoOrcamento ? "orçamento" : "nota"} />
             )}
+
+            {/* O CUPOM FISCAL — outro documento, não outra via da nota.
+                O PNG acima é comprovante comercial; este é o cupom com chave,
+                protocolo e QR da SEFAZ. Só na venda (a proposta não vende
+                nada) e só depois de gravada: cupom de rascunho não existe. */}
+            {!modoOrcamento && id && <BotaoCupomFiscal pedidoId={id} versao={totalPago} />}
 
             {/* Recibo: só depois de quitada. Antes disso não há o que
                 comprovar, e um "recibo" de nota em aberto é um documento que
