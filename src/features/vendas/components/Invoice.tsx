@@ -375,7 +375,10 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
    * migration 057 sobre por que as fotos são da venda e não do produto.
    */
   const [imagensServico, setImagensServico] = useState<string[]>([]);
-  const [mostrarQr, setMostrarQr] = useState(true);
+  /* A nota NOVA nasce com o padrão da empresa (Balcão › Configurações); a
+     existente sobrescreve isto com o que foi gravado nela — ver o `useEffect`
+     que lê o pedido. */
+  const [mostrarQr, setMostrarQr] = useState(enterprise?.notaMostrarQr !== false);
 
   /* Confirmação do copia-e-cola — volta ao normal sozinha em 2s. */
   const [pixCopiado, setPixCopiado] = useState(false);

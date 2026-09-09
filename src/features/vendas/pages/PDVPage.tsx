@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LegacyRef, ReactNode } from "react";
-import { ShoppingCart, Plus, Receipt, UserCheck, DollarSign, Wallet, AlertCircle, Hash, TrendingUp, ChevronRight, Search, UserPlus, PackagePlus, FileText, Check, X, Trash2, CalendarDays, Factory } from "lucide-react";
+import { ShoppingCart, Plus, Receipt, UserCheck, DollarSign, Wallet, AlertCircle, Hash, TrendingUp, ChevronRight, Search, UserPlus, PackagePlus, FileText, Check, X, Trash2, CalendarDays, Factory, Settings } from "lucide-react";
 
 import { useLocation, useNavigate } from "react-router-dom";
 
 import Invoice from "@/features/vendas/components/Invoice";
+import ConfigNotas from "@/features/vendas/components/ConfigNotas";
 import { PageScreen, PrimaryAction, GhostAction } from "@/shared/ui/PageShell";
 import SeletorDia from "@/shared/ui/SeletorDia";
 import OrcamentoService, { type Orcamento } from "@/features/orcamentos/services/orcamento.service";
@@ -221,7 +222,15 @@ const PontoDeVenda = () => {
 
   /* Qual lista a tabela mostra. As abas do topo da página levam para telas
      diferentes; estas trocam o conteúdo sem sair do balcão. */
-  const [aba, setAba] = useState<"vendas" | "orcamentos">("vendas");
+  /**
+   * A terceira aba é CONFIGURAÇÃO, não lista.
+   *
+   * As chaves que decidem o papel que sai para o cliente — QR do Pix, CPF
+   * impresso, papel de parede — moravam só em Configurações › Empresa, a duas
+   * telas de distância de quem emite. Quem percebe que estão erradas é quem
+   * está no balcão, com a nota na mão; arruma-se onde se percebe.
+   */
+  const [aba, setAba] = useState<"vendas" | "orcamentos" | "configuracoes">("vendas");
 
   const location = useLocation();
 
@@ -855,7 +864,9 @@ const PontoDeVenda = () => {
                 <p className="truncate text-[11px] text-faint">
                   {aba === "vendas"
                     ? `${formatNumber(vendasFiltradas.length)} ${vendasFiltradas.length === 1 ? "venda" : "vendas"} ${rotuloCurtoDoDia}`
-                    : `${formatNumber(orcamentosFiltrados.length)} ${orcamentosFiltrados.length === 1 ? "orçamento" : "orçamentos"}`}
+                    : aba === "orcamentos"
+                      ? `${formatNumber(orcamentosFiltrados.length)} ${orcamentosFiltrados.length === 1 ? "orçamento" : "orçamentos"}`
+                      : "O papel que sai para o cliente"}
                 </p>
               </div>
             </div>
@@ -908,16 +919,23 @@ const PontoDeVenda = () => {
                 abas={[
                   { id: "vendas", label: "Vendas", icone: <Receipt size={13} />, contagem: vendasVisiveis.length },
                   { id: "orcamentos", label: "Orçamentos", icone: <FileText size={13} />, contagem: orcamentos.length },
+                  /* Sem contagem: não é uma lista de N coisas, é uma tela de
+                     ajustes — e um número ao lado dela prometeria itens. */
+                  { id: "configuracoes", label: "Configurações", icone: <Settings size={13} /> },
                 ]}
               />
             }
           >
-            <SearchBox
-              value={busca}
-              onChange={setBusca}
-              placeholder={aba === "vendas" ? "Buscar venda por cliente…" : "Buscar orçamento por cliente ou código…"}
-              className="w-[240px] shrink-0"
-            />
+            {/* Buscar e filtrar restringem LINHAS. A aba de ajustes não tem
+                linhas, e uma caixa de busca ali procuraria o quê? */}
+            {aba !== "configuracoes" && (
+              <SearchBox
+                value={busca}
+                onChange={setBusca}
+                placeholder={aba === "vendas" ? "Buscar venda por cliente…" : "Buscar orçamento por cliente ou código…"}
+                className="w-[240px] shrink-0"
+              />
+            )}
 
             {/* O calendário vale para as vendas. Orçamento não é do dia: a
                 proposta parada há duas semanas é justamente a que precisa de
@@ -944,7 +962,9 @@ const PontoDeVenda = () => {
             mesmo foi essa proposta?".
           */}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {aba === "vendas" ? (
+            {aba === "configuracoes" ? (
+              <ConfigNotas />
+            ) : aba === "vendas" ? (
               vendasFiltradas.length > 0 ? (
                 <>
                   <ListaCabecalho cols={COLS_VENDAS}>
@@ -1163,6 +1183,9 @@ const PontoDeVenda = () => {
           {/* Rodapé do card — o resumo acompanha a aba aberta. Ticket médio de
               venda embaixo de uma lista de orçamentos seria número de outra
               conta, e proposta somada parece faturamento sem ser. */}
+          {/* O rodapé é resumo de lista; na aba de ajustes não há o que
+              resumir, e uma faixa vazia só tira altura do que importa. */}
+          {aba !== "configuracoes" && (
           <div className="flex shrink-0 items-center justify-between gap-3 border-t border-fg/[0.06] px-5 py-2.5">
             {aba === "vendas" ? (
               <>
@@ -1187,6 +1210,7 @@ const PontoDeVenda = () => {
               </>
             )}
           </div>
+          )}
         </div>
       
 

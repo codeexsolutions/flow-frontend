@@ -23,6 +23,15 @@ interface EnterpriseType {
    */
   producaoAutomatica?: boolean;
   /**
+   * A nota nasce com o QR do Pix ligado?
+   *
+   * É só o valor INICIAL: dentro da nota o QR continua podendo ser ligado ou
+   * desligado, e é essa escolha que fica gravada na venda (`mostrarQr`, no
+   * pedido). Existe para a loja que recebe no cartão não desligar o QR em toda
+   * nota, uma por uma.
+   */
+  notaMostrarQr?: boolean;
+  /**
    * Qual planilha recebe as vendas.
    *
    * `null` não é "desligado", é "não escolhi": nesse caso o servidor usa a
