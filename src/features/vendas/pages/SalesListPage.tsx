@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type LegacyRef } from "react";
-import { ShoppingCart, UserRound, AlertTriangle, ListFilter, FileText, CalendarClock, LayoutDashboard, Factory } from "lucide-react";
+import { ShoppingCart, UserRound, AlertTriangle, ListFilter, FileText, CalendarClock, LayoutDashboard, Factory, ClipboardList } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { Modal } from "@/shared/ui/Modal";
@@ -28,7 +28,8 @@ import { mesesComMovimento, vendasAtivas } from "@/shared/domain/serieVendas";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
 import { abrirDocumento } from "@/shared/ui/downloadNota";
 import { pixDaNota, type PixDaNota } from "@/shared/domain/pixDaNota";
-import ProducaoService from "@/features/producao/services/producao.service";
+import ProducaoService, { type ItemProducao } from "@/features/producao/services/producao.service";
+import useSincronizacao from "@/shared/realtime/useSincronizacao";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import BotaoVerDocumento from "@/shared/ui/BotaoVerDocumento";
@@ -205,6 +206,32 @@ const SalesList = () => {
   const alert = useAlert();
   const [enviandoProducao, setEnviandoProducao] = useState<string | null>(null);
 
+  /**
+   * As ordens de serviço que já existem — a lista SABER quais vendas já foram.
+   *
+   * Sem isto a fileira oferecia "gerar ordem" em toda linha, inclusive nas que
+   * já tinham uma: o clique voltava com "nada a fazer" e a tela não dizia onde
+   * a ordem estava, o que se lê como o botão não funcionar. É o mesmo
+   * cruzamento da aba Pedidos — pelo `pedido_fk`, sem copiar nada.
+   *
+   * Falhar aqui não derruba a lista de vendas: o mapa fica vazio e a fileira
+   * volta a ser a de antes. É o que acontece com quem não tem produção no
+   * plano, e para quem essa coluna não faz sentido mesmo.
+   */
+  const [ordens, setOrdens] = useState<Map<string, ItemProducao>>(new Map());
+
+  const carregarOrdens = async () => {
+    try {
+      /* Concluídas incluídas: a venda entregue continua tendo tido uma ordem,
+         e esconder isso faria a linha oferecer gerar a segunda. */
+      const lista = await ProducaoService.itens({ incluirConcluidos: true });
+
+      setOrdens(new Map(lista.filter((o) => o.pedido_fk).map((o) => [String(o.pedido_fk), o])));
+    } catch {
+      setOrdens(new Map());
+    }
+  };
+
   const levarParaProducao = async (v: PedidoClienteType) => {
     const id = String(v.pedido.pedidoId);
 
@@ -213,8 +240,16 @@ const SalesList = () => {
     try {
       const r = await ProducaoService.daVenda(id);
 
-      if (r.criado) alert.success("Ordem gerada!", `A venda de ${v.nomeCliente} virou uma ordem de serviço.`);
-      else alert.info("Nada a fazer", r.mensagem);
+      if (r.criado) {
+        alert.success("Ordem gerada!", `A venda de ${v.nomeCliente} virou uma ordem de serviço.`);
+        /* A linha troca o botão pelo número da ordem sem recarregar a tela. */
+        await carregarOrdens();
+      } else {
+        alert.info("Nada a fazer", r.mensagem);
+        /* O servidor pode saber de uma ordem que esta tela ainda não viu —
+           quem gerou foi outra pessoa, ou a venda nasceu com ela. */
+        await carregarOrdens();
+      }
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível gerar a ordem."));
     } finally {
@@ -283,7 +318,14 @@ const SalesList = () => {
     fetchVendas();
     carregarPrazos();
     void fetchClientes();
+    void carregarOrdens();
   }, [fetchVendas, fetchClientes]);
+
+  /* A oficina e o balcão mexem no mesmo dado: quem gerou a ordem pelo quadro
+     vê o número aparecer aqui sem recarregar. */
+  useSincronizacao(["producao"], () => {
+    void carregarOrdens();
+  });
 
   const abrirNota = (nota: NotaAberta) => setNotaAberta(nota);
   const fecharNota = () => {
@@ -744,6 +786,9 @@ const SalesList = () => {
               const p = prazos.get(v.pedido.pedidoId);
               const atrasada = !estaCancelado(v) && (p?.vencidas ?? 0) > 0;
 
+              /* A ordem desta venda, se ela já foi para a oficina. */
+              const ordem = ordens.get(String(v.pedido.pedidoId));
+
               return (
                 <ListaLinha
                   key={v.pedido.pedidoId}
@@ -755,13 +800,26 @@ const SalesList = () => {
                   onClick={() => abrirNota({ id: v.pedido.pedidoId, clienteId: v.clienteId, nome: v.nomeCliente })}
                   acoes={
                     <>
-                    {/* Converter: a venda vira uma linha na produção. */}
-                    <ListaAcao
-                      icon={<Factory size={14} />}
-                      label="Gerar ordem de serviço"
-                      ocupado={enviandoProducao === String(v.pedido.pedidoId)}
-                      onClick={() => void levarParaProducao(v)}
-                    />
+                    {/* Converter: a venda vira uma ordem de serviço.
+                        Quando ela JÁ existe, o mesmo lugar da fileira leva até
+                        ela em vez de oferecer criar a segunda — o servidor
+                        recusaria, e um botão que só sabe dizer "não" é pior do
+                        que um que leva onde a coisa está. */}
+                    {ordem ? (
+                      <ListaAcao
+                        icon={<ClipboardList size={14} />}
+                        label={`Ordem de serviço #${ordem.codigo} — abrir na produção`}
+                        tom="sucesso"
+                        onClick={() => navigate("/producao/os")}
+                      />
+                    ) : (
+                      <ListaAcao
+                        icon={<Factory size={14} />}
+                        label="Gerar ordem de serviço"
+                        ocupado={enviandoProducao === String(v.pedido.pedidoId)}
+                        onClick={() => void levarParaProducao(v)}
+                      />
+                    )}
 
                     <BotaoVerDocumento
                       variante="linha"
@@ -782,7 +840,17 @@ const SalesList = () => {
                     </span>
                     <span className="min-w-0">
                       <span className="block truncate text-[12.5px] text-ink">{v.nomeCliente}</span>
-                      <span className="block truncate font-mono text-[10px] text-faint">#{idCurto}</span>
+                      {/* O número da nota e, quando existe, o da ORDEM.
+                          É a resposta de "esta venda já foi para a oficina?" —
+                          antes a lista não tinha onde dizer isso, e a única
+                          forma de descobrir era clicar em gerar e ler a
+                          recusa. */}
+                      <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-faint">
+                        <span className="truncate">#{idCurto}</span>
+                        {ordem && (
+                          <span className="shrink-0 text-accent-soft">· OS #{ordem.codigo}</span>
+                        )}
+                      </span>
                     </span>
                   </span>
 
