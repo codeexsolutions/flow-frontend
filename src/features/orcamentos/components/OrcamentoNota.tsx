@@ -77,11 +77,18 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
       <FundoNota imagem={enterprise?.notaBackground} />
 
       <div className="relative flex flex-col">
-      {/* Cabeçalho — empresa à esquerda, ORÇAMENTO à direita */}
-      <div className="flex flex-col gap-3 border-b border-fg/[0.05] p-6 md:flex-row md:items-end md:justify-between">
+      {/* Cabeçalho — empresa à esquerda, ORÇAMENTO à direita.
+
+          Sem `md:`: o nó tem 900px fixos, mas as classes do Tailwind olham a
+          largura da JANELA. Num celular elas ficavam desligadas e o cabeçalho
+          saía EMPILHADO no arquivo — empresa numa linha, "ORÇAMENTO" na de
+          baixo, alinhado à esquerda — enquanto o mesmo orçamento baixado do
+          computador saía lado a lado. Mesma regra da `NotaResumo`: documento
+          não é responsivo. */}
+      <div className="flex flex-row items-end justify-between gap-3 border-b border-fg/[0.05] p-6">
         <HeaderInterprise />
-        <div className="md:text-right">
-          <h2 className="text-xl leading-none text-ink md:text-2xl">ORÇAMENTO</h2>
+        <div className="text-right">
+          <h2 className="text-2xl leading-none text-ink">ORÇAMENTO</h2>
           <p className="mt-1.5 text-sm text-mist">Data: {formatDate(o.criadoEm)}</p>
           <p className="mt-0.5 text-[11.5px] uppercase tracking-wide text-faint">Proposta #{o.codigo}</p>
         </div>
@@ -104,8 +111,15 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
         guarda não diz de quando é nem até quando aquele preço vale — e é
         exatamente essa a discussão que aparece quando ele volta um mês depois.
       */}
-      <div className="flex flex-col gap-4 px-6 pt-6">
-        <dl className="flex min-w-0 flex-1 flex-col gap-3.5">
+      <div className="px-6 pt-6">
+        {/* Duas colunas, não cinco linhas empilhadas.
+
+            São cinco campos curtos — nome, telefone, número, data, prazo — e
+            cada um ocupava uma faixa inteira dos 900px para escrever meia
+            dúzia de caracteres. Isso são 220px de papel gastos ANTES do
+            primeiro produto, e o produto é o que o cliente abriu o arquivo
+            para ver. Em duas colunas a mesma informação cabe em três linhas. */}
+        <dl className="grid min-w-0 grid-cols-2 gap-x-8 gap-y-3.5">
           {[
             { rotulo: "Cliente", valor: o.clienteNome || "—", extra: "" },
             { rotulo: "Telefone", valor: telefone || "Não informado", extra: "" },

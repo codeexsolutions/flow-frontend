@@ -161,7 +161,11 @@ const NotaResumo = ({ venda: v, pix, refNota }: Props) => {
           serviço" vazia num PDF que vai para o cliente parece defeito, não
           espaço reservado. */}
       <div className="flex flex-row items-start gap-8 px-6 pt-6">
-        <dl className="flex min-w-0 flex-1 flex-col gap-3.5">
+        {/* Duas colunas, não quatro linhas empilhadas — os quatro campos são
+            curtos (nome, telefone, vendedor, código) e cada um gastava uma
+            faixa inteira do papel. Metade da altura, a mesma informação, e o
+            primeiro produto sobe para perto do topo. */}
+        <dl className="grid min-w-0 flex-1 grid-cols-2 gap-x-8 gap-y-3.5">
           {identificacao.map((linha) => (
             <div key={linha.rotulo} className="min-w-0">
               <dt className="text-[10.5px] uppercase tracking-[0.1em] text-faint">{linha.rotulo}</dt>

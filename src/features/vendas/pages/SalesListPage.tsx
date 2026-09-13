@@ -26,13 +26,13 @@ import SalesOverviewPage from "@/features/vendas/pages/SalesOverviewPage";
 import SeletorPeriodo, { PERIODO_TUDO, type Periodo } from "@/shared/ui/SeletorPeriodo";
 import { mesesComMovimento, vendasAtivas } from "@/shared/domain/serieVendas";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
-import { abrirDocumento } from "@/shared/ui/downloadNota";
+import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
 import { pixDaNota, type PixDaNota } from "@/shared/domain/pixDaNota";
 import ProducaoService, { type ItemProducao } from "@/features/producao/services/producao.service";
 import useSincronizacao from "@/shared/realtime/useSincronizacao";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
-import BotaoVerDocumento from "@/shared/ui/BotaoVerDocumento";
+import BotaoVerDocumento, { type ModoDocumento } from "@/shared/ui/BotaoVerDocumento";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import ContaService, { type NovaConta, type PrazoVenda } from "@/features/financeiro/services/conta.service";
 import ListaOrcamentos from "@/features/orcamentos/components/ListaOrcamentos";
@@ -257,7 +257,7 @@ const SalesList = () => {
     }
   };
 
-  const abrirNotaDoc = async (v: PedidoClienteType) => {
+  const abrirNotaDoc = async (v: PedidoClienteType, modo: ModoDocumento = "ver") => {
     if (baixandoNota) return;
 
     setBaixandoNota(true);
@@ -272,7 +272,11 @@ const SalesList = () => {
       await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
       const blob = await gerarBlobNota(refNotaDownload);
 
-      await abrirDocumento(blob, `nota-${v.pedido.pedidoId}`, enterprise?.nomeFantasia ?? "nota");
+      const nomeBase = `nota-${v.pedido.pedidoId}`;
+      const empresa = enterprise?.nomeFantasia ?? "nota";
+
+      if (modo === "ver") await abrirDocumento(blob, nomeBase, empresa);
+      else await baixarDocumento(blob, nomeBase, empresa);
     } catch {
       /* Falha de download não trava a tabela — o usuário tenta de novo. */
     } finally {
@@ -826,7 +830,7 @@ const SalesList = () => {
                       titulo="Ver ou baixar a nota"
                       documento="nota"
                       ocupado={baixandoEsta}
-                      onAbrir={() => void abrirNotaDoc(v)}
+                      onAbrir={(modo) => void abrirNotaDoc(v, modo)}
                     />
                     </>
                   }

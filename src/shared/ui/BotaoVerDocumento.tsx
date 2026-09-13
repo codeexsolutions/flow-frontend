@@ -1,59 +1,60 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { ExternalLink, Loader2, Check } from "lucide-react";
+import { Download, ExternalLink, Loader2, Check } from "lucide-react";
 
 import Dica from "@/shared/ui/Dica";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
-import { abrirDocumento, reservarAba } from "@/shared/ui/downloadNota";
+import { abrirDocumento, baixarDocumento, descartarAba, reservarAba } from "@/shared/ui/downloadNota";
 
 /**
- * O ÚNICO botão de documento do sistema — nota, recibo, orçamento, holerite.
+ * O ÚNICO controle de documento do sistema — nota, recibo, orçamento, holerite.
  *
- * Um clique, uma coisa só: **o documento abre numa guia**. Baixar acontece lá
- * dentro, em dois botões (PDF e imagem), e só para quem realmente quer o
- * arquivo.
+ * Dois gestos colados: **Ver** abre o documento numa guia e **Baixar** manda o
+ * PDF direto para a pasta de downloads, sem guia nenhuma.
  *
  * ---------------------------------------------------------------------------
- * Por que não há mais menu
+ * Por que os dois, e não um
  * ---------------------------------------------------------------------------
- * Este botão já foi quatro botões diferentes, depois virou um menu com PNG e
- * PDF, e agora é um gesto. A razão é a ordem real do trabalho: o que se faz o
- * dia inteiro é CONFERIR o documento — o desconto saiu certo? a foto entrou? —
- * e mandá-lo para o cliente. Baixar é a exceção.
+ * Este controle já foi quatro botões, virou um menu de formatos e depois um
+ * gesto só — a guia — porque conferir o documento é o que se faz o dia inteiro
+ * e baixar era a exceção. A guia continua certa para conferir, mas não para
+ * todo mundo: quem já sabe o que tem na nota e só quer o arquivo para mandar
+ * ao cliente pagava a guia inteira — abrir, esperar, clicar em "Baixar PDF",
+ * fechar — para chegar onde queria desde o clique.
  *
- * Com o menu, toda conferência custava dois cliques e uma escolha entre dois
- * formatos que, para só olhar, não fazem diferença nenhuma. Pior: ver exigia
- * baixar, e no fim do dia a pasta de downloads tinha vinte notas que ninguém
- * queria guardar.
- *
- * A guia resolve os dois: mostra o documento em tamanho de leitura e oferece
- * os dois formatos ali, já prontos. Quem só queria olhar fecha a guia e não
- * deixa nada para trás.
+ * Então, em vez de escolher por todos, os dois caminhos ficam à vista. Quem
+ * confere clica em Ver; quem já quer o arquivo clica na seta e ele desce.
+ * Nenhum dos dois esbarra no outro.
  *
  * ---------------------------------------------------------------------------
  * Dois modos
  * ---------------------------------------------------------------------------
  * Com `refNota`, o botão rasteriza o nó que recebeu. Com `onAbrir`, quem
  * prepara é a tela — as listas mantêm UM nó escondido e trocam o conteúdo pelo
- * da linha escolhida antes de fotografar, e esse preparo não é daqui.
+ * da linha escolhida antes de fotografar, e esse preparo não é daqui. Nesse
+ * modo o `modo` ("ver" ou "baixar") chega como argumento, e é a tela que chama
+ * `abrirDocumento` ou `baixarDocumento`.
  */
+
+/** O que o clique faz: abrir numa guia ou baixar o PDF direto. */
+export type ModoDocumento = "ver" | "baixar";
 
 type Props = {
   /**
    * Ref do nó a rasterizar (o documento em si).
    *
-   * Obrigatório no modo normal. Em `onAbrir` quem abre é a tela, e este ref
+   * Obrigatório no modo normal. Em `onAbrir` quem prepara é a tela, e este ref
    * não é usado.
    */
   refNota?: RefObject<HTMLDivElement>;
   /**
-   * Quem abre, quando não é o componente.
+   * Quem prepara o documento, quando não é o componente.
    *
-   * A tela prepara o nó escondido com o documento da linha e chama
-   * `abrirDocumento`. Neste modo o botão só dispara e mostra o estado que a
-   * tela informa em `ocupado`.
+   * A tela monta o nó escondido com o documento da linha e chama
+   * `abrirDocumento` ou `baixarDocumento`, conforme o `modo` recebido. Neste
+   * modo o botão só dispara e mostra o estado que a tela informa em `ocupado`.
    */
-  onAbrir?: () => void | Promise<void>;
-  /** Estado de "gerando" quando quem abre é a tela (`onAbrir`). */
+  onAbrir?: (modo: ModoDocumento) => void | Promise<void>;
+  /** Estado de "gerando" quando quem prepara é a tela (`onAbrir`). */
   ocupado?: boolean;
   /** Nome da empresa, para o nome do arquivo. */
   nomeEmpresa?: string;
@@ -90,15 +91,24 @@ const BotaoVerDocumento = ({
   documento = "documento",
   variante = "completo",
 }: Props) => {
-  const [ocupadoInterno, setOcupadoInterno] = useState(false);
-  const [sucesso, setSucesso] = useState(false);
+  /** Qual dos dois gestos está em andamento — `null` quando nenhum. */
+  const [emCurso, setEmCurso] = useState<ModoDocumento | null>(null);
+  const [sucesso, setSucesso] = useState<ModoDocumento | null>(null);
 
   const delegado = typeof onAbrir === "function";
-  const ocupado = delegado ? ocupadoExterno : ocupadoInterno;
   const naLinha = variante === "linha";
 
   /*
-   * O ✓ de "pronto" também quando quem abre é a tela.
+   * No modo delegado quem diz se está ocupado é a tela — mas ela só informa
+   * QUE está, não qual dos dois gestos foi pedido. O `emCurso` guarda isso
+   * daqui, para o giro aparecer no botão que a pessoa apertou.
+   */
+  const ocupado = delegado ? ocupadoExterno || emCurso !== null : emCurso !== null;
+  const ocupadoBaixar = ocupado && emCurso === "baixar";
+  const ocupadoVer = ocupado && !ocupadoBaixar;
+
+  /*
+   * O ✓ de "pronto" também quando quem prepara é a tela.
    *
    * No modo delegado o componente não vê o fim do trabalho — só o `ocupado`
    * que a tela informa. Sem observar essa virada, o botão da linha piscava o
@@ -115,13 +125,15 @@ const BotaoVerDocumento = ({
 
     if (!terminou) return;
 
-    setSucesso(true);
-    const t = setTimeout(() => setSucesso(false), 2000);
+    setSucesso(emCurso ?? "ver");
+    setEmCurso(null);
+
+    const t = setTimeout(() => setSucesso(null), 2000);
 
     return () => clearTimeout(t);
-  }, [delegado, ocupadoExterno]);
+  }, [delegado, ocupadoExterno, emCurso]);
 
-  const abrir = async () => {
+  const disparar = async (modo: ModoDocumento) => {
     if (ocupado) return;
 
     /*
@@ -129,44 +141,74 @@ const BotaoVerDocumento = ({
      *
      * Rasterizar o documento leva de meio a dois segundos, e `window.open`
      * chamado depois disso é bloqueado como pop-up em todo navegador — o
-     * bloqueador só libera a janela que nasce do gesto da pessoa.
+     * bloqueador só libera a janela que nasce do gesto da pessoa. Baixar não
+     * abre guia nenhuma, então não reserva nada.
      */
-    reservarAba();
+    if (modo === "ver") reservarAba();
+
+    setEmCurso(modo);
 
     if (delegado) {
-      await onAbrir();
+      try {
+        await onAbrir(modo);
+      } catch (err) {
+        console.error("Erro ao preparar o documento", err);
+        if (modo === "ver") descartarAba();
+        setEmCurso(null);
+      }
+
       return;
     }
 
-    if (!refNota) return;
-
-    setOcupadoInterno(true);
+    if (!refNota) {
+      if (modo === "ver") descartarAba();
+      setEmCurso(null);
+      return;
+    }
 
     try {
       const blob = await gerarBlobNota(refNota);
+      const nomeBase = `${prefixo}-${nomeEmpresa}`;
 
-      await abrirDocumento(blob, `${prefixo}-${nomeEmpresa}`, nomeEmpresa);
+      if (modo === "ver") await abrirDocumento(blob, nomeBase, nomeEmpresa);
+      else await baixarDocumento(blob, nomeBase, nomeEmpresa);
 
-      setSucesso(true);
-      setTimeout(() => setSucesso(false), 2000);
+      setSucesso(modo);
+      setTimeout(() => setSucesso(null), 2000);
     } catch (err) {
-      console.error("Erro ao abrir o documento", err);
+      console.error("Erro ao preparar o documento", err);
+      /* A guia em branco reservada no clique não pode ficar órfã na tela. */
+      if (modo === "ver") descartarAba();
     } finally {
-      setOcupadoInterno(false);
+      setEmCurso(null);
     }
   };
 
-  /* A seta de "abre em outra guia" no lugar da de download: o ícone passou a
-     dizer o que o clique faz. */
-  const icone = ocupado ? (
-    <Loader2 size={naLinha ? 14 : 17} className="animate-spin" />
-  ) : sucesso ? (
-    <Check size={naLinha ? 14 : 17} className="text-success" />
-  ) : (
-    <ExternalLink size={naLinha ? 14 : 17} />
-  );
+  const tamanho = naLinha ? 14 : 17;
 
-  const botao = (
+  const icone = (modo: ModoDocumento, girando: boolean) =>
+    girando ? (
+      <Loader2 size={tamanho} className="animate-spin" />
+    ) : sucesso === modo ? (
+      <Check size={tamanho} className="text-success" />
+    ) : modo === "ver" ? (
+      <ExternalLink size={tamanho} />
+    ) : (
+      <Download size={tamanho} />
+    );
+
+  /* Os dois botões são um controle só: um par colado, arredondado nas pontas
+     de fora e sem fio dobrado no meio. */
+  const base = naLinha
+    ? "focus-ring flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 border border-fg/[0.08] bg-surface/90 px-2 text-mist transition-colors hover:border-accent/40 hover:bg-fg/[0.08] hover:text-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+    : "focus-ring flex h-12 shrink-0 cursor-pointer items-center gap-2 border border-fg/[0.1] px-3 text-mist transition-colors hover:border-accent/40 hover:text-accent-soft disabled:cursor-not-allowed disabled:opacity-50";
+
+  const pontaEsquerda = naLinha ? "rounded-l-lg border-r-0" : "rounded-l-xl border-r-0";
+  const pontaDireita = naLinha ? "rounded-r-lg px-2" : "rounded-r-xl px-3";
+
+  const tituloBaixar = `Baixar ${documento === "documento" ? "o documento" : documento} em PDF`;
+
+  const verBotao = (
     <button
       type="button"
       title={naLinha ? undefined : titulo}
@@ -176,31 +218,47 @@ const BotaoVerDocumento = ({
         /* A linha inteira é clicável (abre o documento na tela): sem barrar
            aqui, pedir a guia abriria o modal por baixo dela. */
         ev.stopPropagation();
-        void abrir();
+        void disparar("ver");
       }}
-      className={
-        naLinha
-          ? "focus-ring flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-fg/[0.08] bg-surface/90 px-2 text-mist transition-colors hover:border-accent/40 hover:bg-fg/[0.08] hover:text-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
-          : "flex h-12 shrink-0 items-center gap-2 rounded-xl border border-fg/[0.1] px-3 text-mist transition-colors hover:border-accent/40 hover:text-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
-      }
+      className={`${base} ${pontaEsquerda}`}
     >
-      {icone}
+      {icone("ver", ocupadoVer)}
       {/* O nome do documento no próprio botão, e não só no `title`: dica de
           ferramenta não existe no celular, que é onde a nota é mandada.
           Na linha o rótulo é curto e some no celular — ali a fileira de ações
           divide poucos pixels com o valor da venda. */}
       {naLinha ? (
-        <span className="hidden whitespace-nowrap text-[11.5px] sm:inline">{ocupado ? "Abrindo..." : "Ver"}</span>
+        <span className="hidden whitespace-nowrap text-[11.5px] sm:inline">{ocupadoVer ? "Abrindo..." : "Ver"}</span>
       ) : (
-        <span className="hidden whitespace-nowrap text-[13px] sm:inline">{ocupado ? "Abrindo..." : `Ver ${documento}`}</span>
+        <span className="hidden whitespace-nowrap text-[13px] sm:inline">{ocupadoVer ? "Abrindo..." : `Ver ${documento}`}</span>
       )}
     </button>
   );
 
-  /* `Dica` só na linha: lá o rótulo some no celular e encolhe no desktop,
-     então é a bolha que diz QUAL documento abre. No rodapé o nome do documento
-     já está escrito no botão. */
-  return naLinha ? <Dica texto={titulo}>{botao}</Dica> : botao;
+  return (
+    <div className="flex shrink-0 items-center">
+      {/* `Dica` no Ver só na linha: lá o rótulo some no celular e encolhe no
+          desktop, então é a bolha que diz QUAL documento abre. No rodapé o
+          nome do documento já está escrito no botão. */}
+      {naLinha ? <Dica texto={titulo}>{verBotao}</Dica> : verBotao}
+
+      <Dica texto={tituloBaixar}>
+        <button
+          type="button"
+          title={naLinha ? undefined : tituloBaixar}
+          aria-label={tituloBaixar}
+          disabled={ocupado}
+          onClick={(ev) => {
+            ev.stopPropagation();
+            void disparar("baixar");
+          }}
+          className={`${base} ${pontaDireita}`}
+        >
+          {icone("baixar", ocupadoBaixar)}
+        </button>
+      </Dica>
+    </div>
+  );
 };
 
 export default BotaoVerDocumento;

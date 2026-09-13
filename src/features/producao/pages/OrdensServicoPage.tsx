@@ -12,9 +12,9 @@ import { BarraFiltros, ListaCabecalho, ListaLinha, TabelaVazia } from "@/shared/
 import { SkeletonListaPainel } from "@/shared/ui/skeleton";
 import { MESES_EXTENSO, isSameDay, toDate } from "@/shared/utils/date";
 import Select from "@/shared/ui/Select";
-import BotaoVerDocumento from "@/shared/ui/BotaoVerDocumento";
+import BotaoVerDocumento, { type ModoDocumento } from "@/shared/ui/BotaoVerDocumento";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
-import { abrirDocumento } from "@/shared/ui/downloadNota";
+import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
@@ -355,7 +355,7 @@ const OrdensServicoPage = () => {
     }
   };
 
-  const abrirOS = async (o: ItemProducao) => {
+  const abrirOS = async (o: ItemProducao, modo: ModoDocumento = "ver") => {
     setAbrindo(o.id);
     setOrdemAlvo(o);
 
@@ -366,7 +366,11 @@ const OrdensServicoPage = () => {
 
       const blob = await gerarBlobNota(refDoc);
 
-      await abrirDocumento(blob, `os-${o.codigo}`, empresa?.nomeFantasia ?? "ordem-de-servico");
+      const nomeBase = `os-${o.codigo}`;
+      const nomeEmpresa = empresa?.nomeFantasia ?? "ordem-de-servico";
+
+      if (modo === "ver") await abrirDocumento(blob, nomeBase, nomeEmpresa);
+      else await baixarDocumento(blob, nomeBase, nomeEmpresa);
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir a ordem."));
     } finally {
@@ -474,7 +478,7 @@ const OrdensServicoPage = () => {
                         titulo="Ver ou imprimir a ordem de serviço"
                         documento="ordem"
                         ocupado={abrindo === o.id || trocando === o.id}
-                        onAbrir={() => void abrirOS(o)}
+                        onAbrir={(modo) => void abrirOS(o, modo)}
                       />
                     }
                   >
@@ -607,7 +611,7 @@ const OrdensServicoPage = () => {
                     titulo="Ver ou imprimir a ordem de serviço"
                     documento="ordem"
                     ocupado={abrindo === preenchendo.id}
-                    onAbrir={() => void abrirOS(preenchendo)}
+                    onAbrir={(modo) => void abrirOS(preenchendo, modo)}
                   />
                 </span>
               </div>

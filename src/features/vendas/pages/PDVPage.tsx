@@ -28,11 +28,11 @@ import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import { formatCurrency } from "@/shared/utils/currency";
 
-import BotaoVerDocumento from "@/shared/ui/BotaoVerDocumento";
+import BotaoVerDocumento, { type ModoDocumento } from "@/shared/ui/BotaoVerDocumento";
 import NotaResumo from "@/features/vendas/components/NotaResumo";
 import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
-import { abrirDocumento } from "@/shared/ui/downloadNota";
+import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
 import { pixDaNota, type PixDaNota } from "@/shared/domain/pixDaNota";
 import ProducaoService from "@/features/producao/services/producao.service";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
@@ -53,6 +53,8 @@ type NotaAberta = {
   itens?: ItemPedidoType[];
   /** Reescrevendo esta proposta em vez de criar outra. */
   orcamentoId?: string;
+  /** A proposta salva — de onde o documento tira o número e a emissão. */
+  orcamentoBase?: Orcamento;
   /** Telefone e vencimento da proposta reaberta — ver `abrirProposta`. */
   contato?: string;
   validade?: string;
@@ -700,6 +702,7 @@ const PontoDeVenda = () => {
       orcamento: true,
       itens: itensDoOrcamento(o),
       orcamentoId: o.id,
+      orcamentoBase: o,
       /* Telefone e prazo vêm junto: sem eles, corrigir um item salvaria a
          proposta por cima com o contato em branco e a validade recontada a
          partir de hoje. */
@@ -711,12 +714,12 @@ const PontoDeVenda = () => {
   /* ------------------------------- Downloads ------------------------------- */
 
   /**
-   * Baixa o documento da linha, no formato escolhido.
+   * Prepara o documento da linha e o entrega no caminho pedido.
    *
-   * Os dois servem a coisas diferentes e a loja usa os dois: o PNG vai para o
-   * WhatsApp (abre na conversa, sem baixar nada), o PDF vai para o e-mail e
-   * para a impressora. Os dois saem do MESMO PNG rasterizado — o PDF é essa
-   * imagem colada numa A4 —, então o documento é idêntico nos dois caminhos.
+   * `modo` é o gesto de quem clicou: "ver" abre numa guia — para conferir
+   * antes de mandar — e "baixar" manda o PDF direto para a pasta de
+   * downloads, que é o que quem já conferiu quer. A rasterização é a mesma
+   * nos dois; muda só o destino do arquivo.
    */
   const abrirDaLinha = async (
     chave: string,
@@ -724,6 +727,7 @@ const PontoDeVenda = () => {
     limpar: () => void,
     ref: React.RefObject<HTMLDivElement>,
     nome: string,
+    modo: ModoDocumento = "ver",
   ) => {
     if (ocupado) return;
 
@@ -741,7 +745,10 @@ const PontoDeVenda = () => {
       /* O mesmo `nome` nos dois formatos: só a extensão muda. Sem passá-lo ao
          PDF, o orçamento nº 12 saía como `orcamento-12.png` de um lado e
          `nota-orcamento-12-2026-09-08.pdf` do outro. */
-      await abrirDocumento(blob, nome, enterprise?.nomeFantasia ?? nome);
+      const empresa = enterprise?.nomeFantasia ?? nome;
+
+      if (modo === "ver") await abrirDocumento(blob, nome, empresa);
+      else await baixarDocumento(blob, nome, empresa);
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível gerar o arquivo."));
     } finally {
@@ -750,8 +757,8 @@ const PontoDeVenda = () => {
     }
   };
 
-  const abrirOrcamentoDoc = (o: Orcamento) =>
-    abrirDaLinha(o.id, () => setOrcamentoDownload(o), () => setOrcamentoDownload(null), refOrcamentoDownload, `orcamento-${o.codigo}`);
+  const abrirOrcamentoDoc = (o: Orcamento, modo: ModoDocumento = "ver") =>
+    abrirDaLinha(o.id, () => setOrcamentoDownload(o), () => setOrcamentoDownload(null), refOrcamentoDownload, `orcamento-${o.codigo}`, modo);
 
   /** Converter: a venda vira linha na produção. Ver a nota em `SalesListPage`. */
   const [enviandoProducao, setEnviandoProducao] = useState<string | null>(null);
@@ -773,7 +780,7 @@ const PontoDeVenda = () => {
     }
   };
 
-  const abrirNotaDoc = (v: PedidoClienteType) =>
+  const abrirNotaDoc = (v: PedidoClienteType, modo: ModoDocumento = "ver") =>
     abrirDaLinha(
       String(v.pedido.pedidoId),
       async () => {
@@ -784,6 +791,7 @@ const PontoDeVenda = () => {
       () => setNotaDownload(null),
       refNotaDownload,
       `nota-${v.nomeCliente ? v.nomeCliente.toLowerCase().replace(/[^a-z0-9]+/g, "-") : enterprise?.nomeFantasia ?? "venda"}`,
+      modo,
     );
 
   const abrirNota = (nota: NotaAberta) => {
@@ -1012,7 +1020,7 @@ const PontoDeVenda = () => {
                               titulo="Ver ou baixar a nota"
                               documento="nota"
                               ocupado={ocupado === String(venda.pedido.pedidoId)}
-                              onAbrir={() => void abrirNotaDoc(venda)}
+                              onAbrir={(modo) => void abrirNotaDoc(venda, modo)}
                             />
                           </>
                         }
@@ -1139,7 +1147,7 @@ const PontoDeVenda = () => {
                             <ListaAcao icon={<Trash2 size={14} />} label="Apagar" tom="perigo" ocupado={nesteMomento} onClick={() => void excluirOrcamento(o)} />
                           )}
 
-                          <BotaoVerDocumento variante="linha" titulo="Ver ou baixar o orçamento" documento="orçamento" ocupado={nesteMomento} onAbrir={() => void abrirOrcamentoDoc(o)} />
+                          <BotaoVerDocumento variante="linha" titulo="Ver ou baixar o orçamento" documento="orçamento" ocupado={nesteMomento} onAbrir={(modo) => void abrirOrcamentoDoc(o, modo)} />
                         </>}
                       >
                         <span className="flex min-w-0 items-center gap-3">
@@ -1281,7 +1289,7 @@ const PontoDeVenda = () => {
         subtitle={notaAberta?.nome}
         size="full"
       >
-        {notaAberta && <Invoice id={notaAberta.id} clienteId={notaAberta.clienteId} nome={notaAberta.nome} onSaved={fecharNota} modoOrcamento={notaAberta.orcamento} itensIniciais={notaAberta.itens} orcamentoId={notaAberta.orcamentoId} contatoInicial={notaAberta.contato} validadeInicial={notaAberta.validade} converterOrcamentoId={notaAberta.converterOrcamentoId} />}
+        {notaAberta && <Invoice id={notaAberta.id} clienteId={notaAberta.clienteId} nome={notaAberta.nome} onSaved={fecharNota} modoOrcamento={notaAberta.orcamento} itensIniciais={notaAberta.itens} orcamentoId={notaAberta.orcamentoId} orcamentoBase={notaAberta.orcamentoBase} contatoInicial={notaAberta.contato} validadeInicial={notaAberta.validade} converterOrcamentoId={notaAberta.converterOrcamentoId} />}
       </Modal>
 
       {/* Modal de nome do orçamento no desktop. */}
@@ -1350,7 +1358,7 @@ const PontoDeVenda = () => {
                   titulo="Ver ou baixar o orçamento"
                   documento="orçamento"
                   ocupado={ocupado === visualizando.id}
-                  onAbrir={() => void abrirOrcamentoDoc(visualizando)}
+                  onAbrir={(modo) => void abrirOrcamentoDoc(visualizando, modo)}
                 />
               </div>
             </div>

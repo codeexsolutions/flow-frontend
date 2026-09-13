@@ -12,8 +12,8 @@ import { SkeletonListaPainel } from "@/shared/ui/skeleton";
 import { ListaCabecalho, ListaLinha } from "@/shared/ui/DataTable";
 import { Selo } from "@/shared/ui/StatusBadge";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
-import { abrirDocumento } from "@/shared/ui/downloadNota";
-import BotaoVerDocumento from "@/shared/ui/BotaoVerDocumento";
+import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
+import BotaoVerDocumento, { type ModoDocumento } from "@/shared/ui/BotaoVerDocumento";
 import { Modal } from "@/shared/ui/Modal";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
@@ -141,7 +141,7 @@ const ListaOrcamentos = ({ busca, filtro, onCarregado }: Props) => {
    */
   const orcamentoAlvo = filtrados.find((o) => o.id === baixandoId) ?? visualizando;
 
-  const abrir = async (o: Orcamento) => {
+  const abrir = async (o: Orcamento, modo: ModoDocumento = "ver") => {
     setBaixandoId(o.id);
 
     try {
@@ -150,11 +150,15 @@ const ListaOrcamentos = ({ busca, filtro, onCarregado }: Props) => {
 
       const blob = await gerarBlobNota(refNotaBaixada);
 
-      /* A proposta abre numa guia, com os dois botões de baixar lá dentro —
-         conferir não deveria custar um arquivo na pasta de downloads. Os dois
-         formatos saem do MESMO PNG rasterizado, então o documento é idêntico
-         nos dois, e o nome também: `orcamento-<nº>`. */
-      await abrirDocumento(blob, `orcamento-${o.codigo}`, enterprise?.nomeFantasia ?? "orcamento");
+      /* Conferir abre numa guia — não deveria custar um arquivo na pasta de
+         downloads —, e quem já conferiu baixa o PDF direto pela seta. Os dois
+         caminhos saem do MESMO PNG rasterizado, então o documento é idêntico,
+         e o nome também: `orcamento-<nº>`. */
+      const nomeBase = `orcamento-${o.codigo}`;
+      const empresa = enterprise?.nomeFantasia ?? "orcamento";
+
+      if (modo === "ver") await abrirDocumento(blob, nomeBase, empresa);
+      else await baixarDocumento(blob, nomeBase, empresa);
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir o orçamento."));
     } finally {
@@ -245,7 +249,7 @@ const ListaOrcamentos = ({ busca, filtro, onCarregado }: Props) => {
                     titulo="Ver ou baixar o orçamento"
                     documento="orçamento"
                     ocupado={baixandoId === o.id}
-                    onAbrir={() => void abrir(o)}
+                    onAbrir={(modo) => void abrir(o, modo)}
                   />
                 }
               >
@@ -310,7 +314,7 @@ const ListaOrcamentos = ({ busca, filtro, onCarregado }: Props) => {
                 titulo="Ver ou baixar o orçamento"
                 documento="orçamento"
                 ocupado={baixandoId === visualizando.id}
-                onAbrir={() => void abrir(visualizando)}
+                onAbrir={(modo) => void abrir(visualizando, modo)}
               />
 
               <div className="flex flex-wrap items-center gap-2">

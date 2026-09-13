@@ -1,3 +1,5 @@
+import { entregarArquivo } from "@/shared/ui/DownloadButton";
+
 /* Import dinâmico de propósito: o jsPDF (e o html2canvas que ele arrasta)
    pesam ~400 kB e só são necessários no clique de "Baixar PDF". Com o import
    estático o bundle principal cresceria além do limite do PWA e o service
@@ -99,18 +101,11 @@ export async function gerarPdfNota(blob: Blob, nomeEmpresa: string, nomeBase?: s
 export async function baixarNotaPdf(blob: Blob, nomeEmpresa: string, nomeBase?: string): Promise<string> {
   const { arquivo, nome } = await gerarPdfNota(blob, nomeEmpresa, nomeBase);
 
-  /* O download em si: um link temporário. `doc.save()` fazia isto por dentro
-     do jsPDF; agora que o PDF também vai para o WhatsApp, gerar e salvar são
-     dois passos separados. */
-  const url = URL.createObjectURL(arquivo);
-  const link = document.createElement("a");
-
-  link.download = nome;
-  link.href = url;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  /* A entrega é a MESMA do PNG — inclusive o menu nativo de salvar, único
+     caminho que funciona dentro do app instalado, onde `<a download>` não tem
+     para onde salvar. O link solto que morava aqui deixava quem usa o atalho
+     da tela de início sem o PDF. */
+  await entregarArquivo(arquivo, nome);
 
   return nome;
 }
@@ -168,36 +163,30 @@ const escapar = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<":
  * para trás.
  *
  * ---------------------------------------------------------------------------
- * Os dois arquivos vão prontos
+ * A imagem primeiro, o PDF depois
  * ---------------------------------------------------------------------------
- * PNG e PDF são gerados aqui, do mesmo PNG rasterizado, e entram na aba como
- * blob URLs. Assim o botão de baixar é instantâneo e a aba não precisa de
- * código nenhum além dos dois links — ela é uma página estática.
+ * A aba é escrita assim que o PNG existe — é ele que a pessoa precisa ver. O
+ * PDF é montado em seguida, com a aba já aberta, e acende o próprio botão
+ * quando fica pronto. Esperar os dois antes de escrever nada era o que fazia a
+ * espera parecer o dobro do que é.
  *
- * As URLs NÃO são revogadas: revogar mataria a imagem e os dois botões da aba
- * que acabou de abrir. Elas morrem quando a aba (ou a que a abriu) fecha.
+ * As URLs NÃO são revogadas: revogar mataria a imagem e os botões da aba que
+ * acabou de abrir. Elas morrem quando a aba (ou a que a abriu) fecha.
  */
 export async function abrirDocumento(png: Blob, nomeBase: string, nomeEmpresa: string): Promise<void> {
   const aba = abaReservada;
   abaReservada = null;
 
-  const { arquivo: pdf } = await gerarPdfNota(png, nomeEmpresa, nomeBase);
+  /* Sem aba (bloqueador, ou navegador que recusou): não dá para deixar a
+     pessoa sem nada na mão — baixa o PDF, que é o que ela pediu para ver.
+     Antes da URL da imagem: sem aba, ninguém a usaria. */
+  if (!aba) {
+    await baixarNotaPdf(png, nomeEmpresa, nomeBase);
+    return;
+  }
 
   const nome = nomeArquivo(nomeBase);
   const urlPng = URL.createObjectURL(png);
-  const urlPdf = URL.createObjectURL(pdf);
-
-  /* Sem aba (bloqueador, ou navegador que recusou): não dá para deixar a
-     pessoa sem nada na mão — baixa o PDF, que é o que ela pediu para ver. */
-  if (!aba) {
-    const link = document.createElement("a");
-    link.download = `${nome}.pdf`;
-    link.href = urlPdf;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    return;
-  }
 
   const botao = "display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;text-decoration:none;font:14px system-ui,sans-serif;border:1px solid #2b2f3a";
 
@@ -212,7 +201,7 @@ export async function abrirDocumento(png: Blob, nomeBase: string, nomeEmpresa: s
 <body style="margin:0;background:#0f1115;color:#e6e8ef;font:15px system-ui,sans-serif">
   <div style="position:sticky;top:0;display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 16px;background:#151822;border-bottom:1px solid #2b2f3a">
     <span style="margin-right:auto;font-size:13px;color:#8b90a0">${escapar(nome)}</span>
-    <a href="${urlPdf}" download="${escapar(nome)}.pdf" style="${botao};background:#6c5ce7;border-color:#6c5ce7;color:#fff">Baixar PDF</a>
+    <a id="pdf" style="${botao};background:#1c2030;border-color:#2b2f3a;color:#8b90a0;cursor:progress">Preparando PDF…</a>
     <a href="${urlPng}" download="${escapar(nome)}.png" style="${botao};background:#1c2030;color:#e6e8ef">Baixar imagem</a>
   </div>
   <div style="padding:24px 16px;display:flex;justify-content:center">
@@ -221,4 +210,61 @@ export async function abrirDocumento(png: Blob, nomeBase: string, nomeEmpresa: s
 </body>
 </html>`);
   aba.document.close();
+
+  /*
+   * O PDF vem DEPOIS da aba, não antes.
+   *
+   * Montar o PDF custa mais um segundo sobre a rasterização, e enquanto ele
+   * não existia a pessoa ficava olhando "Preparando o documento…" sem ter o
+   * que conferir — sendo que conferir é para o que a aba serve, e a imagem já
+   * estava pronta. Agora a nota aparece assim que a foto sai; o botão de PDF
+   * nasce apagado e acende quando o arquivo fica pronto.
+   */
+  try {
+    const { arquivo: pdf } = await gerarPdfNota(png, nomeEmpresa, nomeBase);
+
+    if (aba.closed) return;
+
+    const link = aba.document.getElementById("pdf") as HTMLAnchorElement | null;
+    if (!link) return;
+
+    link.href = URL.createObjectURL(pdf);
+    link.download = `${nome}.pdf`;
+    link.textContent = "Baixar PDF";
+    link.style.background = "#6c5ce7";
+    link.style.borderColor = "#6c5ce7";
+    link.style.color = "#fff";
+    link.style.cursor = "pointer";
+  } catch (err) {
+    console.error("Falha ao preparar o PDF do documento", err);
+
+    if (aba.closed) return;
+
+    const link = aba.document.getElementById("pdf");
+    if (link) link.textContent = "PDF indisponível";
+  }
+}
+
+/**
+ * O documento direto na pasta de downloads, sem passar por aba nenhuma.
+ *
+ * A aba resolveu a conferência, mas nem todo mundo quer conferir: quem já
+ * sabe o que tem na nota só quer o arquivo para mandar, e para essa pessoa a
+ * guia é um passo a mais — abre, espera, clica em "Baixar PDF", fecha. Por
+ * isso os dois gestos convivem lado a lado no botão, e este é o atalho.
+ */
+export async function baixarDocumento(png: Blob, nomeBase: string, nomeEmpresa: string): Promise<void> {
+  await baixarNotaPdf(png, nomeEmpresa, nomeBase);
+}
+
+/** Desfaz a aba reservada quando o documento não vai mais abrir (erro, ou o
+    clique era de baixar). Aba em branco esquecida é pior que aba nenhuma. */
+export function descartarAba(): void {
+  try {
+    abaReservada?.close();
+  } catch {
+    /* Navegador que recusa fechar o que abriu: nada a fazer. */
+  }
+
+  abaReservada = null;
 }

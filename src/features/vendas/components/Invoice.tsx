@@ -25,7 +25,7 @@ import UploadImagem from "@/shared/ui/UploadImagem";
 import BotaoRecibo from "@/shared/ui/BotaoRecibo";
 import FundoNota from "@/shared/ui/FundoNota";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
-import OrcamentoService from "@/features/orcamentos/services/orcamento.service";
+import OrcamentoService, { type Orcamento } from "@/features/orcamentos/services/orcamento.service";
 import CrmService from "@/features/crm/services/crm.service";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
 import { gerarPdfNota } from "@/shared/ui/downloadNota";
@@ -47,6 +47,7 @@ import PagamentoForm from "@/shared/ui/PagamentoForm";
 import RecebimentosNota from "@/features/financeiro/components/RecebimentosNota";
 import ContaService, { type AcordoVenda } from "@/features/financeiro/services/conta.service";
 import NotaResumo from "@/features/vendas/components/NotaResumo";
+import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
 import BotaoCupomFiscal from "@/features/fiscal/components/BotaoCupomFiscal";
 
 const gerarUID = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -93,6 +94,17 @@ type InvoiceProps = {
    */
   contatoInicial?: string | null;
   validadeInicial?: string | null;
+  /**
+   * A proposta SALVA que está sendo reescrita — de onde saem o número e a data
+   * de emissão.
+   *
+   * São os dois campos que a tela não tem como saber: o código é do servidor e
+   * a emissão é de quando a proposta nasceu, não de agora. Sem eles o
+   * documento do orçamento sairia com "#0" e a data de hoje — um papel que não
+   * bate com o que está na lista. Vem junto de `orcamentoId`, e é ele quem
+   * decide se o botão de ver/baixar aparece.
+   */
+  orcamentoBase?: Orcamento;
   /**
    * Orçamento que esta venda substitui — ele é APAGADO quando a nota nasce.
    *
@@ -167,17 +179,20 @@ type InvoiceProps = {
  * ----------------------------------------------------------------------------
  * ESTA TELA NÃO É O DOCUMENTO
  * ----------------------------------------------------------------------------
- * O que o cliente recebe sai do `NotaResumo`, num nó escondido de 900px — o
- * MESMO componente que a lista de Vendas e o PDV fotografam. Ver
- * `vendaDoDocumento`, que traduz o estado vivo desta tela para ele.
+ * O que o cliente recebe sai de um nó escondido de 900px: `NotaResumo` na
+ * venda, `OrcamentoNota` na proposta — os MESMOS componentes que a lista de
+ * Vendas, o PDV e a lista de Orçamentos fotografam. Ver `vendaDoDocumento` e
+ * `propostaDoDocumento`, que traduzem o estado vivo desta tela para eles.
  *
- * Foi assim que acabou a divergência de detalhes entre a nota baixada aqui
- * dentro e a baixada pela lista: não existe mais um segundo desenho do mesmo
- * papel. Mexer no documento é mexer no `NotaResumo`; mexer aqui é mexer na
- * ferramenta de montar a venda.
+ * Foi assim que acabou a divergência de detalhes entre o documento baixado
+ * aqui dentro e o baixado pela lista: não existe mais um segundo desenho do
+ * mesmo papel. Mexer no documento é mexer naqueles dois componentes; mexer
+ * aqui é mexer na ferramenta de montar a venda.
  *
- * O `notaRef` e o `data-sem-foto` continuam servindo ao ORÇAMENTO, que ainda
- * é fotografado da tela.
+ * O `notaRef` e o `data-sem-foto` não fotografam mais nada — a tela inteira
+ * é ferramenta. Continuam de pé porque marcam o que é controle de quem
+ * atende e o que é informação do cliente, que é o que separa esta tela do
+ * documento.
  *
  * ----------------------------------------------------------------------------
  * O QUE MORA FORA DAQUI
@@ -217,7 +232,7 @@ const emDias = (dias: number): string => {
 
 
 
-const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = false, itensIniciais, orcamentoId, contatoInicial, validadeInicial, converterOrcamentoId, conversaId }: InvoiceProps) => {
+const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = false, itensIniciais, orcamentoId, contatoInicial, validadeInicial, converterOrcamentoId, conversaId, orcamentoBase }: InvoiceProps) => {
   const alert = useAlert();
   const notaRef = useRef<HTMLDivElement>(null);
 
@@ -699,7 +714,8 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
    * seis colunas — a mesma venda, dois papéis.
    *
    * Agora os dois caminhos fotografam o MESMO `NotaResumo`, num nó escondido
-   * de 900px. Esta tela voltou a ser o que é: onde se monta a venda.
+   * de 900px — e a proposta, o mesmo `OrcamentoNota` da lista de Orçamentos.
+   * Esta tela voltou a ser o que é: onde se monta a venda.
    */
   const refDocumento = useRef<HTMLDivElement>(null);
 
@@ -755,6 +771,50 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
         : null,
     [mostrarQr, qrCodeNota, pixPayload, pendente, pedido, valorCobranca],
   );
+
+  /**
+   * A PROPOSTA como o documento a lê — do estado vivo, igual à nota.
+   *
+   * O orçamento era a última exceção: a nota já saía de um nó de 900px
+   * (`NotaResumo`) e a proposta continuava sendo uma foto DESTA tela. Como as
+   * classes `md:` do Tailwind olham a largura da janela e não a do elemento,
+   * a proposta baixada do celular saía no desenho do celular — um cartão alto
+   * por produto, os controles de quem atende no meio, o resumo em duas
+   * colunas — enquanto a mesma proposta baixada do computador saía em tabela.
+   * Uma venda de oito itens virava um papel de metro e meio.
+   *
+   * Agora os dois caminhos (esta tela e a lista de Orçamentos) fotografam o
+   * MESMO `OrcamentoNota`, e o que muda entre eles é só de onde vêm os dados:
+   * aqui, do que está na tela neste segundo.
+   */
+  const propostaDoDocumento = useMemo<Orcamento>(
+    () => ({
+      id: orcamentoId ?? orcamentoBase?.id ?? "",
+      /* Número e emissão são do servidor — a tela não os inventa. */
+      codigo: orcamentoBase?.codigo ?? 0,
+      criadoEm: orcamentoBase?.criadoEm ?? new Date().toISOString(),
+      status: orcamentoBase?.status ?? "ABERTO",
+      observacao: orcamentoBase?.observacao ?? null,
+      vendedorId: orcamentoBase?.vendedorId ?? null,
+      vendedorNome: orcamentoBase?.vendedorNome ?? null,
+      /* Daqui para baixo manda a TELA: é o que a pessoa acabou de mexer. */
+      clienteNome: (nome ?? "").trim() || orcamentoBase?.clienteNome || "—",
+      clienteId: clienteId ?? orcamentoBase?.clienteId ?? null,
+      clienteContato: contatoOrcamento.trim() || null,
+      validade: validadeOrcamento || null,
+      total,
+      itens: itens.map((l) => ({
+        id: l.itemPedidoId,
+        produtoId: String(l.produto.produtoId ?? "") || null,
+        nomeProduto: l.produto.nomeProduto,
+        quantidade: Number(l.quantidadeItem),
+        valorUnitario: Number(l.valorVendaItem),
+        valorProduto: Number(l.produto?.valorProduto ?? 0) || null,
+      })),
+    }),
+    [orcamentoId, orcamentoBase, nome, clienteId, contatoOrcamento, validadeOrcamento, total, itens],
+  );
+
 
 
   /**
@@ -947,7 +1007,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
     setEnviandoWhats(formato);
 
     try {
-      const png = await gerarBlobNota(modoOrcamento ? notaRef : refDocumento);
+      const png = await gerarBlobNota(refDocumento);
       const empresa = enterprise?.nomeFantasia ?? "nota";
 
       const { arquivo, nome: nomeArquivo } =
@@ -1378,7 +1438,8 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
           )}
         </div>
 
-        {/* Conteúdo da nota (capturado no PNG) — é ESTE que rola. */}
+        {/* Conteúdo da nota — é ESTE que rola. Nada aqui é fotografado: o
+            arquivo sai do nó escondido lá embaixo. */}
         <div className="min-h-0 flex-1 overflow-y-auto">
           {/* Largura limitada e centralizada.
               Sem teto, a nota acompanhava o monitor: em tela larga, o nome do
@@ -2039,7 +2100,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
              * sem fechar nada — e o que ele baixa é o documento de verdade.
              */}
             {(modoOrcamento ? Boolean(orcamentoId) : Boolean(id)) && (
-              <BotaoVerDocumento refNota={modoOrcamento ? notaRef : refDocumento} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Baixar orçamento" : "Baixar nota"} documento={modoOrcamento ? "orçamento" : "nota"} />
+              <BotaoVerDocumento refNota={refDocumento} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Baixar orçamento" : "Baixar nota"} documento={modoOrcamento ? "orçamento" : "nota"} />
             )}
 
             {/* O CUPOM FISCAL — outro documento, não outra via da nota.
@@ -2184,16 +2245,20 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
 
           `-left-[9999px]` em vez de `display:none`: `html-to-image` não
           fotografa o que não está no layout, e a largura de 900px é o que
-          garante que a nota saia igual no celular e no desktop. Mesmo recurso
-          da lista de Vendas e do PDV.
+          garante que o arquivo saia igual no celular e no desktop. Mesmo
+          recurso da lista de Vendas, do PDV e da lista de Orçamentos.
 
-          Só na nota: a proposta tem outro documento (validade, sem vendedor,
-          sem pagamento) e continua saindo do nó da tela. */}
-      {!modoOrcamento && (
-        <div className="fixed -left-[9999px] top-0 w-[900px]" aria-hidden>
+          Os DOIS documentos moram aqui agora. A proposta era a última que
+          ainda saía da tela — e, saindo da tela, saía do celular no desenho
+          do celular: um cartão por produto, altura de metro e meio. Cada modo
+          fotografa o documento que é o seu, no mesmo nó. */}
+      <div className="fixed -left-[9999px] top-0 w-[900px]" aria-hidden>
+        {modoOrcamento ? (
+          <OrcamentoNota orcamento={propostaDoDocumento} refNota={refDocumento} />
+        ) : (
           <NotaResumo venda={vendaDoDocumento} pix={pixDoDocumento} refNota={refDocumento} />
-        </div>
-      )}
+        )}
+      </div>
     </>
   );
 };

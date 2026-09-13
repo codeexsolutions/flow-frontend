@@ -1,4 +1,4 @@
-import { toBlob } from "html-to-image";
+import { getFontEmbedCSS, toBlob } from "html-to-image";
 import type { RefObject } from "react";
 import { appInstalado } from "@/shared/pwa/appMode";
 
@@ -77,6 +77,26 @@ const esperarImagens = async (node: HTMLElement) => {
       }
     }),
   );
+};
+
+/**
+ * O CSS das fontes, embutido UMA vez por sessão.
+ *
+ * `html-to-image` embute as fontes por conta própria a cada rasterização: lê
+ * todas as folhas de estilo da página, resolve cada `@font-face` e baixa os
+ * arquivos de fonte. É o passo mais caro de gerar um documento, e o resultado
+ * é sempre o mesmo — as folhas de estilo do app não mudam enquanto a aba está
+ * aberta. Calculado aqui e reaproveitado, o segundo documento (e a segunda
+ * passagem de cada um) sai sem pagar nada disso de novo.
+ *
+ * Falha vira string vazia: documento com fonte do sistema é melhor que
+ * documento nenhum.
+ */
+let cssDasFontes: Promise<string> | null = null;
+
+const fontesEmbutidas = (node: HTMLElement): Promise<string> => {
+  cssDasFontes ??= getFontEmbedCSS(node).catch(() => "");
+  return cssDasFontes;
 };
 
 /** Largura fixa do documento gerado — a mesma do `max-w-[900px]` da nota. */
@@ -180,6 +200,8 @@ export const gerarBlobNota = async (ref: RefObject<HTMLDivElement>): Promise<Blo
     const largura = Math.ceil(Math.max(copia.scrollWidth, caixa.width));
     const altura = Math.ceil(Math.max(copia.scrollHeight, caixa.height));
 
+    const fontEmbedCSS = await fontesEmbutidas(copia);
+
     const opcoes = {
       /*
        * Tudo marcado com `data-sem-foto` fica de fora do PNG.
@@ -195,7 +217,18 @@ export const gerarBlobNota = async (ref: RefObject<HTMLDivElement>): Promise<Blo
       width: largura,
       height: altura,
       pixelRatio: 2,
-      cacheBust: true,
+      /* As fontes já vêm prontas — sem isto, `html-to-image` refaz esse
+         trabalho inteiro a cada passagem. */
+      fontEmbedCSS,
+      /*
+       * Sem `cacheBust`.
+       *
+       * Ele pendurava um `?t=<agora>` em cada imagem para furar o cache — o
+       * que, nas duas passagens, obrigava o navegador a BAIXAR de novo a logo
+       * e o wallpaper toda vez, e era boa parte da espera. As imagens de fora
+       * já chegam embutidas como data URI por `embutir`, e as locais podem
+       * (devem) sair do cache: não há nada velho para furar.
+       */
       style: {
         transform: "none",
         transformOrigin: "top left",
@@ -212,10 +245,12 @@ export const gerarBlobNota = async (ref: RefObject<HTMLDivElement>): Promise<Blo
      * A primeira passagem serve só para aquecer esse cache; na segunda tudo já
      * está decodificado e o documento sai inteiro.
      *
-     * O custo é uma rasterização a mais, invisível para quem clica: o botão já
-     * mostra "Gerando...".
+     * Essa passagem de aquecimento vai em `pixelRatio: 1`: o que ela precisa
+     * conseguir é que o navegador DECODE as imagens, e decodificar não depende
+     * da escala. Em `2` ela custava o mesmo que a passagem que vale — metade
+     * da espera era um arquivo que ninguém ia usar.
      */
-    await toBlob(copia, opcoes).catch(() => null);
+    await toBlob(copia, { ...opcoes, pixelRatio: 1 }).catch(() => null);
 
     const blob = await toBlob(copia, opcoes);
 
@@ -229,8 +264,17 @@ export const gerarBlobNota = async (ref: RefObject<HTMLDivElement>): Promise<Blo
   }
 };
 
-/** Baixa o blob como PNG (nome padrão `nota-...png`). */
-const baixarBlob = async (blob: Blob, filename: string) => {
+/**
+ * Entrega o arquivo à pessoa — o único caminho de download do sistema.
+ *
+ * Serve PNG e PDF: o tipo sai da extensão do nome. Existia só para o PNG, e o
+ * PDF baixava por um link solto em `downloadNota` — que é justamente o que não
+ * funciona dentro do app instalado (veja abaixo). Quem salvava a nota pelo
+ * atalho da tela de início recebia a imagem e não recebia o PDF.
+ */
+export const entregarArquivo = async (blob: Blob, filename: string) => {
+  const tipo = filename.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png";
+
   /**
    * App instalado (tela de início / standalone) é o único caso em que
    * `<a download>` está provadamente quebrado: essa janela roda numa
@@ -244,7 +288,7 @@ const baixarBlob = async (blob: Blob, filename: string) => {
    * tanto no iOS quanto no Android.
    */
   if (appInstalado()) {
-    const file = new File([blob], filename, { type: "image/png" });
+    const file = new File([blob], filename, { type: tipo });
 
     if (navigator.canShare?.({ files: [file] })) {
       try {
@@ -285,7 +329,7 @@ const baixarBlob = async (blob: Blob, filename: string) => {
 export const handleDownload = async (ref: RefObject<HTMLDivElement>, filename = `nota-${Date.now()}.png`) => {
   try {
     const blob = await gerarBlobNota(ref);
-    await baixarBlob(blob, filename);
+    await entregarArquivo(blob, filename);
   } catch (err) {
     console.error("Erro ao gerar imagem da nota:", err);
     throw err;
