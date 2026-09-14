@@ -92,11 +92,37 @@ const esperarImagens = async (node: HTMLElement) => {
  * Falha vira string vazia: documento com fonte do sistema é melhor que
  * documento nenhum.
  */
-let cssDasFontes: Promise<string> | null = null;
+let cssDasFontes: string | null = null;
 
-const fontesEmbutidas = (node: HTMLElement): Promise<string> => {
-  cssDasFontes ??= getFontEmbedCSS(node).catch(() => "");
-  return cssDasFontes;
+/**
+ * Com teto de tempo, e guardando só o que DEU CERTO.
+ *
+ * Duas armadilhas, e as duas produzem o mesmo sintoma — a aba presa em
+ * "Preparando o documento…" para sempre, porque `gerarBlobNota` nunca volta:
+ *
+ *   1. Guardar a PROMESSA em cache. Uma promessa que nunca resolve (uma fonte
+ *      que o navegador aceita buscar e não responde) ficaria em cache nesse
+ *      estado, e todo documento seguinte da sessão esperaria por ela. Um
+ *      tropeço vira o recurso quebrado até a pessoa recarregar a página.
+ *
+ *   2. Não ter limite de espera. Ler todas as folhas de estilo e baixar os
+ *      arquivos de fonte depende da rede, e no balcão a rede cai.
+ *
+ * Por isso o cache guarda a STRING pronta, e só quando ela chega a tempo.
+ * Estourou o tempo, devolve `undefined` — e `undefined` faz o `html-to-image`
+ * cuidar das fontes por conta própria, como fazia antes desta otimização: mais
+ * lento, e correto. A próxima tentativa recomeça limpa.
+ */
+const fontesEmbutidas = async (node: HTMLElement): Promise<string | undefined> => {
+  if (cssDasFontes !== null) return cssDasFontes;
+
+  const desistir = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 5000));
+
+  const css = await Promise.race([getFontEmbedCSS(node).catch(() => undefined), desistir]);
+
+  if (typeof css === "string") cssDasFontes = css;
+
+  return css;
 };
 
 /** Largura fixa do documento gerado — a mesma do `max-w-[900px]` da nota. */
@@ -200,6 +226,8 @@ export const gerarBlobNota = async (ref: RefObject<HTMLDivElement>): Promise<Blo
     const largura = Math.ceil(Math.max(copia.scrollWidth, caixa.width));
     const altura = Math.ceil(Math.max(copia.scrollHeight, caixa.height));
 
+    /* `undefined` quando a leitura das fontes falhou ou demorou demais: a
+       opção some do objeto e o `html-to-image` volta a resolvê-las sozinho. */
     const fontEmbedCSS = await fontesEmbutidas(copia);
 
     const opcoes = {

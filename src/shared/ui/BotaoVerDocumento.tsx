@@ -153,6 +153,19 @@ const BotaoVerDocumento = ({
         await onAbrir(modo);
       } catch (err) {
         console.error("Erro ao preparar o documento", err);
+      } finally {
+        /*
+         * A aba órfã morre AQUI, sempre.
+         *
+         * As telas tratam o próprio erro e não o relançam — "falha de download
+         * não trava a tabela". Ótimo para a tabela, péssimo para a guia: ela
+         * foi aberta no clique e, sem ninguém para preenchê-la, ficava para
+         * sempre no "Preparando o documento…". Quem falhou nem sabe que ela
+         * existe.
+         *
+         * `descartarAba` não faz nada quando `abrirDocumento` já consumiu a
+         * aba, então chamar sempre é seguro: só fecha a que sobrou.
+         */
         if (modo === "ver") descartarAba();
         setEmCurso(null);
       }
@@ -177,9 +190,10 @@ const BotaoVerDocumento = ({
       setTimeout(() => setSucesso(null), 2000);
     } catch (err) {
       console.error("Erro ao preparar o documento", err);
-      /* A guia em branco reservada no clique não pode ficar órfã na tela. */
-      if (modo === "ver") descartarAba();
     } finally {
+      /* A guia reservada no clique não pode ficar órfã na tela — no-op quando
+         `abrirDocumento` já a consumiu. */
+      if (modo === "ver") descartarAba();
       setEmCurso(null);
     }
   };
@@ -225,11 +239,13 @@ const BotaoVerDocumento = ({
       {icone("ver", ocupadoVer)}
       {/* O nome do documento no próprio botão, e não só no `title`: dica de
           ferramenta não existe no celular, que é onde a nota é mandada.
-          Na linha o rótulo é curto e some no celular — ali a fileira de ações
-          divide poucos pixels com o valor da venda. */}
-      {naLinha ? (
-        <span className="hidden whitespace-nowrap text-[11.5px] sm:inline">{ocupadoVer ? "Abrindo..." : "Ver"}</span>
-      ) : (
+
+          NA LINHA não há rótulo: só o ícone. A fileira de ações divide poucos
+          pixels com o valor da venda, e agora são DOIS botões ali (ver e
+          baixar) — a palavra "Ver" ao lado do par empurrava o resto da linha.
+          Quem passa o mouse tem a bolha do `Dica`, que diz qual documento é;
+          a seta para fora já diz que abre em outra guia. */}
+      {!naLinha && (
         <span className="hidden whitespace-nowrap text-[13px] sm:inline">{ocupadoVer ? "Abrindo..." : `Ver ${documento}`}</span>
       )}
     </button>

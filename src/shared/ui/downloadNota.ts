@@ -137,6 +137,20 @@ export function reservarAba(): void {
         'font:15px system-ui,sans-serif;background:#0f1115;color:#8b90a0">' +
         "Preparando o documento…</body></html>",
       );
+
+      /*
+       * FECHAR O STREAM AQUI é o que faz a troca de conteúdo funcionar.
+       *
+       * `document.write` sem `close()` deixa o parser da aba aberto, esperando
+       * mais texto. Enquanto ele está assim, escrever de novo APENDA ao que já
+       * está lá em vez de substituir — e o resultado é a aba presa no
+       * "Preparando o documento…" com o documento real nunca aparecendo.
+       *
+       * Com o stream fechado, a aba tem um documento completo e pronto, e
+       * `abrirDocumento` troca o conteúdo pelo DOM (ver lá), que é definido e
+       * não depende de timing nenhum.
+       */
+      abaReservada.document.close();
     }
   } catch {
     /* Bloqueador agressivo: `abrirDocumento` cai no download direto. */
@@ -177,10 +191,14 @@ export async function abrirDocumento(png: Blob, nomeBase: string, nomeEmpresa: s
   const aba = abaReservada;
   abaReservada = null;
 
-  /* Sem aba (bloqueador, ou navegador que recusou): não dá para deixar a
-     pessoa sem nada na mão — baixa o PDF, que é o que ela pediu para ver.
-     Antes da URL da imagem: sem aba, ninguém a usaria. */
-  if (!aba) {
+  /*
+   * Vale para a aba que nunca existiu E para a que não serve mais: fechada por
+   * quem clicou enquanto a foto era gerada, ou sem `body` porque o navegador
+   * recusou o `document.write` da reserva. Nos três casos a pessoa pediu um
+   * documento e precisa recebê-lo — e mexer no DOM de uma aba fechada
+   * lançaria um erro que as telas engolem calado.
+   */
+  if (!aba || aba.closed || !aba.document?.body) {
     await baixarNotaPdf(png, nomeEmpresa, nomeBase);
     return;
   }
@@ -190,15 +208,23 @@ export async function abrirDocumento(png: Blob, nomeBase: string, nomeEmpresa: s
 
   const botao = "display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;text-decoration:none;font:14px system-ui,sans-serif;border:1px solid #2b2f3a";
 
-  aba.document.open();
-  aba.document.write(`<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapar(nome)}</title>
-</head>
-<body style="margin:0;background:#0f1115;color:#e6e8ef;font:15px system-ui,sans-serif">
+  /*
+   * O conteúdo entra pelo DOM, e NÃO por um segundo `document.write`.
+   *
+   * Reabrir o stream (`document.open()` + `write`) era o que prendia a aba no
+   * "Preparando o documento…": o primeiro write havia deixado o parser aberto,
+   * e o segundo apendava em vez de substituir. Com a aba já fechada em
+   * `reservarAba`, trocar `title` e `body` é uma operação definida, sem corrida
+   * com o parser e sem depender de quanto tempo levou para a foto ficar pronta.
+   */
+  aba.document.title = nome;
+
+  aba.document.body.setAttribute(
+    "style",
+    "margin:0;background:#0f1115;color:#e6e8ef;font:15px system-ui,sans-serif",
+  );
+
+  aba.document.body.innerHTML = `
   <div style="position:sticky;top:0;display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 16px;background:#151822;border-bottom:1px solid #2b2f3a">
     <span style="margin-right:auto;font-size:13px;color:#8b90a0">${escapar(nome)}</span>
     <a id="pdf" style="${botao};background:#1c2030;border-color:#2b2f3a;color:#8b90a0;cursor:progress">Preparando PDF…</a>
@@ -206,10 +232,7 @@ export async function abrirDocumento(png: Blob, nomeBase: string, nomeEmpresa: s
   </div>
   <div style="padding:24px 16px;display:flex;justify-content:center">
     <img src="${urlPng}" alt="Documento" style="max-width:900px;width:100%;height:auto;border-radius:12px;box-shadow:0 20px 60px -20px #000">
-  </div>
-</body>
-</html>`);
-  aba.document.close();
+  </div>`;
 
   /*
    * O PDF vem DEPOIS da aba, não antes.
