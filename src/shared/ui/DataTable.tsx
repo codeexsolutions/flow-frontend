@@ -354,6 +354,7 @@ export const ListaLinha = ({
   ariaLabel,
   acoes,
   destaque,
+  ancora,
   children,
 }: {
   cols: string;
@@ -375,8 +376,20 @@ export const ListaLinha = ({
    * Fundo de aviso na linha inteira — vencida, crítica, o que a tela chamar
    * de urgente. É um tom lavado de propósito: a linha precisa saltar ao correr
    * o olho pela lista sem ficar ilegível quando se para nela.
+   *
+   * `sucesso` não é aviso: é "olhe AQUI" — a linha que acabou de nascer e
+   * ainda espera uma decisão de quem chegou. Ver a ordem recém-gerada em
+   * `OrdensServicoPage`.
    */
-  destaque?: "danger" | "warning";
+  destaque?: "danger" | "warning" | "sucesso";
+  /**
+   * `id` do elemento da linha, para a tela poder rolar até ela.
+   *
+   * Existe porque quem chega de outra tela precisa ENCONTRAR a linha: numa
+   * lista de cem ordens, destacar a nova sem levar o olho até lá é o mesmo que
+   * não destacar.
+   */
+  ancora?: string;
   children: ReactNode;
 }) => {
   const Tag = onClick ? "button" : "div";
@@ -396,8 +409,15 @@ export const ListaLinha = ({
    *
    * A linha com `destaque` não recebe faixa: o fundo dela já é o aviso.
    */
-  const fundo = destaque === "danger" ? "bg-danger/[0.055] hover:bg-danger/[0.09]" : destaque === "warning" ? "bg-warning/[0.05] hover:bg-warning/[0.085]" : "odd:bg-fg/[0.025] hover:bg-fg/[0.05]";
-  const marca = destaque === "danger" ? "before:bg-danger" : destaque === "warning" ? "before:bg-warning" : "before:bg-accent";
+  const fundo =
+    destaque === "danger"
+      ? "bg-danger/[0.055] hover:bg-danger/[0.09]"
+      : destaque === "warning"
+        ? "bg-warning/[0.05] hover:bg-warning/[0.085]"
+        : destaque === "sucesso"
+          ? "bg-success/[0.05] hover:bg-success/[0.085]"
+          : "odd:bg-fg/[0.025] hover:bg-fg/[0.05]";
+  const marca = destaque === "danger" ? "before:bg-danger" : destaque === "warning" ? "before:bg-warning" : destaque === "sucesso" ? "before:bg-success" : "before:bg-accent";
 
   /* As células como array: é o que permite pareá-las com os rótulos no cartão.
      Os mesmos elementos são desenhados nos dois lugares — só um deles está
@@ -408,6 +428,7 @@ export const ListaLinha = ({
   const linha = (
     <Tag
       {...(onClick ? { type: "button" as const, onClick, "aria-label": ariaLabel } : {})}
+      {...(ancora ? { id: ancora } : {})}
       /* `h-auto` no celular e a altura fixa só a partir de `sm`: a altura vem
          por variável porque valor de `style` não aceita breakpoint. */
       className={`group relative block h-auto w-full border-b border-fg/[0.04] text-left transition-colors before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:rounded-r before:transition-opacity hover:before:opacity-100 sm:h-[var(--linha-altura)] ${fundo} ${marca} ${destaque ? "before:opacity-100" : "before:opacity-0"}`}

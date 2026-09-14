@@ -145,13 +145,15 @@ const ProducaoAutomatica = () => {
                   "Cliente, etapa, responsável, prazo e o que produzir. Serve a qualquer ramo."}
               </p>
 
-              {/* Sem etapa não há onde a ordem parar, e o automático não cria
-                  nada — em silêncio, porque é o servidor que desiste. Dizer
-                  aqui é o que evita a pessoa achar que a chave não funciona. */}
+              {/* Onde a ordem aparece, e o que a falta de etapa muda. Ela NÃO
+                  deixa mais de ser criada: o papel vale sem quadro, e segurar a
+                  ordem por uma configuração que é de outra tela era cobrar do
+                  documento o que não é dele. Ver `ProducaoAutomaticaService`. */}
               <div className="mt-1 rounded-xl border border-fg/[0.08] p-3">
                 <p className="text-[11.5px] leading-relaxed text-mist">
-                  A ordem nasce na primeira etapa do seu fluxo. Se ainda não houver nenhuma etapa cadastrada, nada é
-                  criado — cadastre-as em Produção › Kanban, no botão Etapas.
+                  A ordem nasce na primeira etapa do seu fluxo — e nasce mesmo que ainda não haja etapa nenhuma: nesse
+                  caso ela fica fora do quadro, na lista de ordens de serviço, e entra no quadro quando você cadastrar a
+                  primeira etapa em Produção › Kanban, no botão Etapas.
                 </p>
                 <button
                   type="button"

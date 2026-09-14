@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ClipboardList, ExternalLink, Loader2, Save, Search, Table2 } from "lucide-react";
+import { ArrowRight, Check, ClipboardList, ExternalLink, Loader2, Save, Search, Table2, X } from "lucide-react";
 
 import ProducaoService, { type ItemProducao, type ModeloOsDisponivel } from "@/features/producao/services/producao.service";
 import PlanilhaService, { type Modelo } from "@/features/planilhas/services/planilha.service";
 import useSincronizacao from "@/shared/realtime/useSincronizacao";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { PageScreen } from "@/shared/ui/PageShell";
 import { Modal } from "@/shared/ui/Modal";
@@ -35,6 +35,20 @@ import { modeloOS } from "@/features/producao/modelos";
  * Por isso esta tela é uma lista magra com uma ação só — abrir a OS. As
  * colunas são as que ajudam a ACHAR a ordem (número, cliente, etapa, prazo),
  * não as que descrevem o trabalho: essas estão no documento.
+ *
+ * ---------------------------------------------------------------------------
+ * É AQUI que gerar a ordem termina
+ * ---------------------------------------------------------------------------
+ * O botão da aba Pedidos manda para cá com o id da ordem que acabou de nascer
+ * (`state.novaOrdem`), e a tela faz três coisas com ele: rola até a linha,
+ * pinta a linha e abre a faixa que diz o que falta — escolher a PLANILHA em
+ * que aquela ordem vai produzir.
+ *
+ * Existe porque gerar sem isso terminava num balão verde: a ordem nascia numa
+ * aba que a pessoa não estava vendo, sem planilha, e a pergunta seguinte —
+ * "qual planilha eu uso para esta?" — ficava sem dono. A faixa responde com
+ * nome: a planilha para onde as últimas ordens foram, que é o que a oficina
+ * de fato usa.
  *
  * ---------------------------------------------------------------------------
  * Um nó escondido, trocado no clique
@@ -117,7 +131,20 @@ const FILTROS: { valor: Filtro; label: string }[] = [
 const OrdensServicoPage = () => {
   const alert = useAlert();
   const navigate = useNavigate();
+  const { pathname, state } = useLocation();
   const empresa = useEnterprise((s) => s.enterprise);
+
+  /**
+   * A ordem que ACABOU de nascer — quem chegou aqui vindo de "Gerar ordem".
+   *
+   * Vem no estado da navegação e é copiada para cá na primeira renderização,
+   * porque o estado da rota é apagado logo em seguida: sem isso, recarregar a
+   * página ou voltar para ela destacaria de novo uma ordem de ontem como se
+   * fosse nova.
+   */
+  const [novaOrdem, setNovaOrdem] = useState<string | null>(
+    () => ((state as { novaOrdem?: string } | null)?.novaOrdem ?? null),
+  );
 
   const [ordens, setOrdens] = useState<ItemProducao[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -184,6 +211,23 @@ const OrdensServicoPage = () => {
     // Só na montagem.
   }, []);
 
+  /* O aviso de "veio de gerar" é de UMA chegada, não do endereço: apagado do
+     histórico, recarregar a página mostra a lista normal em vez de reabrir a
+     faixa de uma ordem que já foi resolvida há dois dias. */
+  useEffect(() => {
+    if ((state as { novaOrdem?: string } | null)?.novaOrdem) navigate(pathname, { replace: true, state: null });
+    // Só na montagem.
+  }, []);
+
+  /* Rolar até a linha destacada. Só depois de a lista existir na tela — e por
+     isso depende de `carregando`, não do id: no primeiro passe a ordem ainda
+     não foi desenhada e não haveria a que rolar. */
+  useEffect(() => {
+    if (carregando || !novaOrdem) return;
+
+    document.getElementById(`ordem-${novaOrdem}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [carregando, novaOrdem]);
+
   useSincronizacao(["producao"], () => void carregar());
 
   const filtradas = useMemo(() => {
@@ -236,6 +280,34 @@ const OrdensServicoPage = () => {
 
   /** Quantas ainda estão na bancada — o apoio do cabeçalho. */
   const abertasTotal = useMemo(() => ordens.filter((o) => !o.concluido_em).length, [ordens]);
+
+  /** A ordem recém-gerada, se ela estiver na lista que está na tela. */
+  const linhaNova = useMemo(() => (novaOrdem ? ordens.find((o) => o.id === novaOrdem) ?? null : null), [novaOrdem, ordens]);
+
+  /**
+   * QUAL planilha usar — a pergunta de quem acabou de gerar a ordem.
+   *
+   * O sistema não tem como saber o processo da oficina, mas tem como ver o que
+   * ela vem fazendo: a planilha para onde as outras ordens foram é a resposta
+   * certa na esmagadora maioria das vezes, e é uma resposta com prova junto
+   * ("as últimas N foram para lá") em vez de um palpite sem origem.
+   *
+   * Empresa que ainda não mandou nenhuma ordem para lugar nenhum não tem
+   * histórico — e aí só há sugestão se existir UMA planilha só, caso em que a
+   * escolha não é escolha. Com várias, quem decide é quem produz.
+   */
+  const sugestao = useMemo(() => {
+    const vezes = new Map<string, number>();
+
+    for (const o of ordens) if (o.planilha_modelo_fk) vezes.set(o.planilha_modelo_fk, (vezes.get(o.planilha_modelo_fk) ?? 0) + 1);
+
+    const [maisUsada] = [...vezes.entries()].sort((a, b) => b[1] - a[1]);
+    const doHistorico = maisUsada && planilhas.find((m) => m.id === maisUsada[0]);
+
+    if (doHistorico) return { modelo: doHistorico, vezes: maisUsada[1] };
+
+    return planilhas.length === 1 ? { modelo: planilhas[0], vezes: 0 } : null;
+  }, [ordens, planilhas]);
 
   /* O nó que vira documento — um só, trocado antes de cada foto. */
   const refDoc = useRef<HTMLDivElement>(null);
@@ -313,6 +385,10 @@ const OrdensServicoPage = () => {
       const mensagem = await ProducaoService.mandarParaPlanilha(o.id, modeloId);
 
       await carregar();
+
+      /* Escolhida a planilha, a faixa de "falta dizer onde produz" perdeu o
+         assunto — e a linha volta a ser uma linha como as outras. */
+      setNovaOrdem((atual) => (atual === o.id ? null : atual));
 
       alert.success("Pronto!", mensagem || "A ordem foi para a planilha.");
     } catch (err) {
@@ -426,6 +502,69 @@ const OrdensServicoPage = () => {
           />
         </BarraFiltros>
 
+        {/*
+          A FAIXA de quem acabou de gerar a ordem.
+
+          Ela não repete "pronto!" — isso a linha destacada logo abaixo já diz.
+          Ela responde a pergunta que vem depois de gerar e que antes ficava sem
+          dono: em qual planilha esta ordem vai produzir. Some ao escolher, ao
+          fechar no X, e não volta ao recarregar a página.
+        */}
+        {linhaNova && !linhaNova.planilha_registro_fk && (
+          <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-success/25 bg-success/[0.07] px-4 py-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-success/30 bg-success/[0.12] text-success">
+              <Check size={14} />
+            </span>
+
+            <div className="min-w-[200px] flex-1">
+              <p className="text-[12.5px] text-ink">
+                OS #{linhaNova.codigo} gerada para {linhaNova.cliente_nome || "sem cliente"} — falta dizer onde ela produz.
+              </p>
+
+              <p className="mt-0.5 text-[11.5px] leading-relaxed text-mist">
+                {planilhas.length === 0
+                  ? "Você ainda não tem planilha de produção. Crie a primeira em Produção › Kanban — é nela que a ordem ganha a linha do cliente, com as colunas do seu processo."
+                  : sugestao
+                    ? sugestao.vezes > 0
+                      ? `Use a planilha ${sugestao.modelo.nome} — foi para lá que ${sugestao.vezes === 1 ? "a última ordem foi" : `as últimas ${sugestao.vezes} ordens foram`}. Para mandar para outra, escolha na coluna Produção da linha destacada.`
+                      : `Você tem uma planilha de produção: ${sugestao.modelo.nome}. É nela que esta ordem entra.`
+                    : `Escolha a planilha na coluna Produção da linha destacada — ${planilhas.slice(0, 3).map((m) => m.nome).join(", ")}${planilhas.length > 3 ? " e outras" : ""}.`}
+              </p>
+            </div>
+
+            {/* O atalho só existe quando há UMA resposta a oferecer: um botão
+                que diz "mandar" sem dizer para onde faria a escolha no escuro. */}
+            {planilhas.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => navigate("/producao/kanban")}
+                className="focus-ring flex h-[32px] shrink-0 items-center gap-1.5 rounded-lg border border-fg/[0.12] px-3 text-[12px] text-mist transition-colors hover:border-accent/40 hover:text-accent-soft"
+              >
+                Criar uma planilha <ArrowRight size={13} />
+              </button>
+            ) : sugestao ? (
+              <button
+                type="button"
+                disabled={mandando === linhaNova.id}
+                onClick={() => void mandarParaPlanilha(linhaNova, sugestao.modelo.id)}
+                className="focus-ring flex h-[32px] shrink-0 items-center gap-1.5 rounded-lg border border-success/30 bg-success/[0.1] px-3 text-[12px] text-success transition-colors hover:bg-success/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {mandando === linhaNova.id ? <Loader2 size={13} className="animate-spin" /> : <ArrowRight size={13} />}
+                Mandar para {sugestao.modelo.nome}
+              </button>
+            ) : null}
+
+            <button
+              type="button"
+              aria-label="Fechar o aviso"
+              onClick={() => setNovaOrdem(null)}
+              className="focus-ring shrink-0 rounded-lg p-1 text-muted transition-colors hover:text-ink"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         {carregando ? (
           <SkeletonListaPainel linhas={8} />
         ) : filtradas.length === 0 ? (
@@ -464,6 +603,11 @@ const OrdensServicoPage = () => {
                     cols={COLS}
                     rotulos={ROTULOS}
                     altura={ALTURA_LINHA}
+                    /* A recém-gerada fica pintada até a planilha ser escolhida:
+                       é a linha que a faixa lá em cima está falando, e sem a
+                       marca "a linha destacada" não aponta para nada. */
+                    ancora={`ordem-${o.id}`}
+                    destaque={o.id === novaOrdem ? "sucesso" : undefined}
                     /* Clicar na ordem ABRE A ORDEM — é o gesto do dia na
                        bancada. Vale para todo modelo: o que tem ficha abre
                        para preencher, o simples abre para conferir. A linha

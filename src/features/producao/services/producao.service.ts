@@ -70,13 +70,19 @@ const ProducaoService = {
    * Sem `osModelo`, a ordem nasce com o modelo padrão da empresa — o escolhido
    * em Configurações › Produção.
    *
-   * Devolve a mensagem do servidor: quando nada é criado (a venda já tem ordem,
-   * ou o fluxo ainda não tem etapa) isso não é erro, e a tela precisa do texto
-   * para dizer o que houve em vez de piscar um "pronto" mentiroso.
+   * Devolve o `id` da ordem, e não só "deu certo": quem chama leva a pessoa
+   * até ela na aba Ordem de serviço, e para destacar a linha certa no meio de
+   * uma lista de cem é preciso saber QUAL nasceu.
+   *
+   * A mensagem do servidor vem junto: quando nada é criado (a venda já tem
+   * ordem) isso não é erro, e a tela precisa do texto para dizer o que houve em
+   * vez de piscar um "pronto" mentiroso.
    */
-  async daVenda(pedidoId: string, osModelo?: string): Promise<{ criado: boolean; mensagem: string }> {
+  async daVenda(pedidoId: string, osModelo?: string): Promise<{ criado: boolean; id: string | null; mensagem: string }> {
     const r = await sysgrafix.post(`/producao/da-venda/${pedidoId}`, { osModelo: osModelo ?? null });
-    return { criado: Boolean(r.data?.data?.[0]), mensagem: String(r.data?.message ?? "") };
+    const id = r.data?.data?.[0] ? String(r.data.data[0]) : null;
+
+    return { criado: Boolean(id), id, mensagem: String(r.data?.message ?? "") };
   },
 
   async etapas() {

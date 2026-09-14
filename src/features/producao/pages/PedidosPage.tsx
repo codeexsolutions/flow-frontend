@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { CalendarDays, ClipboardList, Factory, Receipt, Table2 } from "lucide-react";
 
 import useVendaStore from "@/features/vendas/store/venda.store";
@@ -62,6 +63,7 @@ const SITUACOES: { valor: Situacao; label: string }[] = [
 
 const PedidosPage = () => {
   const alert = useAlert();
+  const navigate = useNavigate();
   const { vendas, fetchVendas, loading } = useVendaStore();
 
   const [ordens, setOrdens] = useState<ItemProducao[]>([]);
@@ -189,6 +191,21 @@ const PedidosPage = () => {
     return Array.from(mapa.values());
   }, [filtradas, ordemPorPedido]);
 
+  /**
+   * Gera a ordem — e VAI ATÉ ELA.
+   *
+   * -------------------------------------------------------------------------
+   * Gerar termina na aba Ordem de serviço, não num aviso
+   * -------------------------------------------------------------------------
+   * Antes o desfeito era um balão verde e a lista continuando igual: a ordem
+   * existia em outra aba, e a pergunta seguinte de quem gerou — "em qual
+   * planilha esta vai produzir?" — não tinha resposta nesta tela. A pessoa
+   * ficava olhando o mesmo pedido, agora com um selo, sem nada para fazer.
+   *
+   * Agora a tela troca para a lista de ordens com a nova destacada e a coluna
+   * Produção esperando a escolha. Ver `OrdensServicoPage`: é ela que lê o
+   * `novaOrdem` do estado da navegação.
+   */
   const gerarOrdem = async (v: PedidoClienteType, osModelo: string) => {
     const id = String(v.pedido.pedidoId);
 
@@ -199,11 +216,13 @@ const PedidosPage = () => {
       const r = await ProducaoService.daVenda(id, osModelo === "PADRAO" ? "" : osModelo);
 
       if (r.criado) {
-        alert.success("Ordem de serviço gerada!", `A venda de ${v.nomeCliente} entrou na primeira etapa do quadro.`);
-        await carregarOrdens();
-      } else {
-        alert.info("Nada a fazer", r.mensagem);
+        navigate("/producao/os", { state: { novaOrdem: r.id } });
+        return;
       }
+
+      /* Nada criado não é erro: a venda já tinha ordem, ou o plano não tem
+         produção. A frase é do servidor — ela diz qual das duas é. */
+      alert.info("Nada a fazer", r.mensagem);
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível gerar a ordem."));
     } finally {
