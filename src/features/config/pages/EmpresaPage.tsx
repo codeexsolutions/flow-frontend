@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building2, MessageCircle, MapPin, Save, CircleCheck, Factory, Truck } from "lucide-react";
+import { Building2, MessageCircle, MapPin, Save, CircleCheck, Factory, Truck, ShieldCheck } from "lucide-react";
 
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import { useAlert } from "@/shared/ui/Alert";
@@ -19,6 +19,7 @@ import PixEmpresa from "@/features/config/components/PixEmpresa";
 import DominioProprio from "@/features/config/components/DominioProprio";
 import ProducaoAutomatica from "@/features/config/components/ProducaoAutomatica";
 import ConfigEnvio from "@/features/config/components/ConfigEnvio";
+import TermosEmpresa from "@/features/config/components/TermosEmpresa";
 import usePlano from "@/shared/plano/plano.store";
 
 type EnterpriseLike = {
@@ -47,7 +48,7 @@ type EnterpriseLike = {
   };
 };
 
-type TabId = "identificacao" | "contato" | "endereco" | "producao" | "envio";
+type TabId = "identificacao" | "contato" | "endereco" | "producao" | "envio" | "privacidade";
 
 /**
  * A aba de Produção só existe para quem tem o módulo.
@@ -66,6 +67,9 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode; recurso?: string 
      A falta de NCM ou de CSC aparece na hora de emitir o cupom, e é lá que se
      resolve — não a duas telas de distância. */
   { id: "envio", label: "Envio", icon: <Truck size={15} />, recurso: "correios" },
+  /* Sem `recurso`: o aceite dos termos de dados vale para toda empresa, em
+     qualquer plano. É obrigação legal, não funcionalidade vendida. */
+  { id: "privacidade", label: "Privacidade", icon: <ShieldCheck size={15} /> },
 ];
 
 const EmpresaPage = () => {
@@ -341,6 +345,12 @@ const EmpresaPage = () => {
         {tab === "producao" && (
           <SettingsCard corpoRolavel icon={<Factory className="h-4 w-4" />} title="Produção" desc="O que acontece com a venda de serviço depois de registrada">
             <ProducaoAutomatica />
+          </SettingsCard>
+        )}
+
+        {tab === "privacidade" && (
+          <SettingsCard corpoRolavel icon={<ShieldCheck className="h-4 w-4" />} title="Privacidade e termos" desc="O que a sua empresa aceitou sobre tratamento de dados, e quando">
+            <TermosEmpresa />
           </SettingsCard>
         )}
 

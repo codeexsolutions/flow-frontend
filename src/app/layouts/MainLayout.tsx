@@ -6,6 +6,9 @@ import useTransicao from "@/shared/session/transicao.store";
 import TourInicial from "@/features/tour/TourInicial";
 import Novidades from "@/features/novidades/Novidades";
 
+import TermosLgpdModal from "@/features/termos/TermosLgpdModal";
+import { useTermosLgpd } from "@/features/termos/useTermosLgpd";
+
 import Sidebar from "@/shared/ui/Sidebar";
 import TabBar from "@/mobile/TabBar";
 import useSwipeAbas from "@/shared/hooks/useSwipeAbas";
@@ -19,6 +22,11 @@ const Main = () => {
   const reduzir = useReducedMotion();
 
   const [abriu, setAbriu] = useState(false);
+
+  /* Os termos de tratamento de dados. `bloqueando` já embute quem pode
+     resolver: para o vendedor cujo dono ainda não aceitou, isto é sempre
+     falso e o sistema abre normal. Ver `useTermosLgpd`. */
+  const termos = useTermosLgpd();
 
   return (
     <motion.div
@@ -38,11 +46,32 @@ const Main = () => {
       </main>
 
       <TabBar />
-      <TourInicial />
-      {/* As novidades da versão, uma vez por pessoa. Nunca junto do tour: quem
-          está vendo o sistema pela primeira vez não tem "antes" para comparar —
-          ver a nota em `Novidades`. */}
-      <Novidades />
+
+      {/*
+        O aceite vem ANTES de tudo que fala com a pessoa.
+
+        Tour e novidades são convites a olhar o sistema; os termos são a
+        condição para usá-lo. Mostrados juntos, virariam três caixas
+        disputando a mesma tela — e a de baixo, coberta por um scrim, pareceria
+        um defeito. Enquanto o aceite estiver pendente para quem pode dar, ele
+        é a única coisa na tela.
+      */}
+      {termos.bloqueando && termos.termos ? (
+        <TermosLgpdModal
+          termos={termos.termos}
+          salvando={termos.salvando}
+          erro={termos.erro}
+          onAceitar={() => void termos.aceitar()}
+        />
+      ) : (
+        <>
+          <TourInicial />
+          {/* As novidades da versão, uma vez por pessoa. Nunca junto do tour: quem
+              está vendo o sistema pela primeira vez não tem "antes" para comparar —
+              ver a nota em `Novidades`. */}
+          <Novidades />
+        </>
+      )}
     </motion.div>
   );
 };
