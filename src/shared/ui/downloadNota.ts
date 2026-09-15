@@ -114,49 +114,34 @@ export async function baixarNotaPdf(blob: Blob, nomeEmpresa: string, nomeBase?: 
 /* ══════════════════════ Ver antes de baixar ══════════════════════ */
 
 /**
- * A aba reservada no clique, esperando o documento ficar pronto.
+ * A ORDEM: primeiro a foto, depois a guia. Nunca ao contrário.
  *
- * Rasterizar a nota leva de meio a dois segundos, e `window.open` chamado
- * DEPOIS disso é bloqueado como pop-up em todo navegador: o bloqueador só
- * libera a janela que nasce dentro do gesto da pessoa. Então a aba é aberta
- * em branco no instante do clique e preenchida quando o arquivo existe.
+ * Aqui existia uma "aba reservada": o clique abria uma guia em branco escrita
+ * com "Preparando o documento…", e ela era preenchida quando o PNG ficasse
+ * pronto. O raciocínio era o bloqueador de pop-up, que só libera a janela
+ * nascida dentro do gesto da pessoa. O raciocínio estava certo e o efeito era
+ * desastroso:
+ *
+ *   A guia nova rouba o foco no mesmo instante em que nasce. A aba que ficou
+ *   atrás passa a `visibilityState === "hidden"`, e aba escondida NÃO RODA
+ *   `requestAnimationFrame` — medido: zero quadros em três segundos, enquanto
+ *   os temporizadores seguiam normalmente. Só que `html-to-image` resolve a
+ *   foto dentro de um `requestAnimationFrame` (`createImage`, em util.js). Ou
+ *   seja: reservar a guia era o que impedia a foto que ela estava esperando.
+ *   A guia ficava em "Preparando o documento…" para sempre, e nada nesta
+ *   cadeia dava erro — era uma espera que nunca terminava.
+ *
+ * Por isso o documento é rasterizado com a aba ainda à vista e a guia nasce
+ * depois, já com o arquivo na mão. O bloqueador continua valendo, e a licença
+ * do clique também: ela dura ~5 segundos (medido: `window.open` 2s depois do
+ * clique passa; 6s depois é bloqueado). A foto cabe folgada nesse prazo — e é
+ * por isso que a leitura das fontes, em `DownloadButton`, tem um teto BEM
+ * abaixo dele.
+ *
+ * Estourou o prazo, ou o bloqueador é mais duro (Safari), `window.open`
+ * devolve `null` — e aí o documento desce como PDF em vez de abrir. Pior que
+ * a guia, muito melhor que a espera eterna que estava aqui.
  */
-let abaReservada: Window | null = null;
-
-/** Chame no `onClick`, antes de qualquer `await`. */
-export function reservarAba(): void {
-  try {
-    abaReservada = window.open("", "_blank");
-
-    if (abaReservada) {
-      /* A aba em branco fica um tempo sem nada, e aba vazia parece travada. */
-      abaReservada.document.write(
-        '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">' +
-        "<title>Preparando o documento…</title></head>" +
-        '<body style="margin:0;display:grid;place-items:center;height:100vh;' +
-        'font:15px system-ui,sans-serif;background:#0f1115;color:#8b90a0">' +
-        "Preparando o documento…</body></html>",
-      );
-
-      /*
-       * FECHAR O STREAM AQUI é o que faz a troca de conteúdo funcionar.
-       *
-       * `document.write` sem `close()` deixa o parser da aba aberto, esperando
-       * mais texto. Enquanto ele está assim, escrever de novo APENDA ao que já
-       * está lá em vez de substituir — e o resultado é a aba presa no
-       * "Preparando o documento…" com o documento real nunca aparecendo.
-       *
-       * Com o stream fechado, a aba tem um documento completo e pronto, e
-       * `abrirDocumento` troca o conteúdo pelo DOM (ver lá), que é definido e
-       * não depende de timing nenhum.
-       */
-      abaReservada.document.close();
-    }
-  } catch {
-    /* Bloqueador agressivo: `abrirDocumento` cai no download direto. */
-    abaReservada = null;
-  }
-}
 
 /** Escapa o que vai para dentro do HTML da aba. */
 const escapar = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
@@ -188,35 +173,38 @@ const escapar = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<":
  * acabou de abrir. Elas morrem quando a aba (ou a que a abriu) fecha.
  */
 export async function abrirDocumento(png: Blob, nomeBase: string, nomeEmpresa: string): Promise<void> {
-  const aba = abaReservada;
-  abaReservada = null;
+  /* A guia nasce AQUI, com o PNG já pronto — ver o bloco acima sobre a ordem. */
+  const aba = window.open("", "_blank");
 
   /*
-   * Vale para a aba que nunca existiu E para a que não serve mais: fechada por
-   * quem clicou enquanto a foto era gerada, ou sem `body` porque o navegador
-   * recusou o `document.write` da reserva. Nos três casos a pessoa pediu um
-   * documento e precisa recebê-lo — e mexer no DOM de uma aba fechada
-   * lançaria um erro que as telas engolem calado.
+   * Bloqueador de pop-up, licença do clique vencida, ou a guia fechada na
+   * mesma hora: a pessoa pediu um documento e precisa recebê-lo de algum
+   * jeito. Mexer no DOM de uma aba que não existe lançaria um erro que as
+   * telas engolem calado — e ela ficaria sem nada.
    */
-  if (!aba || aba.closed || !aba.document?.body) {
+  if (!aba || aba.closed) {
     await baixarNotaPdf(png, nomeEmpresa, nomeBase);
     return;
   }
+
+  /*
+   * O esqueleto da guia, com o stream FECHADO.
+   *
+   * `document.write` sem `close()` deixa o parser aberto esperando mais texto,
+   * e escrever de novo APENDA em vez de substituir. Com o stream fechado a
+   * guia tem um documento completo, e trocar `title` e `body` abaixo é uma
+   * operação definida, sem corrida com o parser.
+   */
+  aba.document.write('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"></head><body></body></html>');
+  aba.document.close();
 
   const nome = nomeArquivo(nomeBase);
   const urlPng = URL.createObjectURL(png);
 
   const botao = "display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;text-decoration:none;font:14px system-ui,sans-serif;border:1px solid #2b2f3a";
 
-  /*
-   * O conteúdo entra pelo DOM, e NÃO por um segundo `document.write`.
-   *
-   * Reabrir o stream (`document.open()` + `write`) era o que prendia a aba no
-   * "Preparando o documento…": o primeiro write havia deixado o parser aberto,
-   * e o segundo apendava em vez de substituir. Com a aba já fechada em
-   * `reservarAba`, trocar `title` e `body` é uma operação definida, sem corrida
-   * com o parser e sem depender de quanto tempo levou para a foto ficar pronta.
-   */
+  /* O conteúdo entra pelo DOM, e NÃO por um segundo `document.write` — ver
+     acima por que o stream do esqueleto já foi fechado. */
   aba.document.title = nome;
 
   aba.document.body.setAttribute(
@@ -278,16 +266,4 @@ export async function abrirDocumento(png: Blob, nomeBase: string, nomeEmpresa: s
  */
 export async function baixarDocumento(png: Blob, nomeBase: string, nomeEmpresa: string): Promise<void> {
   await baixarNotaPdf(png, nomeEmpresa, nomeBase);
-}
-
-/** Desfaz a aba reservada quando o documento não vai mais abrir (erro, ou o
-    clique era de baixar). Aba em branco esquecida é pior que aba nenhuma. */
-export function descartarAba(): void {
-  try {
-    abaReservada?.close();
-  } catch {
-    /* Navegador que recusa fechar o que abriu: nada a fazer. */
-  }
-
-  abaReservada = null;
 }

@@ -3,7 +3,7 @@ import { Download, ExternalLink, Loader2, Check } from "lucide-react";
 
 import Dica from "@/shared/ui/Dica";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
-import { abrirDocumento, baixarDocumento, descartarAba, reservarAba } from "@/shared/ui/downloadNota";
+import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
 
 /**
  * O ÚNICO controle de documento do sistema — nota, recibo, orçamento, holerite.
@@ -137,15 +137,11 @@ const BotaoVerDocumento = ({
     if (ocupado) return;
 
     /*
-     * A guia nasce AQUI, dentro do clique.
-     *
-     * Rasterizar o documento leva de meio a dois segundos, e `window.open`
-     * chamado depois disso é bloqueado como pop-up em todo navegador — o
-     * bloqueador só libera a janela que nasce do gesto da pessoa. Baixar não
-     * abre guia nenhuma, então não reserva nada.
+     * O clique não abre guia nenhuma — quem abre é `abrirDocumento`, depois
+     * que o PNG existe. Abrir antes escondia ESTA aba, e aba escondida não
+     * roda `requestAnimationFrame`: a foto que a guia esperava nunca ficava
+     * pronta. O porquê inteiro está em `downloadNota`.
      */
-    if (modo === "ver") reservarAba();
-
     setEmCurso(modo);
 
     if (delegado) {
@@ -154,19 +150,6 @@ const BotaoVerDocumento = ({
       } catch (err) {
         console.error("Erro ao preparar o documento", err);
       } finally {
-        /*
-         * A aba órfã morre AQUI, sempre.
-         *
-         * As telas tratam o próprio erro e não o relançam — "falha de download
-         * não trava a tabela". Ótimo para a tabela, péssimo para a guia: ela
-         * foi aberta no clique e, sem ninguém para preenchê-la, ficava para
-         * sempre no "Preparando o documento…". Quem falhou nem sabe que ela
-         * existe.
-         *
-         * `descartarAba` não faz nada quando `abrirDocumento` já consumiu a
-         * aba, então chamar sempre é seguro: só fecha a que sobrou.
-         */
-        if (modo === "ver") descartarAba();
         setEmCurso(null);
       }
 
@@ -174,7 +157,6 @@ const BotaoVerDocumento = ({
     }
 
     if (!refNota) {
-      if (modo === "ver") descartarAba();
       setEmCurso(null);
       return;
     }
@@ -191,9 +173,6 @@ const BotaoVerDocumento = ({
     } catch (err) {
       console.error("Erro ao preparar o documento", err);
     } finally {
-      /* A guia reservada no clique não pode ficar órfã na tela — no-op quando
-         `abrirDocumento` já a consumiu. */
-      if (modo === "ver") descartarAba();
       setEmCurso(null);
     }
   };

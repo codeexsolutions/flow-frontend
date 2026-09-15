@@ -11,7 +11,7 @@ import { formatDate } from "@/shared/utils/date";
 import { SkeletonListaPainel } from "@/shared/ui/skeleton";
 import { ListaCabecalho, ListaLinha } from "@/shared/ui/DataTable";
 import { Selo } from "@/shared/ui/StatusBadge";
-import { gerarBlobNota } from "@/shared/ui/DownloadButton";
+import { gerarBlobNota, proximoQuadro } from "@/shared/ui/DownloadButton";
 import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
 import BotaoVerDocumento, { type ModoDocumento } from "@/shared/ui/BotaoVerDocumento";
 import { Modal } from "@/shared/ui/Modal";
@@ -146,7 +146,7 @@ const ListaOrcamentos = ({ busca, filtro, onCarregado }: Props) => {
 
     try {
       /* Espera o render do nó com o orçamento certo antes de fotografar. */
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      await proximoQuadro();
 
       const blob = await gerarBlobNota(refNotaBaixada);
 

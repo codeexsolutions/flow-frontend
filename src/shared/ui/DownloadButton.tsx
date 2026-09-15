@@ -45,9 +45,38 @@ async function embutir(img: HTMLImageElement): Promise<boolean> {
   }
 }
 
-/** Um quadro pintado de verdade — `rAF` sozinho ainda é antes da pintura. */
-const proximoQuadro = () =>
-  new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+/**
+ * Um quadro pintado de verdade — `rAF` sozinho ainda é antes da pintura.
+ *
+ * **Com prazo, porque quem espera está em SEGUNDO PLANO.**
+ *
+ * Ver o documento abre uma guia, e a guia nova rouba o foco no mesmo instante:
+ * quem rasteriza é a aba de trás, escondida. Navegador nenhum roda
+ * `requestAnimationFrame` em aba escondida — não há quadro a pintar —, então
+ * esta espera nunca terminava e a guia da frente ficava para sempre no
+ * "Preparando o documento…". Era ESTE o travamento; nem o parser da aba nem o
+ * cache das fontes, que foram consertados antes e não eram a causa.
+ *
+ * O `setTimeout` é a saída: temporizador em aba escondida é afrouxado (~1s),
+ * mas DISPARA. Com a aba à vista o `rAF` chega primeiro e nada muda; com ela
+ * atrás, o documento sai um segundo depois em vez de não sair.
+ *
+ * Nada do que vem a seguir depende de pintura: `getBoundingClientRect` força o
+ * layout na hora, e é dele que saem a largura e a altura da foto.
+ */
+export const proximoQuadro = (prazo = 400) =>
+  new Promise<void>((resolve) => {
+    let feito = false;
+
+    const seguir = () => {
+      if (feito) return;
+      feito = true;
+      resolve();
+    };
+
+    requestAnimationFrame(() => requestAnimationFrame(seguir));
+    setTimeout(seguir, prazo);
+  });
 
 /**
  * Espera as imagens do nó estarem realmente decodificadas.
@@ -71,7 +100,15 @@ const esperarImagens = async (node: HTMLElement) => {
           });
         }
 
-        await img.decode?.();
+        /* Também com prazo: `decode()` de uma imagem que o navegador decidiu
+           não desenhar (aba escondida, de novo) pode ficar pendurado, e aqui
+           isso custaria o documento inteiro. Sem a decodificação a foto pode
+           sair sem a logo — a segunda passagem do `toBlob` normalmente a
+           recupera —, e isso é melhor do que não sair. */
+        await Promise.race([
+          img.decode?.() ?? Promise.resolve(),
+          new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+        ]);
       } catch {
         /* Imagem quebrada não impede o download do documento. */
       }
@@ -112,11 +149,17 @@ let cssDasFontes: string | null = null;
  * Estourou o tempo, devolve `undefined` — e `undefined` faz o `html-to-image`
  * cuidar das fontes por conta própria, como fazia antes desta otimização: mais
  * lento, e correto. A próxima tentativa recomeça limpa.
+ *
+ * O teto é de DOIS segundos, e não cinco, porque ele gasta de um orçamento
+ * maior: a licença do clique, que o navegador dá por ~5s e sem a qual
+ * `abrirDocumento` não consegue abrir a guia (ver lá). Cinco segundos só para
+ * ler fontes comeria a licença inteira e o documento desceria como PDF em vez
+ * de abrir para conferência.
  */
 const fontesEmbutidas = async (node: HTMLElement): Promise<string | undefined> => {
   if (cssDasFontes !== null) return cssDasFontes;
 
-  const desistir = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 5000));
+  const desistir = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 2000));
 
   const css = await Promise.race([getFontEmbedCSS(node).catch(() => undefined), desistir]);
 

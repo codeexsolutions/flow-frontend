@@ -25,7 +25,7 @@ import useClienteStore from "@/features/clientes/store/cliente.store";
 import SalesOverviewPage from "@/features/vendas/pages/SalesOverviewPage";
 import SeletorPeriodo, { PERIODO_TUDO, type Periodo } from "@/shared/ui/SeletorPeriodo";
 import { mesesComMovimento, vendasAtivas } from "@/shared/domain/serieVendas";
-import { gerarBlobNota } from "@/shared/ui/DownloadButton";
+import { gerarBlobNota, proximoQuadro } from "@/shared/ui/DownloadButton";
 import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
 import { pixDaNota, type PixDaNota } from "@/shared/domain/pixDaNota";
 import ProducaoService, { type ItemProducao } from "@/features/producao/services/producao.service";
@@ -269,7 +269,7 @@ const SalesList = () => {
       setPixDownload(pix);
       setNotaDownload(v);
 
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      await proximoQuadro();
       const blob = await gerarBlobNota(refNotaDownload);
 
       const nomeBase = `nota-${v.pedido.pedidoId}`;

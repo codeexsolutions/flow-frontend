@@ -31,7 +31,7 @@ import { formatCurrency } from "@/shared/utils/currency";
 import BotaoVerDocumento, { type ModoDocumento } from "@/shared/ui/BotaoVerDocumento";
 import NotaResumo from "@/features/vendas/components/NotaResumo";
 import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
-import { gerarBlobNota } from "@/shared/ui/DownloadButton";
+import { gerarBlobNota, proximoQuadro } from "@/shared/ui/DownloadButton";
 import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
 import { pixDaNota, type PixDaNota } from "@/shared/domain/pixDaNota";
 import ProducaoService from "@/features/producao/services/producao.service";
@@ -738,7 +738,7 @@ const PontoDeVenda = () => {
       /* Espera o nó escondido renderizar com o documento certo antes de
          fotografar — sem isso o arquivo sai do documento anterior, ou em
          branco. */
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      await proximoQuadro();
 
       const blob = await gerarBlobNota(ref);
 

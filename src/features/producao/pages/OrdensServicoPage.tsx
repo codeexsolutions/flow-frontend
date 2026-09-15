@@ -13,7 +13,7 @@ import { SkeletonListaPainel } from "@/shared/ui/skeleton";
 import { MESES_EXTENSO, isSameDay, toDate } from "@/shared/utils/date";
 import Select from "@/shared/ui/Select";
 import BotaoVerDocumento, { type ModoDocumento } from "@/shared/ui/BotaoVerDocumento";
-import { gerarBlobNota } from "@/shared/ui/DownloadButton";
+import { gerarBlobNota, proximoQuadro } from "@/shared/ui/DownloadButton";
 import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
@@ -438,7 +438,7 @@ const OrdensServicoPage = () => {
     try {
       /* Espera o nó escondido render com a ordem certa antes de fotografar —
          sem isso o arquivo sai da ordem anterior, ou em branco. */
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      await proximoQuadro();
 
       const blob = await gerarBlobNota(refDoc);
 
