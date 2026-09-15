@@ -323,10 +323,31 @@ export const entregarArquivo = async (blob: Blob, filename: string) => {
         await navigator.share({ files: [file] });
         return;
       } catch (err) {
+        const nome = err instanceof Error ? err.name : "";
+
         // Usuário cancelou o menu de compartilhamento: não é um erro de
         // download, então não cai no fallback nem loga nada.
-        if (err instanceof Error && err.name === "AbortError") return;
-        throw err;
+        if (nome === "AbortError") return;
+
+        /*
+         * `NotAllowedError` aqui NÃO é o sistema negando permissão — é o
+         * gesto que venceu.
+         *
+         * A Web Share API exige ativação transitória: `navigator.share` só
+         * vale se o clique da pessoa ainda estiver "quente", e essa janela
+         * dura poucos segundos. Entre o clique e este ponto o documento foi
+         * rasterizado duas vezes e, no caso do PDF, montado pelo jsPDF —
+         * facilmente mais que isso. Quando a janela fecha, o navegador
+         * responde exatamente o que apareceu na tela do orçamento:
+         * "Failed to execute 'share' on 'Navigator'".
+         *
+         * Não há como reaquecer o gesto de dentro de uma cadeia assíncrona,
+         * e a pessoa pediu o arquivo — então qualquer falha que não seja o
+         * cancelamento dela cai no `<a download>` abaixo em vez de virar um
+         * alerta de erro. No app instalado esse link pode não ter para onde
+         * salvar, mas tentar e não salvar nada é melhor que garantir a falha.
+         */
+        console.warn("Compartilhamento indisponível; baixando pelo link.", err);
       }
     }
   }
