@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CalendarDays, ClipboardList, Factory, Receipt, Table2 } from "lucide-react";
 
-import useVendaStore from "@/features/vendas/store/venda.store";
-import ProducaoService, { type ItemProducao, type ModeloOsDisponivel } from "@/features/producao/services/producao.service";
+import ProducaoService, { type ItemProducao, type ModeloOsDisponivel, type PedidoDeProducao } from "@/features/producao/services/producao.service";
 import useSincronizacao from "@/shared/realtime/useSincronizacao";
 import { PageScreen } from "@/shared/ui/PageShell";
 import { BarraFiltros, ListaAcao, ListaCabecalho, ListaLinha, TabelaVazia } from "@/shared/ui/DataTable";
@@ -12,13 +11,11 @@ import { Selo } from "@/shared/ui/StatusBadge";
 import { SkeletonListaPainel } from "@/shared/ui/skeleton";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
-import { formatCurrency } from "@/shared/utils/currency";
 import { formatDate, toDate } from "@/shared/utils/date";
 import { getInitials } from "@/shared/utils/format";
 import Select from "@/shared/ui/Select";
 import { Modal } from "@/shared/ui/Modal";
 import AbasProducao from "@/features/producao/components/AbasProducao";
-import { estaCancelado, totalDoPedido, type PedidoClienteType } from "@/shared/domain/pedido";
 
 /**
  * PEDIDOS — a porta de entrada da produção.
@@ -40,16 +37,31 @@ import { estaCancelado, totalDoPedido, type PedidoClienteType } from "@/shared/d
  * Nada é copiado
  * ---------------------------------------------------------------------------
  * Esta tela não tem dados próprios. Ela é o cruzamento de duas listas que já
- * existem — as vendas (`venda.store`) e as ordens (`producao/itens`) —, casadas
- * pelo `pedido_fk` da ordem. É o que permite a mesma venda estar aqui, na aba
- * de OS e no quadro ao mesmo tempo, sem nenhuma cópia para sincronizar.
+ * existem — os pedidos (`producao/pedidos`) e as ordens (`producao/itens`),
+ * casadas pelo `pedido_fk` da ordem. É o que permite a mesma venda estar aqui,
+ * na aba de OS e no quadro ao mesmo tempo, sem nenhuma cópia para sincronizar.
+ *
+ * ---------------------------------------------------------------------------
+ * A lista vem da Produção, e não das Vendas
+ * ---------------------------------------------------------------------------
+ * Ela saía do `venda.store`, que lê `GET /pedidos/` — filtrado por vendedor
+ * para todo mundo que não é o dono. Quem produz não vende: a aba de onde o
+ * trabalho começa abria VAZIA exatamente para quem a usa, e gerar a ordem de
+ * serviço virava tarefa do dono.
+ *
+ * `GET /producao/pedidos` responde a mesma lista pela régua da área `producao`
+ * — e sem valor nenhum, porque o que a bancada precisa saber é o cliente, o
+ * dia e as peças. Quanto a loja faturou continua em Vendas, para quem tem
+ * Vendas.
  */
 
 const COLS = "grid-cols-[minmax(200px,2fr)_minmax(96px,120px)_minmax(120px,160px)_124px]";
 /* Sem coluna de data: quem responde "de quando é" é a faixa do dia, e uma
    coluna repetindo isso em toda linha gastaria largura para dizer de novo o
    que a pessoa acabou de ler no topo do bloco. */
-const ROTULOS = ["Cliente", "Total", "Produção", "Ações"];
+/* "Itens" no lugar de "Total": o tamanho do trabalho é o que esta lista
+   responde, e o valor da venda nunca foi assunto de quem vai produzi-la. */
+const ROTULOS = ["Cliente", "Itens", "Produção", "Ações"];
 const ALTURA_LINHA = 60;
 
 type Situacao = "todos" | "sem-os" | "com-os";
@@ -64,8 +76,8 @@ const SITUACOES: { valor: Situacao; label: string }[] = [
 const PedidosPage = () => {
   const alert = useAlert();
   const navigate = useNavigate();
-  const { vendas, fetchVendas, loading } = useVendaStore();
-
+  const [pedidos, setPedidos] = useState<PedidoDeProducao[]>([]);
+  const [carregandoPedidos, setCarregandoPedidos] = useState(true);
   const [ordens, setOrdens] = useState<ItemProducao[]>([]);
   const [carregandoOrdens, setCarregandoOrdens] = useState(true);
   const [gerando, setGerando] = useState<string | null>(null);
@@ -79,10 +91,23 @@ const PedidosPage = () => {
    * possível (a coluna Modelo, na aba OS), mas exigir isso significaria que a
    * primeira impressão sai sempre errada.
    */
-  const [aGerar, setAGerar] = useState<PedidoClienteType | null>(null);
+  const [aGerar, setAGerar] = useState<PedidoDeProducao | null>(null);
   const [modeloEscolhido, setModeloEscolhido] = useState("PADRAO");
   const [busca, setBusca] = useState("");
   const [situacao, setSituacao] = useState<Situacao>("todos");
+
+  const carregarPedidos = async () => {
+    try {
+      setPedidos(await ProducaoService.pedidos());
+    } catch {
+      /* Sem a lista não há tela. O vazio aqui é o mesmo do "nenhum pedido
+         ainda": falhar calado é melhor do que um erro vermelho sobre uma
+         lista que a pessoa não pediu — as ordens continuam na aba ao lado. */
+      setPedidos([]);
+    } finally {
+      setCarregandoPedidos(false);
+    }
+  };
 
   const carregarOrdens = async () => {
     try {
@@ -100,7 +125,7 @@ const PedidosPage = () => {
   };
 
   useEffect(() => {
-    void fetchVendas();
+    void carregarPedidos();
     void carregarOrdens();
 
     /* Os modelos que o painel liberou. Falhar aqui não derruba a tela: o
@@ -115,7 +140,7 @@ const PedidosPage = () => {
      tela aberta vê a ordem nova sem recarregar. */
   useSincronizacao(["producao", "pedidos"], () => {
     void carregarOrdens();
-    void fetchVendas(true);
+    void carregarPedidos();
   });
 
   /** A ordem de cada venda, pelo vínculo que a própria ordem guarda. */
@@ -130,12 +155,11 @@ const PedidosPage = () => {
   const filtradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
 
-    return vendas
-      /* Nota cancelada não é pedido: não há o que produzir para uma venda que
-         não existe mais. */
-      .filter((v) => !estaCancelado(v))
+    /* Nota cancelada não chega aqui: o servidor já a descarta — não há o que
+       produzir para uma venda que não existe mais. */
+    return pedidos
       .filter((v) => {
-        const temOrdem = ordemPorPedido.has(String(v.pedido.pedidoId));
+        const temOrdem = ordemPorPedido.has(String(v.pedidoId));
 
         if (situacao === "sem-os" && temOrdem) return false;
         if (situacao === "com-os" && !temOrdem) return false;
@@ -144,11 +168,11 @@ const PedidosPage = () => {
 
         return (
           (v.nomeCliente ?? "").toLowerCase().includes(termo) ||
-          String(v.pedido.pedidoId ?? "").toLowerCase().includes(termo)
+          String(v.pedidoId ?? "").toLowerCase().includes(termo)
         );
       })
-      .sort((a, b) => +new Date(b.pedido.dataPedido) - +new Date(a.pedido.dataPedido));
-  }, [vendas, ordemPorPedido, busca, situacao]);
+      .sort((a, b) => +new Date(b.dataPedido) - +new Date(a.dataPedido));
+  }, [pedidos, ordemPorPedido, busca, situacao]);
 
   /**
    * As mesmas linhas, agrupadas pelo DIA em que a venda entrou.
@@ -170,18 +194,18 @@ const PedidosPage = () => {
    * venda das 22h para o dia seguinte.
    */
   const porDia = useMemo(() => {
-    const mapa = new Map<string, { chave: string; rotulo: string; itens: PedidoClienteType[]; comOrdem: number }>();
+    const mapa = new Map<string, { chave: string; rotulo: string; itens: PedidoDeProducao[]; comOrdem: number }>();
 
     for (const v of filtradas) {
-      const dia = toDate(v.pedido.dataPedido);
+      const dia = toDate(v.dataPedido);
 
       if (!dia) continue;
 
       const chave = `${dia.getFullYear()}-${String(dia.getMonth() + 1).padStart(2, "0")}-${String(dia.getDate()).padStart(2, "0")}`;
-      const grupo = mapa.get(chave) ?? { chave, rotulo: formatDate(v.pedido.dataPedido), itens: [], comOrdem: 0 };
+      const grupo = mapa.get(chave) ?? { chave, rotulo: formatDate(v.dataPedido), itens: [], comOrdem: 0 };
 
       grupo.itens.push(v);
-      if (ordemPorPedido.has(String(v.pedido.pedidoId))) grupo.comOrdem += 1;
+      if (ordemPorPedido.has(String(v.pedidoId))) grupo.comOrdem += 1;
 
       mapa.set(chave, grupo);
     }
@@ -206,8 +230,8 @@ const PedidosPage = () => {
    * Produção esperando a escolha. Ver `OrdensServicoPage`: é ela que lê o
    * `novaOrdem` do estado da navegação.
    */
-  const gerarOrdem = async (v: PedidoClienteType, osModelo: string) => {
-    const id = String(v.pedido.pedidoId);
+  const gerarOrdem = async (v: PedidoDeProducao, osModelo: string) => {
+    const id = String(v.pedidoId);
 
     setGerando(id);
     setAGerar(null);
@@ -230,11 +254,11 @@ const PedidosPage = () => {
     }
   };
 
-  const carregando = loading || carregandoOrdens;
+  const carregando = carregandoPedidos || carregandoOrdens;
 
   /** Quantos dos pedidos visíveis já viraram ordem — o apoio do cabeçalho. */
   const comOrdemTotal = useMemo(
-    () => filtradas.filter((v) => ordemPorPedido.has(String(v.pedido.pedidoId))).length,
+    () => filtradas.filter((v) => ordemPorPedido.has(String(v.pedidoId))).length,
     [filtradas, ordemPorPedido],
   );
 
@@ -284,7 +308,7 @@ const PedidosPage = () => {
               contagem:
                 s.valor === "todos"
                   ? undefined
-                  : vendas.filter((v) => !estaCancelado(v) && ordemPorPedido.has(String(v.pedido.pedidoId)) === (s.valor === "com-os")).length,
+                  : pedidos.filter((v) => ordemPorPedido.has(String(v.pedidoId)) === (s.valor === "com-os")).length,
             }))}
           />
         </BarraFiltros>
@@ -332,7 +356,7 @@ const PedidosPage = () => {
                 </div>
 
                 {grupo.itens.map((v) => {
-                const id = String(v.pedido.pedidoId);
+                const id = String(v.pedidoId);
                 const ordem = ordemPorPedido.get(id);
 
                 return (
@@ -369,7 +393,17 @@ const PedidosPage = () => {
                       </span>
                     </span>
 
-                    <span className="text-right text-[12.5px] tabular-nums text-ink">{formatCurrency(totalDoPedido(v))}</span>
+                    {/* Quantas peças, e o que são: é a leitura que diz se o
+                        pedido é de dez minutos ou da semana inteira. Os nomes
+                        vêm embaixo, truncados — a lista inteira está na OS. */}
+                    <span className="min-w-0 text-right">
+                      <span className="block text-[12.5px] tabular-nums text-ink">
+                        {v.quantidadeItens} {v.quantidadeItens === 1 ? "peça" : "peças"}
+                      </span>
+                      <span className="block truncate text-[10px] text-faint">
+                        {v.itens.map((i) => i.nomeProduto).join(", ")}
+                      </span>
+                    </span>
 
                     {/* A coluna que a tela existe para responder. */}
                     <span className="flex justify-end">

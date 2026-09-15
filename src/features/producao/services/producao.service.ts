@@ -48,6 +48,27 @@ export type Movimento = {
   criado_em: string;
 };
 
+/**
+ * Um pedido como a aba de Produção o recebe — SEM valor.
+ *
+ * Esta tela lia `venda.store`, e por isso dependia da lista de vendas, que o
+ * servidor filtra por vendedor: quem produz não vende, e a aba onde a ordem de
+ * serviço nasce chegava vazia justamente para quem a abre. A lista agora vem
+ * de `/producao/pedidos`, com a régua da área `producao` — e sem dinheiro,
+ * que não é assunto da bancada.
+ */
+export type PedidoDeProducao = {
+  pedidoId: string;
+  clienteId: string | null;
+  nomeCliente: string;
+  /** ISO — a tela converte com `toDate`. */
+  dataPedido: string;
+  pedidoStatus: string;
+  /** A soma das quantidades: "3 peças". */
+  quantidadeItens: number;
+  itens: { nomeProduto: string; quantidade: number }[];
+};
+
 const dados = <T>(r: { data?: { data?: T[] } }): T[] => r.data?.data ?? [];
 
 /** Um modelo de OS que o painel liberou para esta empresa. */
@@ -83,6 +104,16 @@ const ProducaoService = {
     const id = r.data?.data?.[0] ? String(r.data.data[0]) : null;
 
     return { criado: Boolean(id), id, mensagem: String(r.data?.message ?? "") };
+  },
+
+  /**
+   * Os pedidos da aba Pedidos.
+   *
+   * Nota cancelada já não vem — o servidor a descarta, porque não há o que
+   * produzir para uma venda que não existe mais.
+   */
+  async pedidos() {
+    return dados<PedidoDeProducao>(await sysgrafix.get("/producao/pedidos"));
   },
 
   async etapas() {
