@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type LegacyRef } from "react";
-import { ShoppingCart, UserRound, AlertTriangle, ListFilter, FileText, CalendarClock, LayoutDashboard, Factory, ClipboardList } from "lucide-react";
+import { ShoppingCart, UserRound, ListFilter, FileText, CalendarClock, LayoutDashboard, Factory, ClipboardList } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { Modal } from "@/shared/ui/Modal";
@@ -34,11 +34,10 @@ import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import BotaoVerDocumento, { type ModoDocumento } from "@/shared/ui/BotaoVerDocumento";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
-import ContaService, { type NovaConta, type PrazoVenda } from "@/features/financeiro/services/conta.service";
+import ContaService, { type NovaConta } from "@/features/financeiro/services/conta.service";
 import ListaOrcamentos from "@/features/orcamentos/components/ListaOrcamentos";
 import { filtrarOrcamentos } from "@/features/orcamentos/utils/fila";
 import { type Orcamento, type StatusOrcamento } from "@/features/orcamentos/services/orcamento.service";
-import { dataBr, prazo } from "@/shared/utils/parcelas";
 
 /**
  * A lista de vendas.
@@ -56,18 +55,24 @@ import { dataBr, prazo } from "@/shared/utils/parcelas";
  * já está ali).
  */
 
-type StatusFiltro = "todos" | "pago" | "pendente" | "vencida" | "cancelado";
+type StatusFiltro = "todos" | "pago" | "pendente" | "cancelado";
 type NotaAberta = { id?: string; clienteId: string; nome?: string };
 
+/*
+ * Não há "Vencidas" aqui.
+ *
+ * A situação que este seletor recorta é a da NOTA — paga, aberta, cancelada —,
+ * e todas as três se leem na própria venda. "Vencida" não: ela dependia do
+ * acordo de pagamento, que é assunto do carnê. Ver o bloco em `ROTULOS`.
+ */
 const ROTULO_FILTRO: Record<StatusFiltro, string> = {
   todos: "Todas",
   pago: "Pagas",
   pendente: "Abertas",
-  vencida: "Vencidas",
   cancelado: "Canceladas",
 };
 
-const ORDEM_FILTRO: StatusFiltro[] = ["todos", "pago", "pendente", "vencida", "cancelado"];
+const ORDEM_FILTRO: StatusFiltro[] = ["todos", "pago", "pendente", "cancelado"];
 
 /** O nome do cartão segue a aba — é o título da página, que aqui é o cartão. */
 const TITULO_ABA: Record<AbaVenda, string> = {
@@ -81,7 +86,7 @@ const TITULO_ABA: Record<AbaVenda, string> = {
  * As colunas. A do cliente é a que estica; as de dinheiro têm largura fixa
  * para que os valores fiquem alinhados entre si de linha em linha.
  */
-const COLS = "grid-cols-[minmax(190px,1.7fr)_96px_120px_minmax(140px,1fr)_120px_120px_124px_124px]";
+const COLS = "grid-cols-[minmax(190px,1.7fr)_96px_120px_120px_120px_124px_124px]";
 
 /**
  * Os rótulos das colunas, em UMA lista.
@@ -89,8 +94,24 @@ const COLS = "grid-cols-[minmax(190px,1.7fr)_96px_120px_minmax(140px,1fr)_120px_
  * Servem ao cabeçalho do desktop e ao cartão do celular (ver `ListaLinha`). A
  * última é a coluna de AÇÕES: nomeada no cabeçalho do desktop e omitida do
  * cartão do celular, onde os botões já vão numa faixa no pé — ver `ListaLinha`.
+ *
+ * ---------------------------------------------------------------------------
+ * Não há "Vencimento" — a data de pagar é do CARNÊ
+ * ---------------------------------------------------------------------------
+ * Havia uma coluna aqui com o próximo vencimento de cada nota, e com ela vinha
+ * o resto do assunto: o filtro "Vencidas", a faixa "Vencido R$ X em N notas"
+ * no rodapé e a linha pintada de vermelho quando atrasava. Era a agenda de
+ * cobrança espalhada por dentro da lista de vendas — e mal, porque uma coluna
+ * só cabe a PRÓXIMA parcela: a nota de seis vezes aparecia como uma data só, e
+ * quem queria saber quem paga esta semana continuava tendo que ir ao carnê.
+ *
+ * Então vai inteiro para lá. O carnê é o calendário do mês com quem paga em
+ * cada dia, o total do dia e os botões de avisar e dar baixa (ver
+ * `AgendaCobrancas`) — ele responde a pergunta que a coluna só insinuava. Aqui
+ * ficam as perguntas da venda: quem comprou, quando, quanto, quanto já pagou e
+ * quanto falta.
  */
-const ROTULOS = ["Cliente", "Data", "Situação", "Vencimento", "Total", "Pago", "Pendente", "Ações"];
+const ROTULOS = ["Cliente", "Data", "Situação", "Total", "Pago", "Pendente", "Ações"];
 
 const ALTURA_LINHA = 60;
 
@@ -289,23 +310,6 @@ const SalesList = () => {
   const [vendedor, setVendedor] = useState("");
 
   /*
-   * O prazo de cada nota — o que transforma "em aberto" em "vencida".
-   *
-   * Vem separado das vendas porque é outro assunto: a nota diz o que foi
-   * vendido, o acordo diz quando aquilo tinha que ser pago. Nota sem acordo
-   * simplesmente não aparece no mapa, e continua sendo uma venda à vista.
-   */
-  const [prazos, setPrazos] = useState<Map<string, PrazoVenda>>(new Map());
-
-  const carregarPrazos = () => {
-    ContaService.prazoDasVendas()
-      .then((lista) => setPrazos(new Map(lista.map((p) => [String(p.pedidoId), p]))))
-      /* Falha aqui não derruba a lista de vendas: some a coluna de
-         vencimento, e o resto da tela continua servindo. */
-      .catch(() => setPrazos(new Map()));
-  };
-
-  /*
    * A base de clientes entra junto — não para a lista, para o DOCUMENTO.
    *
    * A nota impressa traz telefone, e-mail e documento do cliente, e esses três
@@ -319,7 +323,6 @@ const SalesList = () => {
    */
   useEffect(() => {
     fetchVendas();
-    carregarPrazos();
     void fetchClientes();
     void carregarOrdens();
   }, [fetchVendas, fetchClientes]);
@@ -334,14 +337,15 @@ const SalesList = () => {
   const fecharNota = () => {
     setNotaAberta(null);
     fetchVendas(true);
-    carregarPrazos();
+
+    /* O acordo combinado DENTRO da nota (ver `PrazoNota`) não tem mais onde
+       aparecer nesta lista — ele aparece no carnê, na aba ao lado. Então é o
+       carnê que precisa estar em dia quando a nota fecha, e não mais o mapa de
+       vencimentos que morava aqui. */
+    if (gestor) void fetchContas(true);
   };
 
   /* ======================= Filtros ======================= */
-
-  /** Vencida = parcela em aberto com vencimento no passado. O critério é do
-      servidor (`vencidas`), não do relógio do navegador. */
-  const estaVencida = (v: PedidoClienteType) => !estaCancelado(v) && (prazos.get(v.pedido.pedidoId)?.vencidas ?? 0) > 0;
 
   /**
    * Tudo menos o status — é a base de que saem as contagens do seletor.
@@ -365,11 +369,10 @@ const SalesList = () => {
     if (s === "pago") return lista.filter(estaQuitado);
     if (s === "pendente") return lista.filter(estaAberto);
     if (s === "cancelado") return lista.filter(estaCancelado);
-    if (s === "vencida") return lista.filter(estaVencida);
     return lista;
   };
 
-  const vendasFiltradas = useMemo(() => porStatus(baseFiltrada, status), [baseFiltrada, status, prazos]);
+  const vendasFiltradas = useMemo(() => porStatus(baseFiltrada, status), [baseFiltrada, status]);
 
   /** As opções do seletor de status, cada uma com quantas notas deixa passar. */
   const opcoesStatus = useMemo(
@@ -378,10 +381,8 @@ const SalesList = () => {
         valor: s,
         label: ROTULO_FILTRO[s],
         contagem: porStatus(baseFiltrada, s).length,
-        /* O ponto só existe quando há nota vencida de verdade. */
-        alerta: s === "vencida" && baseFiltrada.some(estaVencida),
       })),
-    [baseFiltrada, prazos],
+    [baseFiltrada],
   );
 
   /*
@@ -519,27 +520,6 @@ const SalesList = () => {
     [vendas],
   );
 
-  /* O que já passou do vencimento — o número que faz alguém ligar cobrando. */
-  const vencido = useMemo(() => {
-    let valor = 0;
-    let notas = 0;
-
-    /* Percorre as VENDAS, não o mapa: nota cancelada não é cobrança, mesmo
-       que o acordo dela ainda exista no financeiro. */
-    for (const v of vendas) {
-      if (estaCancelado(v)) continue;
-
-      const p = prazos.get(v.pedido.pedidoId);
-
-      if (p && p.vencidas > 0) {
-        valor += p.vencido;
-        notas += 1;
-      }
-    }
-
-    return { valor, notas };
-  }, [prazos, vendas]);
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <TabelaCard
@@ -565,9 +545,11 @@ const SalesList = () => {
               ? `${orcamentosVisiveis.length === 1 ? "proposta" : "propostas"}${orcamentosVisiveis.length !== orcamentosNaFila.length ? ` de ${orcamentosNaFila.length}` : ""}`
               : "parcelas em aberto"
         }
-        /* A largura mínima de 980px é das COLUNAS. Os painéis são fluidos e
-           herdariam dela uma barra de rolagem horizontal no notebook. */
-        minWidth={aba === "vendas" ? 980 : 0}
+        /* A largura mínima é das COLUNAS. Os painéis são fluidos e herdariam
+           dela uma barra de rolagem horizontal no notebook. Caiu de 980 para
+           840 junto com a coluna de vencimento: mantê-la reservaria no
+           notebook a largura de uma coluna que não existe mais. */
+        minWidth={aba === "vendas" ? 840 : 0}
         /* No celular os painéis empurram o cartão em vez de rolar por dentro
            dele — ver `corpoLivre`. As listas continuam paginando. */
         corpoLivre={aba === "visao-geral"}
@@ -707,23 +689,13 @@ const SalesList = () => {
          */
         footer={aba !== "vendas" ? undefined : (
           <>
-            <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span className="flex items-center gap-1.5">
-                Total em aberto <strong className="nums text-[13px] text-danger">{formatCurrency(totalEmAberto)}</strong>
-              </span>
-
-              {/* O vencido só aparece quando existe: uma coluna zerada
-                  permanente ensina o olho a ignorar o lugar onde o alerta
-                  apareceria. */}
-              {vencido.notas > 0 && (
-                <span className="flex items-center gap-1.5 text-danger">
-                  <AlertTriangle size={12} />
-                  Vencido <strong className="nums text-[13px]">{formatCurrency(vencido.valor)}</strong>
-                  <span className="text-faint">
-                    em {vencido.notas} {vencido.notas === 1 ? "nota" : "notas"}
-                  </span>
-                </span>
-              )}
+            {/* Um número só: o que a loja tem a receber destas notas. O
+                "Vencido R$ X em N notas" que vinha ao lado era o alerta de
+                cobrança, e cobrança se faz no carnê — onde o mesmo atraso
+                aparece no dia em que caiu, com o cliente e o botão de avisar
+                junto. */}
+            <span className="flex items-center gap-1.5">
+              Total em aberto <strong className="nums text-[13px] text-danger">{formatCurrency(totalEmAberto)}</strong>
             </span>
 
             {totalPaginas > 1 && (
@@ -769,8 +741,10 @@ const SalesList = () => {
             {/* Os rótulos saem de `ROTULOS`, a mesma lista do cartão do
                 celular. */}
             <ListaCabecalho cols={COLS}>
+              {/* Da coluna 3 em diante é dinheiro, e dinheiro alinha à
+                  direita. */}
               {ROTULOS.map((r, i) => (
-                <span key={r ?? `vazio-${i}`} className={r && i >= 4 ? "text-right" : undefined}>{r}</span>
+                <span key={r ?? `vazio-${i}`} className={r && i >= 3 ? "text-right" : undefined}>{r}</span>
               ))}
             </ListaCabecalho>
 
@@ -784,11 +758,6 @@ const SalesList = () => {
               const idCurto = v.pedido.pedidoId?.slice(-6).toUpperCase() ?? "—";
               const baixandoEsta = baixandoNota && notaDownload?.pedido.pedidoId === v.pedido.pedidoId;
 
-              /* O vencimento que interessa é o da PRÓXIMA parcela em aberto —
-                 as já pagas não cobram nada de ninguém. */
-              const p = prazos.get(v.pedido.pedidoId);
-              const atrasada = !estaCancelado(v) && (p?.vencidas ?? 0) > 0;
-
               /* A ordem desta venda, se ela já foi para a oficina. */
               const ordem = ordens.get(String(v.pedido.pedidoId));
 
@@ -799,7 +768,6 @@ const SalesList = () => {
                   rotulos={ROTULOS}
                   altura={ALTURA_LINHA}
                   ariaLabel={`Abrir a nota de ${v.nomeCliente}`}
-                  destaque={atrasada ? "danger" : undefined}
                   onClick={() => abrirNota({ id: v.pedido.pedidoId, clienteId: v.clienteId, nome: v.nomeCliente })}
                   acoes={
                     <>
@@ -859,21 +827,6 @@ const SalesList = () => {
 
                   <span className="nums text-[12px] text-mist">{formatDateShort(v.pedido.dataPedido)}</span>
                   <span><PedidoStatusBadge status={v.pedido.pedidoStatus} /></span>
-
-                  <span className="min-w-0 pr-3">
-                    {p?.proximoVencimento ? (
-                      <>
-                        <span className={`nums block truncate text-[12px] ${atrasada ? "text-danger" : "text-mist"}`}>{dataBr(String(p.proximoVencimento))}</span>
-                        <span className={`block truncate text-[10px] ${atrasada ? "text-danger" : "text-muted"}`}>
-                          {atrasada ? `${p.diasAtraso} ${p.diasAtraso === 1 ? "dia" : "dias"} em atraso` : prazo(String(p.proximoVencimento)).texto}
-                        </span>
-                      </>
-                    ) : p ? (
-                      <span className="text-[12px] text-success">quitada</span>
-                    ) : (
-                      <span className="text-[12px] text-faint">à vista</span>
-                    )}
-                  </span>
 
                   <span className="nums text-right text-[12.5px] text-ink">{formatCurrency(total)}</span>
                   {/* Zerado fica apagado: um valor em verde ou vermelho que
