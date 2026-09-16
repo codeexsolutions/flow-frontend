@@ -26,7 +26,7 @@ import SalesOverviewPage from "@/features/vendas/pages/SalesOverviewPage";
 import SeletorPeriodo, { PERIODO_TUDO, type Periodo } from "@/shared/ui/SeletorPeriodo";
 import { mesesComMovimento, vendasAtivas } from "@/shared/domain/serieVendas";
 import { gerarBlobNota, proximoQuadro } from "@/shared/ui/DownloadButton";
-import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
+import { entregarDocumento } from "@/shared/ui/downloadNota";
 import { pixDaNota, type PixDaNota } from "@/shared/domain/pixDaNota";
 import ProducaoService, { type ItemProducao } from "@/features/producao/services/producao.service";
 import useSincronizacao from "@/shared/realtime/useSincronizacao";
@@ -275,8 +275,7 @@ const SalesList = () => {
       const nomeBase = `nota-${v.pedido.pedidoId}`;
       const empresa = enterprise?.nomeFantasia ?? "nota";
 
-      if (modo === "ver") await abrirDocumento(blob, nomeBase, empresa);
-      else await baixarDocumento(blob, nomeBase, empresa);
+      await entregarDocumento(blob, modo, nomeBase, empresa);
     } catch {
       /* Falha de download não trava a tabela — o usuário tenta de novo. */
     } finally {

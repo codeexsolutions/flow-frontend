@@ -1,15 +1,17 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
-import { Download, ExternalLink, Loader2, Check } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Download, ExternalLink, FileText, Image as Imagem, Loader2, Check } from "lucide-react";
 
 import Dica from "@/shared/ui/Dica";
+import Suspenso from "@/shared/ui/Suspenso";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
-import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
+import { entregarDocumento, type ModoDocumento } from "@/shared/ui/downloadNota";
 
 /**
  * O ÚNICO controle de documento do sistema — nota, recibo, orçamento, holerite.
  *
  * Dois gestos colados: **Ver** abre o documento numa guia e **Baixar** manda o
- * PDF direto para a pasta de downloads, sem guia nenhuma.
+ * arquivo direto para a pasta de downloads, sem guia nenhuma — em PDF ou em
+ * PNG, conforme o formato escolhido no menu da seta.
  *
  * ---------------------------------------------------------------------------
  * Por que os dois, e não um
@@ -26,17 +28,39 @@ import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
  * Nenhum dos dois esbarra no outro.
  *
  * ---------------------------------------------------------------------------
+ * Por que o FORMATO voltou a ser uma escolha
+ * ---------------------------------------------------------------------------
+ * A seta baixava PDF, e só PDF. Mas o documento que sai daqui vai para o
+ * WhatsApp do cliente, e lá o PNG é melhor: chega como foto, abre dentro da
+ * própria conversa e não pede leitor de PDF do outro lado. O PNG já existia —
+ * na guia de conferência, no botão "Baixar imagem" — e era justamente isso que
+ * obrigava quem queria a imagem a abrir a guia, esperar, baixar e fechar.
+ *
+ * Os dois formatos agora ficam onde a pessoa já clicava, num menu de duas
+ * linhas. É um menu, e não um terceiro botão, porque na fileira de ações de
+ * uma lista os pixels são do valor da venda: dois botões de baixar lado a lado
+ * empurrariam a linha inteira.
+ *
+ * O menu não custa uma rasterização a mais — o PNG é o mesmo blob nos dois
+ * casos, e o PDF é uma página A4 com essa imagem colada dentro (ver
+ * `downloadNota`). Escolher PNG é, na verdade, o caminho mais curto dos dois.
+ *
+ * ---------------------------------------------------------------------------
  * Dois modos
  * ---------------------------------------------------------------------------
  * Com `refNota`, o botão rasteriza o nó que recebeu. Com `onAbrir`, quem
  * prepara é a tela — as listas mantêm UM nó escondido e trocam o conteúdo pelo
  * da linha escolhida antes de fotografar, e esse preparo não é daqui. Nesse
- * modo o `modo` ("ver" ou "baixar") chega como argumento, e é a tela que chama
- * `abrirDocumento` ou `baixarDocumento`.
+ * modo o `modo` ("ver", "pdf" ou "png") chega como argumento, e é a tela que
+ * chama `entregarDocumento`.
  */
 
-/** O que o clique faz: abrir numa guia ou baixar o PDF direto. */
-export type ModoDocumento = "ver" | "baixar";
+/**
+ * O que o clique faz. Mora em `downloadNota`, junto de quem resolve cada um
+ * dos três; fica reexportado aqui porque é nesta assinatura que as telas o
+ * encontram.
+ */
+export type { ModoDocumento };
 
 type Props = {
   /**
@@ -50,8 +74,8 @@ type Props = {
    * Quem prepara o documento, quando não é o componente.
    *
    * A tela monta o nó escondido com o documento da linha e chama
-   * `abrirDocumento` ou `baixarDocumento`, conforme o `modo` recebido. Neste
-   * modo o botão só dispara e mostra o estado que a tela informa em `ocupado`.
+   * `entregarDocumento` com o `modo` recebido. Neste modo o botão só dispara e
+   * mostra o estado que a tela informa em `ocupado`.
    */
   onAbrir?: (modo: ModoDocumento) => void | Promise<void>;
   /** Estado de "gerando" quando quem prepara é a tela (`onAbrir`). */
@@ -91,21 +115,28 @@ const BotaoVerDocumento = ({
   documento = "documento",
   variante = "completo",
 }: Props) => {
-  /** Qual dos dois gestos está em andamento — `null` quando nenhum. */
+  /** Qual dos gestos está em andamento — `null` quando nenhum. */
   const [emCurso, setEmCurso] = useState<ModoDocumento | null>(null);
   const [sucesso, setSucesso] = useState<ModoDocumento | null>(null);
+
+  /** O menu de formatos, ancorado na seta. */
+  const [menuAberto, setMenuAberto] = useState(false);
+  const refBaixar = useRef<HTMLButtonElement>(null);
 
   const delegado = typeof onAbrir === "function";
   const naLinha = variante === "linha";
 
   /*
    * No modo delegado quem diz se está ocupado é a tela — mas ela só informa
-   * QUE está, não qual dos dois gestos foi pedido. O `emCurso` guarda isso
-   * daqui, para o giro aparecer no botão que a pessoa apertou.
+   * QUE está, não qual dos gestos foi pedido. O `emCurso` guarda isso daqui,
+   * para o giro aparecer no botão que a pessoa apertou.
    */
   const ocupado = delegado ? ocupadoExterno || emCurso !== null : emCurso !== null;
-  const ocupadoBaixar = ocupado && emCurso === "baixar";
+
+  /* PDF e PNG saem da MESMA seta: para o giro e para o ✓, os dois são "baixar". */
+  const ocupadoBaixar = ocupado && (emCurso === "pdf" || emCurso === "png");
   const ocupadoVer = ocupado && !ocupadoBaixar;
+  const sucessoBaixar = sucesso === "pdf" || sucesso === "png";
 
   /*
    * O ✓ de "pronto" também quando quem prepara é a tela.
@@ -142,6 +173,7 @@ const BotaoVerDocumento = ({
      * roda `requestAnimationFrame`: a foto que a guia esperava nunca ficava
      * pronta. O porquê inteiro está em `downloadNota`.
      */
+    setMenuAberto(false);
     setEmCurso(modo);
 
     if (delegado) {
@@ -165,8 +197,7 @@ const BotaoVerDocumento = ({
       const blob = await gerarBlobNota(refNota);
       const nomeBase = `${prefixo}-${nomeEmpresa}`;
 
-      if (modo === "ver") await abrirDocumento(blob, nomeBase, nomeEmpresa);
-      else await baixarDocumento(blob, nomeBase, nomeEmpresa);
+      await entregarDocumento(blob, modo, nomeBase, nomeEmpresa);
 
       setSucesso(modo);
       setTimeout(() => setSucesso(null), 2000);
@@ -179,16 +210,9 @@ const BotaoVerDocumento = ({
 
   const tamanho = naLinha ? 14 : 17;
 
-  const icone = (modo: ModoDocumento, girando: boolean) =>
-    girando ? (
-      <Loader2 size={tamanho} className="animate-spin" />
-    ) : sucesso === modo ? (
-      <Check size={tamanho} className="text-success" />
-    ) : modo === "ver" ? (
-      <ExternalLink size={tamanho} />
-    ) : (
-      <Download size={tamanho} />
-    );
+  /** Giro enquanto trabalha, ✓ quando termina, ícone do gesto no descanso. */
+  const icone = (girando: boolean, feito: boolean, padrao: ReactNode) =>
+    girando ? <Loader2 size={tamanho} className="animate-spin" /> : feito ? <Check size={tamanho} className="text-success" /> : padrao;
 
   /* Os dois botões são um controle só: um par colado, arredondado nas pontas
      de fora e sem fio dobrado no meio. */
@@ -199,7 +223,7 @@ const BotaoVerDocumento = ({
   const pontaEsquerda = naLinha ? "rounded-l-lg border-r-0" : "rounded-l-xl border-r-0";
   const pontaDireita = naLinha ? "rounded-r-lg px-2" : "rounded-r-xl px-3";
 
-  const tituloBaixar = `Baixar ${documento === "documento" ? "o documento" : documento} em PDF`;
+  const tituloBaixar = `Baixar ${documento === "documento" ? "o documento" : documento}`;
 
   const verBotao = (
     <button
@@ -215,7 +239,7 @@ const BotaoVerDocumento = ({
       }}
       className={`${base} ${pontaEsquerda}`}
     >
-      {icone("ver", ocupadoVer)}
+      {icone(ocupadoVer, sucesso === "ver", <ExternalLink size={tamanho} />)}
       {/* O nome do documento no próprio botão, e não só no `title`: dica de
           ferramenta não existe no celular, que é onde a nota é mandada.
 
@@ -230,6 +254,25 @@ const BotaoVerDocumento = ({
     </button>
   );
 
+  /** Uma linha do menu de formatos. */
+  const formato = (modo: Exclude<ModoDocumento, "ver">, simbolo: ReactNode, rotulo: string, para: string) => (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={() => void disparar(modo)}
+      className="focus-ring flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent/[0.12]"
+    >
+      <span className="shrink-0 text-mist">{simbolo}</span>
+
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12.5px] text-ink">{rotulo}</span>
+        {/* Para que serve cada um: quem está no balcão não escolhe formato de
+            arquivo por gosto, escolhe pelo que vai fazer com ele. */}
+        <span className="block truncate text-[11px] text-faint">{para}</span>
+      </span>
+    </button>
+  );
+
   return (
     <div className="flex shrink-0 items-center">
       {/* `Dica` no Ver só na linha: lá o rótulo some no celular e encolhe no
@@ -239,19 +282,41 @@ const BotaoVerDocumento = ({
 
       <Dica texto={tituloBaixar}>
         <button
+          ref={refBaixar}
           type="button"
           title={naLinha ? undefined : tituloBaixar}
           aria-label={tituloBaixar}
+          aria-haspopup="menu"
+          aria-expanded={menuAberto}
           disabled={ocupado}
           onClick={(ev) => {
             ev.stopPropagation();
-            void disparar("baixar");
+            setMenuAberto((v) => !v);
           }}
           className={`${base} ${pontaDireita}`}
         >
-          {icone("baixar", ocupadoBaixar)}
+          {icone(ocupadoBaixar, sucessoBaixar, <Download size={tamanho} />)}
         </button>
       </Dica>
+
+      {/* O menu vai para um portal (`Suspenso`): aqui dentro ele seria
+          recortado pelo corpo rolável da lista ou pelo painel do modal — e
+          `z-index` não resolve recorte. */}
+      <Suspenso aberto={menuAberto} onFechar={() => setMenuAberto(false)} ancora={refBaixar} largura={208} alinhar="fim" alturaMax={200}>
+        {/*
+          O clique morre AQUI, e não sobe para a linha.
+
+          O menu está num portal no `body`, mas o evento do React sobe pela
+          ÁRVORE DE COMPONENTES, não pela do DOM — e a árvore deste botão
+          continua sendo a da linha da lista, que é clicável inteira. Sem
+          barrar, escolher o formato baixaria o arquivo E abriria o modal da
+          venda por baixo dele.
+        */}
+        <div role="menu" aria-label={tituloBaixar} onClick={(ev) => ev.stopPropagation()}>
+          {formato("pdf", <FileText size={14} />, "Baixar PDF", "Para imprimir ou arquivar")}
+          {formato("png", <Imagem size={14} />, "Baixar imagem (PNG)", "Para mandar no WhatsApp")}
+        </div>
+      </Suspenso>
     </div>
   );
 };

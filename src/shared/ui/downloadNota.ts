@@ -267,3 +267,46 @@ export async function abrirDocumento(png: Blob, nomeBase: string, nomeEmpresa: s
 export async function baixarDocumento(png: Blob, nomeBase: string, nomeEmpresa: string): Promise<void> {
   await baixarNotaPdf(png, nomeEmpresa, nomeBase);
 }
+
+/* ══════════════════════ Os formatos ══════════════════════ */
+
+/**
+ * O que o clique pede: ver numa guia, baixar o PDF ou baixar a imagem.
+ *
+ * Mora AQUI, e não no botão, porque quem resolve cada um destes é este
+ * arquivo. `BotaoVerDocumento` reexporta o tipo — as telas continuam
+ * importando de lá, onde ele aparece na assinatura do `onAbrir`.
+ */
+export type ModoDocumento = "ver" | "pdf" | "png";
+
+/**
+ * A imagem direto na pasta de downloads.
+ *
+ * O PNG é o que se manda no WhatsApp: chega como foto, abre na conversa e não
+ * exige leitor de PDF do outro lado. Ele já existia dentro da guia de
+ * conferência ("Baixar imagem"), mas só lá — quem clicava na seta da lista
+ * recebia PDF e não tinha como pedir outra coisa sem abrir a guia inteira.
+ *
+ * Não recebe `nomeEmpresa`: o PNG é o arquivo que `gerarBlobNota` já
+ * devolveu, e o nome sai inteiro do `nomeBase` — o mesmo que o PDF usa, para
+ * o mesmo documento não sair com dois nomes conforme o formato escolhido.
+ */
+export async function baixarDocumentoPng(png: Blob, nomeBase: string): Promise<void> {
+  await entregarArquivo(png, `${nomeArquivo(nomeBase)}.png`);
+}
+
+/**
+ * O destino do documento, escolhido num lugar só.
+ *
+ * As telas que preparam o próprio nó (listas de venda, de orçamento e de
+ * ordem de serviço) repetiam `if (modo === "ver") ... else ...` cada uma à sua
+ * maneira. Com um formato a mais, cada `else` esquecido viraria um PNG saindo
+ * como PDF numa tela e não na outra. Aqui a decisão é uma só: a tela rasteriza
+ * e entrega o blob, este arquivo decide o que fazer com ele.
+ */
+export async function entregarDocumento(png: Blob, modo: ModoDocumento, nomeBase: string, nomeEmpresa: string): Promise<void> {
+  if (modo === "ver") return abrirDocumento(png, nomeBase, nomeEmpresa);
+  if (modo === "png") return baixarDocumentoPng(png, nomeBase);
+
+  return baixarDocumento(png, nomeBase, nomeEmpresa);
+}

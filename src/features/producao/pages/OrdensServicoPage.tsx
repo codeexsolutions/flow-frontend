@@ -14,7 +14,7 @@ import { MESES_EXTENSO, isSameDay, toDate } from "@/shared/utils/date";
 import Select from "@/shared/ui/Select";
 import BotaoVerDocumento, { type ModoDocumento } from "@/shared/ui/BotaoVerDocumento";
 import { gerarBlobNota, proximoQuadro } from "@/shared/ui/DownloadButton";
-import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
+import { entregarDocumento } from "@/shared/ui/downloadNota";
 import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
@@ -445,8 +445,7 @@ const OrdensServicoPage = () => {
       const nomeBase = `os-${o.codigo}`;
       const nomeEmpresa = empresa?.nomeFantasia ?? "ordem-de-servico";
 
-      if (modo === "ver") await abrirDocumento(blob, nomeBase, nomeEmpresa);
-      else await baixarDocumento(blob, nomeBase, nomeEmpresa);
+      await entregarDocumento(blob, modo, nomeBase, nomeEmpresa);
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir a ordem."));
     } finally {

@@ -12,7 +12,7 @@ import { SkeletonListaPainel } from "@/shared/ui/skeleton";
 import { ListaCabecalho, ListaLinha } from "@/shared/ui/DataTable";
 import { Selo } from "@/shared/ui/StatusBadge";
 import { gerarBlobNota, proximoQuadro } from "@/shared/ui/DownloadButton";
-import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
+import { entregarDocumento } from "@/shared/ui/downloadNota";
 import BotaoVerDocumento, { type ModoDocumento } from "@/shared/ui/BotaoVerDocumento";
 import { Modal } from "@/shared/ui/Modal";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
@@ -151,14 +151,13 @@ const ListaOrcamentos = ({ busca, filtro, onCarregado }: Props) => {
       const blob = await gerarBlobNota(refNotaBaixada);
 
       /* Conferir abre numa guia — não deveria custar um arquivo na pasta de
-         downloads —, e quem já conferiu baixa o PDF direto pela seta. Os dois
-         caminhos saem do MESMO PNG rasterizado, então o documento é idêntico,
-         e o nome também: `orcamento-<nº>`. */
+         downloads —, e quem já conferiu baixa pela seta, em PDF ou em PNG. Os
+         três caminhos saem do MESMO PNG rasterizado, então o documento é
+         idêntico, e o nome também: `orcamento-<nº>`. */
       const nomeBase = `orcamento-${o.codigo}`;
       const empresa = enterprise?.nomeFantasia ?? "orcamento";
 
-      if (modo === "ver") await abrirDocumento(blob, nomeBase, empresa);
-      else await baixarDocumento(blob, nomeBase, empresa);
+      await entregarDocumento(blob, modo, nomeBase, empresa);
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir o orçamento."));
     } finally {

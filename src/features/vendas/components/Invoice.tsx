@@ -2100,7 +2100,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
              * sem fechar nada — e o que ele baixa é o documento de verdade.
              */}
             {(modoOrcamento ? Boolean(orcamentoId) : Boolean(id)) && (
-              <BotaoVerDocumento refNota={refDocumento} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Baixar orçamento" : "Baixar nota"} documento={modoOrcamento ? "orçamento" : "nota"} />
+              <BotaoVerDocumento refNota={refDocumento} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Ver ou baixar o orçamento" : "Ver ou baixar a nota"} documento={modoOrcamento ? "orçamento" : "nota"} />
             )}
 
             {/* O CUPOM FISCAL — outro documento, não outra via da nota.

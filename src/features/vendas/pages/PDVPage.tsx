@@ -32,7 +32,7 @@ import BotaoVerDocumento, { type ModoDocumento } from "@/shared/ui/BotaoVerDocum
 import NotaResumo from "@/features/vendas/components/NotaResumo";
 import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
 import { gerarBlobNota, proximoQuadro } from "@/shared/ui/DownloadButton";
-import { abrirDocumento, baixarDocumento } from "@/shared/ui/downloadNota";
+import { entregarDocumento } from "@/shared/ui/downloadNota";
 import { pixDaNota, type PixDaNota } from "@/shared/domain/pixDaNota";
 import ProducaoService from "@/features/producao/services/producao.service";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
@@ -742,13 +742,12 @@ const PontoDeVenda = () => {
 
       const blob = await gerarBlobNota(ref);
 
-      /* O mesmo `nome` nos dois formatos: só a extensão muda. Sem passá-lo ao
-         PDF, o orçamento nº 12 saía como `orcamento-12.png` de um lado e
+      /* O mesmo `nome` em todos os formatos: só a extensão muda. Sem passá-lo
+         ao PDF, o orçamento nº 12 saía como `orcamento-12.png` de um lado e
          `nota-orcamento-12-2026-09-08.pdf` do outro. */
       const empresa = enterprise?.nomeFantasia ?? nome;
 
-      if (modo === "ver") await abrirDocumento(blob, nome, empresa);
-      else await baixarDocumento(blob, nome, empresa);
+      await entregarDocumento(blob, modo, nome, empresa);
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível gerar o arquivo."));
     } finally {
