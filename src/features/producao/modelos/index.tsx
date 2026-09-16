@@ -141,10 +141,18 @@ export const MODELOS_OS: Record<ChaveModeloOS, ModeloOS> = {
       />
     ),
 
+    /*
+     * A edição é a MESMA FOLHA A4, e não uma versão esticada dela.
+     *
+     * Havia um `a4={false}` aqui, que soltava a largura para a ficha caber no
+     * modal. O preço era o preenchimento não se parecer com o papel: os blocos
+     * esticavam, a proporção mudava e só o PDF dizia se a grade tinha coubido
+     * na página. Agora quem resolve o tamanho é o `VisorDocumento`, que reduz
+     * a folha inteira por `scale` — mesma página, vista de mais longe.
+     */
     Edicao: ({ ordem, dados, onChange }) => (
       <FichaTecnicaProducao
         editable
-        a4={false}
         logo={<LogoDaEmpresa />}
         data={{ ...daOrdemParaFicha(ordem), ...(dados as FichaTecnicaData) }}
         onChange={(d) => onChange(d as Record<string, unknown>)}

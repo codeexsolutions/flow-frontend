@@ -19,6 +19,7 @@ import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 import AbasProducao from "@/features/producao/components/AbasProducao";
+import VisorDocumento from "@/features/producao/components/VisorDocumento";
 import { modeloOS } from "@/features/producao/modelos";
 
 /**
@@ -760,9 +761,17 @@ const OrdensServicoPage = () => {
               </div>
             </div>
 
-            {/* A folha rola dentro do modal. Fundo neutro atrás dela para a
-                página branca não colar nas bordas do tema escuro. */}
-            <div className="min-h-0 flex-1 overflow-auto rounded-xl bg-fg/[0.03] p-4">
+            {/*
+              A FOLHA INTEIRA, reduzida para caber — e com zoom.
+
+              Aqui a página era mostrada em tamanho real dentro de um quadro
+              que rola: aparecia o topo dela, e o resto ficava atrás da barra
+              de rolagem. Quem abria a ordem para conferir o papel conferia um
+              terço do papel. O `VisorDocumento` começa no ajuste que mostra a
+              página inteira e deixa aproximar quando for hora de escrever —
+              ver o porquê lá dentro.
+            */}
+            <VisorDocumento>
               {(() => {
                 const modelo = modeloDaOrdem(preenchendo);
 
@@ -771,14 +780,19 @@ const OrdensServicoPage = () => {
                 /* Modelo sem ficha — o documento simples. Não há o que
                    preencher, então o modal mostra o papel como ele vai sair,
                    que é a outra pergunta de quem clicou na linha. Trocar o
-                   modelo na barra acima é o que faz a ficha aparecer aqui. */
+                   modelo na barra acima é o que faz a ficha aparecer aqui.
+
+                   Largura FIXA, e não `max-w`: dentro do visor quem manda no
+                   tamanho é a folha, e este modelo é `w-full` — sem um número
+                   aqui ele encolheria até o tamanho do conteúdo. 900px é a
+                   mesma largura com que ele é rasterizado. */
                 return (
-                  <div className="mx-auto w-full max-w-[900px] overflow-hidden rounded-xl">
+                  <div className="w-[900px] overflow-hidden rounded-xl">
                     <modelo.Documento ordem={preenchendo} />
                   </div>
                 );
               })()}
-            </div>
+            </VisorDocumento>
           </div>
         )}
       </Modal>

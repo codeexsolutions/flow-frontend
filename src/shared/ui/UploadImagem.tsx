@@ -34,9 +34,23 @@ type Props = {
    * imagem para remover, sobre ela.
    */
   formato?: "quadrado" | "largo" | "miniatura";
+  /**
+   * Em que SUPERFÍCIE a caixa está desenhada.
+   *
+   * `tema` (padrão) usa as cores do sistema — borda clara sobre fundo escuro.
+   * `papel` é para quem mora dentro de um DOCUMENTO branco: a ficha técnica da
+   * produção tem duas destas caixas no meio de uma folha A4, e lá o tracejado
+   * do tema sumia — fio quase branco sobre papel branco, com "Escolher" em
+   * cinza-claro por cima. A pressão é a mesma; o que muda é o contraste.
+   *
+   * No papel a prévia também é `contain`, e não `cover`: ali ela é a ARTE da
+   * peça, e recortar para preencher o quadrado cortaria a manga ou a gola que
+   * a bancada precisa ver.
+   */
+  tom?: "tema" | "papel";
 };
 
-const UploadImagem = ({ tipo, valor, onChange, rotulo = "Imagem", formato = "quadrado" }: Props) => {
+const UploadImagem = ({ tipo, valor, onChange, rotulo = "Imagem", formato = "quadrado", tom = "tema" }: Props) => {
   const entrada = useRef<HTMLInputElement>(null);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
@@ -70,6 +84,12 @@ const UploadImagem = ({ tipo, valor, onChange, rotulo = "Imagem", formato = "qua
 
   const molde = formato === "largo" ? "aspect-[16/6] w-full" : formato === "miniatura" ? "h-full w-full" : "h-24 w-24";
   const miniatura = formato === "miniatura";
+  const noPapel = tom === "papel";
+
+  /* As duas peles da caixa vazia — ver `tom`. */
+  const pele = noPapel
+    ? "border-neutral-300 bg-neutral-50 hover:border-neutral-500"
+    : "border-fg/[0.16] bg-fg/[0.03] hover:border-accent/50";
 
   /* A miniatura é só o quadrado: sem rótulo em cima e sem a fileira de botões
      ao lado. Quem a usa já deu a ela uma coluna do formulário. */
@@ -82,19 +102,19 @@ const UploadImagem = ({ tipo, valor, onChange, rotulo = "Imagem", formato = "qua
             onClick={() => entrada.current?.click()}
             disabled={enviando}
             title={valor ? "Trocar a foto" : "Escolher uma foto"}
-            className="focus-ring group relative h-full w-full overflow-hidden rounded-xl border border-dashed border-fg/[0.16] bg-fg/[0.03] transition-colors hover:border-accent/50 disabled:opacity-60"
+            className={`focus-ring group relative h-full w-full overflow-hidden rounded-xl border border-dashed transition-colors disabled:opacity-60 ${pele}`}
           >
             {valor ? (
-              <img src={valor} alt="" className="h-full w-full object-cover" />
+              <img src={valor} alt="" className={`h-full w-full ${noPapel ? "object-contain" : "object-cover"}`} />
             ) : (
-              <span className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-faint">
+              <span className={`flex h-full w-full flex-col items-center justify-center gap-1.5 ${noPapel ? "text-neutral-400" : "text-faint"}`}>
                 <ImagePlus size={20} />
                 <span className="text-[11px]">Escolher</span>
               </span>
             )}
 
             {enviando && (
-              <span className="absolute inset-0 grid place-items-center bg-surface/80">
+              <span className={`absolute inset-0 grid place-items-center ${noPapel ? "bg-white/80" : "bg-surface/80"}`}>
                 <Loader2 size={18} className="animate-spin text-accent" />
               </span>
             )}
@@ -109,7 +129,7 @@ const UploadImagem = ({ tipo, valor, onChange, rotulo = "Imagem", formato = "qua
               onClick={() => onChange(null)}
               title="Remover a foto"
               aria-label="Remover a foto"
-              className="focus-ring absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-lg bg-canvas/80 text-muted backdrop-blur transition-colors hover:text-danger"
+              className={`focus-ring absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-lg backdrop-blur transition-colors hover:text-danger ${noPapel ? "bg-white/85 text-neutral-500" : "bg-canvas/80 text-muted"}`}
             >
               <Trash2 size={12} />
             </button>
