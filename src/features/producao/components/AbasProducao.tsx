@@ -1,9 +1,9 @@
-import { ClipboardList, Factory, KanbanSquare, Receipt } from "lucide-react";
+import { ClipboardList, Factory, KanbanSquare, Link2, Receipt } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { AbasTabela } from "@/shared/ui/AbasTabela";
 
-type Aba = "pedidos" | "os" | "quadro" | "kanban";
+type Aba = "pedidos" | "os" | "quadro" | "kanban" | "links";
 
 /**
  * As três telas de Produção, na barra da própria tabela.
@@ -21,6 +21,9 @@ type Aba = "pedidos" | "os" | "quadro" | "kanban";
  *     ele a ordem nasceria na primeira etapa e não teria como sair dela.
  *   • KANBAN — "onde está cada pedido?". É a PLANILHA de produção, em grade ou
  *     em quadro, com o histórico e as colunas que a empresa montou.
+ *   • LINKS — "quem acompanha o próprio pedido?". Os links de cliente que a
+ *     planilha emite ao escrever um nome na coluna Cliente: copiar, abrir,
+ *     revogar e a aparência da página. Ver `ProducoesPage`.
  *
  * ---------------------------------------------------------------------------
  * O Kanban é a planilha, e continua sendo
@@ -49,7 +52,9 @@ const AbasProducao = () => {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
-  const atual: Aba = pathname.startsWith("/producao/kanban")
+  const atual: Aba = pathname.startsWith("/producao/links")
+    ? "links"
+    : pathname.startsWith("/producao/kanban")
     ? "kanban"
     : pathname.startsWith("/producao/quadro")
       ? "quadro"
@@ -67,6 +72,7 @@ const AbasProducao = () => {
         { id: "os", label: "Ordem de Serviço", icone: <ClipboardList size={14} /> },
         { id: "quadro", label: "Quadro", icone: <Factory size={14} /> },
         { id: "kanban", label: "Kanban", icone: <KanbanSquare size={14} /> },
+        { id: "links", label: "Links", icone: <Link2 size={14} /> },
       ]}
     />
   );

@@ -1047,7 +1047,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
    * Falha em silêncio de propósito. A gravação da célula deu certo — que é o
    * que a pessoa pediu —, e um aviso de erro sobre algo que ela não pediu, no
    * meio da digitação, seria ruído sobre trabalho que não se perdeu: o link
-   * continua podendo ser emitido pela aba Produções.
+   * continua podendo ser emitido pela aba Links.
    */
   const emitirLinkDoCliente = async (coluna: Coluna, valor: unknown) => {
     if (!aberta || coluna.tipo !== "CLIENTE") return;
@@ -1066,7 +1066,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
          que este toast existe para evitar. */
       if (!linksEmitidos.current.has(link.token)) {
         linksEmitidos.current.add(link.token);
-        alert.toast("success", `Link de ${nome} criado`, "Está na aba Produções, pronto para copiar.", TOAST);
+        alert.toast("success", `Link de ${nome} criado`, "Está na aba Links, pronto para copiar.", TOAST);
       }
     } catch {
       /* Ver a nota acima: a célula foi gravada, e é isso que importa aqui. */
@@ -1426,7 +1426,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
        * escrever o nome numa coluna de Cliente já emite o link (ver
        * `salvarCelula`). Pedir um clique a mais para a consequência óbvia do
        * que a pessoa acabou de digitar era trabalho sem decisão. Os links
-       * emitidos ficam na aba Produções, onde se copia, se abre e se revoga.
+       * emitidos ficam na aba Links, onde se copia, se abre e se revoga.
        */}
       <button
         onClick={() => setAberta(null)}

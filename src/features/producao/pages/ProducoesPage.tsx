@@ -291,11 +291,9 @@ const ProducoesPage = () => {
   };
 
   return (
-    <PageScreen
-      icon={<Factory className="h-5 w-5" />}
-      title="Produção"
-      subtitle="Quem acompanha o próprio pedido, e por qual link"
-    >
+    /* O cabeçalho da PÁGINA é o mesmo das outras abas de Produção: trocar de
+       aba troca a lista, não a seção. */
+    <PageScreen icon={<Table2 className="h-5 w-5" />} title="Produção" subtitle="As produções que a sua operação usa">
       {/*
        * A mesma casca de lista de Clientes e Estoque.
        *

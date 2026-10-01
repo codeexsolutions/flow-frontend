@@ -33,6 +33,7 @@ import AjudaPage from "@/features/ajuda/pages/AjudaPage";
 import PedidosProducaoPage from "@/features/producao/pages/PedidosPage";
 import OrdensServicoPage from "@/features/producao/pages/OrdensServicoPage";
 import KanbanPage from "@/features/producao/pages/KanbanPage";
+import ProducoesPage from "@/features/producao/pages/ProducoesPage";
 import QuadroProducaoPage from "@/features/producao/pages/ProducaoPage";
 import AbasProducao from "@/features/producao/components/AbasProducao";
 import AcompanharProducaoPage from "@/features/acompanhamento/pages/AcompanharProducaoPage";
@@ -447,6 +448,19 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
                 promessa="Acompanhe cada pedido por etapa, monte a produção em tabela ou quadro e mande a cada cliente o link do pedido dele."
               >
                 <KanbanPage />
+              </RecursoDoPlano>
+            }
+          />
+          {/* Os LINKS de cliente que a planilha emite — copiar, abrir,
+              revogar. Ficam ao lado do Kanban porque nascem dele. */}
+          <Route
+            path="producao/links"
+            element={
+              <RecursoDoPlano
+                recurso="producao"
+                promessa="Acompanhe cada pedido por etapa, monte a produção em tabela ou quadro e mande a cada cliente o link do pedido dele."
+              >
+                <ProducoesPage />
               </RecursoDoPlano>
             }
           />
