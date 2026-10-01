@@ -26,6 +26,13 @@ const BotaoInstalar = ({ variante = "solto", className = "" }: Props) => {
   const { podeInstalar, instalado, ehIos, instalar } = useInstalacaoPwa();
   const [ajudaIos, setAjudaIos] = useState(false);
 
+  /* Empresa com domínio próprio instala o app COM O NOME DELA — é o que o
+     manifest servido por host devolve (ver `manifestDaMarca`). O texto da
+     ajuda acompanha, senão a instrução descreve outro app.
+     Fica ANTES do `return null`: hook depois de retorno condicional quebra
+     o React (#310) quando o `beforeinstallprompt` chega depois do 1º render. */
+  const nomeDoApp = useMarcaDominio((s) => s.marca)?.nome || "CodeEx Flow";
+
   // Nada a oferecer: ou já está instalado, ou o navegador não instala PWA
   // (Firefox no desktop, por exemplo) e um botão morto seria pior que nada.
   if (instalado || (!podeInstalar && !ehIos)) return null;
@@ -40,11 +47,6 @@ const BotaoInstalar = ({ variante = "solto", className = "" }: Props) => {
   };
 
   const rotulo = "Instalar aplicativo";
-
-  /* Empresa com domínio próprio instala o app COM O NOME DELA — é o que o
-     manifest servido por host devolve (ver `manifestDaMarca`). O texto da
-     ajuda acompanha, senão a instrução descreve outro app. */
-  const nomeDoApp = useMarcaDominio((s) => s.marca)?.nome || "CodeEx Flow";
 
   return (
     <>
