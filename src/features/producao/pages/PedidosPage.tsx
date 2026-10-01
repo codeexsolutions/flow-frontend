@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CalendarDays, ClipboardList, Factory, Receipt, Table2 } from "lucide-react";
 
 import ProducaoService, { type ItemProducao, type ModeloOsDisponivel, type PedidoDeProducao } from "@/features/producao/services/producao.service";
 import useSincronizacao from "@/shared/realtime/useSincronizacao";
 import { PageScreen } from "@/shared/ui/PageShell";
-import { BarraFiltros, ListaAcao, ListaCabecalho, ListaLinha, TabelaVazia } from "@/shared/ui/DataTable";
+import { BarraFiltros, ListaAcao, ListaCabecalho, ListaLinha, TabelaPaginacao, TabelaVazia } from "@/shared/ui/DataTable";
 import { Search } from "lucide-react";
 import { Selo } from "@/shared/ui/StatusBadge";
 import { SkeletonListaPainel } from "@/shared/ui/skeleton";
@@ -63,6 +63,9 @@ const COLS = "grid-cols-[minmax(200px,2fr)_minmax(96px,120px)_minmax(120px,160px
    responde, e o valor da venda nunca foi assunto de quem vai produzi-la. */
 const ROTULOS = ["Cliente", "Itens", "Produção", "Ações"];
 const ALTURA_LINHA = 60;
+/* Página fixa, e não `useAutoPageSize`: as faixas de dia entram entre as
+   linhas e a conta por altura erraria. O que não couber rola dentro do corpo. */
+const POR_PAGINA = 30;
 
 type Situacao = "todos" | "sem-os" | "com-os";
 
@@ -95,6 +98,8 @@ const PedidosPage = () => {
   const [modeloEscolhido, setModeloEscolhido] = useState("PADRAO");
   const [busca, setBusca] = useState("");
   const [situacao, setSituacao] = useState<Situacao>("todos");
+  const [pagina, setPagina] = useState(1);
+  const corpoRef = useRef<HTMLDivElement>(null);
 
   const carregarPedidos = async () => {
     try {
@@ -193,10 +198,30 @@ const PedidosPage = () => {
    * dia no fuso de Brasília (via `toDate`) — não a string ISO, que jogaria a
    * venda das 22h para o dia seguinte.
    */
+  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / POR_PAGINA));
+
+  /* Busca ou filtro novo começa da primeira página; lista que encolheu não
+     deixa a pessoa numa página que não existe mais. */
+  useEffect(() => setPagina(1), [busca, situacao]);
+  useEffect(() => {
+    if (pagina > totalPaginas) setPagina(totalPaginas);
+  }, [pagina, totalPaginas]);
+
+  /* Trocar de página volta o corpo para o topo — senão a página nova abre no
+     meio, onde a anterior tinha parado. No clique, e não num efeito sobre
+     `pagina`: o salto até a ordem recém-gerada também troca a página, e ali
+     quem manda na rolagem é ela. */
+  const irParaPagina = (p: number) => {
+    setPagina(p);
+    corpoRef.current?.scrollTo({ top: 0 });
+  };
+
+  const daPagina = useMemo(() => filtradas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA), [filtradas, pagina]);
+
   const porDia = useMemo(() => {
     const mapa = new Map<string, { chave: string; rotulo: string; itens: PedidoDeProducao[]; comOrdem: number }>();
 
-    for (const v of filtradas) {
+    for (const v of daPagina) {
       const dia = toDate(v.dataPedido);
 
       if (!dia) continue;
@@ -213,7 +238,7 @@ const PedidosPage = () => {
     /* `filtradas` já vem do mais novo para o mais antigo, então a ordem de
        inserção do Map é a que se quer — sem um segundo `sort` por data. */
     return Array.from(mapa.values());
-  }, [filtradas, ordemPorPedido]);
+  }, [daPagina, ordemPorPedido]);
 
   /**
    * Gera a ordem — e VAI ATÉ ELA.
@@ -336,6 +361,7 @@ const PedidosPage = () => {
             {/* O corpo rola; a faixa de cada dia gruda no topo enquanto o
                 bloco dele passa. Numa lista que atravessa semanas, saber de
                 que dia é a linha que está na tela é metade da informação. */}
+            <div ref={corpoRef} className="min-h-0 flex-1 overflow-y-auto">
             {porDia.map((grupo) => (
               <section key={grupo.chave}>
                 <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-y border-fg/[0.06] bg-surface/95 px-5 py-2 backdrop-blur-sm">
@@ -422,6 +448,14 @@ const PedidosPage = () => {
                 })}
               </section>
             ))}
+            </div>
+
+            <TabelaPaginacao
+              pagina={pagina}
+              totalPaginas={totalPaginas}
+              onPagina={irParaPagina}
+              resumo={`${filtradas.length} ${filtradas.length === 1 ? "pedido" : "pedidos"}`}
+            />
           </>
         )}
       </div>

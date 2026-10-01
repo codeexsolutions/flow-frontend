@@ -8,7 +8,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { PageScreen } from "@/shared/ui/PageShell";
 import { Modal } from "@/shared/ui/Modal";
-import { BarraFiltros, ListaCabecalho, ListaLinha, TabelaVazia } from "@/shared/ui/DataTable";
+import { BarraFiltros, ListaCabecalho, ListaLinha, TabelaPaginacao, TabelaVazia } from "@/shared/ui/DataTable";
 import { SkeletonListaPainel } from "@/shared/ui/skeleton";
 import { MESES_EXTENSO, isSameDay, toDate } from "@/shared/utils/date";
 import Select from "@/shared/ui/Select";
@@ -77,6 +77,9 @@ const COLS = "grid-cols-[minmax(190px,1.8fr)_minmax(170px,230px)_88px]";
  */
 const ROTULOS = ["Ordem", "Produção", "Ações"];
 const ALTURA_LINHA = 60;
+/* Página fixa, e não `useAutoPageSize`: os blocos de dia entram entre as
+   linhas e a conta por altura erraria. O que não couber rola dentro do corpo. */
+const POR_PAGINA = 30;
 
 /**
  * O botão-pastilha da barra da ordem — o mesmo para MODELO e para ETAPA.
@@ -154,6 +157,8 @@ const OrdensServicoPage = () => {
   const [abrindo, setAbrindo] = useState<string | null>(null);
   const [modelosOs, setModelosOs] = useState<ModeloOsDisponivel[]>([]);
   const [trocando, setTrocando] = useState<string | null>(null);
+  const [pagina, setPagina] = useState(1);
+  const corpoRef = useRef<HTMLDivElement>(null);
 
   /**
    * As planilhas de produção da empresa — para onde a ordem pode ir.
@@ -226,8 +231,19 @@ const OrdensServicoPage = () => {
   useEffect(() => {
     if (carregando || !novaOrdem) return;
 
+    /* Com paginação, a linha pode estar em outra página: vai até ela antes
+       de rolar. O efeito roda de novo quando `pagina` muda. */
+    const indice = filtradas.findIndex((o) => o.id === novaOrdem);
+    const paginaDaNova = indice >= 0 ? Math.floor(indice / POR_PAGINA) + 1 : pagina;
+
+    if (paginaDaNova !== pagina) {
+      setPagina(paginaDaNova);
+      return;
+    }
+
     document.getElementById(`ordem-${novaOrdem}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [carregando, novaOrdem]);
+    // `filtradas` fica de fora: reler a lista não deve puxar a tela de volta.
+  }, [carregando, novaOrdem, pagina]);
 
   useSincronizacao(["producao"], () => void carregar());
 
@@ -262,10 +278,30 @@ const OrdensServicoPage = () => {
    * pessoa lembra ("essa entrou na segunda"). Prazo é destino, e destino se vê
    * na coluna dele.
    */
+  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / POR_PAGINA));
+
+  /* Busca ou filtro novo começa da primeira página; lista que encolheu não
+     deixa a pessoa numa página que não existe mais. */
+  useEffect(() => setPagina(1), [busca, filtro]);
+  useEffect(() => {
+    if (pagina > totalPaginas) setPagina(totalPaginas);
+  }, [pagina, totalPaginas]);
+
+  /* Trocar de página volta o corpo para o topo — senão a página nova abre no
+     meio, onde a anterior tinha parado. No clique, e não num efeito sobre
+     `pagina`: o salto até a ordem recém-gerada também troca a página, e ali
+     quem manda na rolagem é ela. */
+  const irParaPagina = (p: number) => {
+    setPagina(p);
+    corpoRef.current?.scrollTo({ top: 0 });
+  };
+
+  const daPagina = useMemo(() => filtradas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA), [filtradas, pagina]);
+
   const grupos = useMemo(() => {
     const mapa = new Map<string, { rotulo: string; ordens: ItemProducao[] }>();
 
-    for (const o of filtradas) {
+    for (const o of daPagina) {
       /* A chave é o dia em ISO — ordenável como texto, sem `Date` no meio. */
       const dia = String(o.criado_em ?? "").slice(0, 10) || "sem-data";
 
@@ -277,7 +313,7 @@ const OrdensServicoPage = () => {
     /* Mais recente primeiro, como a lista já vinha: a ordem de hoje é a que se
        procura, e ela não pode estar no fim da rolagem. */
     return [...mapa.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([dia, g]) => ({ dia, ...g }));
-  }, [filtradas]);
+  }, [daPagina]);
 
   /** Quantas ainda estão na bancada — o apoio do cabeçalho. */
   const abertasTotal = useMemo(() => ordens.filter((o) => !o.concluido_em).length, [ordens]);
@@ -585,6 +621,7 @@ const OrdensServicoPage = () => {
               ))}
             </ListaCabecalho>
 
+            <div ref={corpoRef} className="min-h-0 flex-1 overflow-y-auto">
             {grupos.map((g) => (
               <div key={g.dia}>
                 {/* O cabeçalho do dia — colado no topo enquanto o bloco rola,
@@ -678,6 +715,14 @@ const OrdensServicoPage = () => {
                 ))}
               </div>
             ))}
+            </div>
+
+            <TabelaPaginacao
+              pagina={pagina}
+              totalPaginas={totalPaginas}
+              onPagina={irParaPagina}
+              resumo={`${filtradas.length} ${filtradas.length === 1 ? "ordem" : "ordens"}`}
+            />
           </>
         )}
       </div>
