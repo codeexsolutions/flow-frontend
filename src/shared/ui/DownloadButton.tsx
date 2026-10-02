@@ -168,6 +168,26 @@ const fontesEmbutidas = async (node: HTMLElement): Promise<string | undefined> =
   return css;
 };
 
+/**
+ * Quantas passagens de aquecimento antes da foto que vale.
+ *
+ * No Chrome do computador uma basta. No WebKit — Safari, e TODO navegador do
+ * iPhone, que por baixo é Safari — as `<img>` de dentro do SVG do
+ * `html-to-image` só são pintadas depois de algumas cargas do mesmo SVG: com
+ * uma passagem só, a nota baixada no celular saía sem a logo e sem o QR do
+ * Pix, com o resto inteiro. Três passagens em `pixelRatio: 1` custam pouco
+ * perto de mandar ao cliente uma nota sem o QR que ele precisa pagar.
+ */
+const passagensDeAquecimento = () => {
+  if (typeof navigator === "undefined") return 1;
+
+  const ua = navigator.userAgent;
+  const iOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const safari = /AppleWebKit/.test(ua) && !/Chrome|Chromium|CriOS|Android/.test(ua);
+
+  return iOS || safari ? 3 : 1;
+};
+
 /** Largura fixa do documento gerado — a mesma do `max-w-[900px]` da nota. */
 const LARGURA_DOCUMENTO = 900;
 
@@ -320,8 +340,14 @@ export const gerarBlobNota = async (ref: RefObject<HTMLDivElement>): Promise<Blo
      * conseguir é que o navegador DECODE as imagens, e decodificar não depende
      * da escala. Em `2` ela custava o mesmo que a passagem que vale — metade
      * da espera era um arquivo que ninguém ia usar.
+     *
+     * No iPhone uma passagem de aquecimento não basta — ver
+     * `passagensDeAquecimento`.
      */
-    await toBlob(copia, { ...opcoes, pixelRatio: 1 }).catch(() => null);
+    for (let i = 0; i < passagensDeAquecimento(); i++) {
+      await toBlob(copia, { ...opcoes, pixelRatio: 1 }).catch(() => null);
+      await proximoQuadro();
+    }
 
     const blob = await toBlob(copia, opcoes);
 
