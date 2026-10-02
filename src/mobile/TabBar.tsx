@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, ShoppingCart, DollarSign, Package, Users, Wallet, BarChart3, MoreHorizontal, Settings, LogOut, UserCircle, Truck, Lock, Factory, MessageCircle, Bell } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, DollarSign, Package, Users, Wallet, BarChart3, MoreHorizontal, Settings, LogOut, UserCircle, Truck, Lock, Factory, MessageCircle, Bell, RefreshCw } from "lucide-react";
 
 import useAuth from "@/features/auth/store/auth.store";
 import { ehGestor } from "@/features/vendas/components/TabsVendas";
@@ -12,6 +12,7 @@ import { tocarNavegacao } from "@/shared/session/somSessao";
 import { ABAS_SWIPE } from "@/shared/hooks/useSwipeAbas";
 import usePlano from "@/shared/plano/plano.store";
 import useNaoLidas from "@/features/crm/store/naoLidas.store";
+import { BUILD_ID, forcarAtualizacao } from "@/shared/pwa/versao";
 
 /**
  * `familia` só vem preenchida no primeiro item de cada grupo — é ela que
@@ -85,6 +86,7 @@ const TabBar = () => {
   const { user, logout } = useAuth();
 
   const [maisAberto, setMaisAberto] = useState(false);
+  const [atualizando, setAtualizando] = useState(false);
   const reduzir = useReducedMotion();
 
   const gestor = ehGestor(user);
@@ -376,6 +378,33 @@ const TabBar = () => {
               )}
             </div>
           ))}
+
+          {/*
+            A saída de emergência do service worker — ver `forcarAtualizacao`.
+
+            No computador ela fica no Perfil, e lá basta. No celular o Perfil
+            é o fim de uma tela dentro de Configurações dentro desta folha: três
+            toques e uma rolagem até um botão que a pessoa nem sabe que existe.
+            E é justamente no celular, com o app instalado, que o worker prende
+            uma versão velha. Aqui ela fica a um toque do "Mais".
+          */}
+          <button
+            type="button"
+            onClick={() => {
+              setAtualizando(true);
+              void forcarAtualizacao();
+            }}
+            disabled={atualizando}
+            className="focus-ring mt-3 flex min-h-[48px] items-center gap-3 rounded-xl border-t border-fg/[0.06] px-3 pt-3 text-left text-[14px] text-ink transition-colors hover:bg-fg/[0.05] disabled:opacity-60"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-fg/[0.05] text-mist">
+              <RefreshCw size={18} className={atualizando ? "animate-spin" : ""} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block">{atualizando ? "Buscando atualização…" : "Buscar atualização"}</span>
+              <span className="block truncate text-[11px] text-faint">Versão {BUILD_ID}</span>
+            </span>
+          </button>
 
           <button
             type="button"

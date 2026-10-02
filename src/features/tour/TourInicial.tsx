@@ -80,8 +80,16 @@ const TourInicial = () => {
 
   return (
     <AnimatePresence>
+      {/*
+        `pb-[var(--dock-space)]` até o `md`, onde a dock do celular existe.
+
+        O `z-[350]` não basta: o tour mora dentro do `MainLayout`, que anima
+        `transform` e abre um contexto de empilhamento próprio, e a dock vive
+        pendurada no `body` (ver `TabBar`). Ela ganhava, e cobria justamente o
+        "Pular" e o "Próximo" — o cartão ficava sem saída no celular.
+      */}
       <motion.div
-        className="fixed inset-0 z-[350] flex items-end justify-center p-4 sm:items-center"
+        className="fixed inset-0 z-[350] flex items-end justify-center p-4 pb-[var(--dock-space)] sm:items-center md:pb-4"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
