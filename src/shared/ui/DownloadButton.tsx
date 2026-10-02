@@ -1,4 +1,4 @@
-import { getFontEmbedCSS, toBlob } from "html-to-image";
+import { getFontEmbedCSS, toBlob, toCanvas } from "html-to-image";
 import type { RefObject } from "react";
 import { appInstalado } from "@/shared/pwa/appMode";
 
@@ -173,10 +173,12 @@ const fontesEmbutidas = async (node: HTMLElement): Promise<string | undefined> =
  *
  * No Chrome do computador uma basta. No WebKit — Safari, e TODO navegador do
  * iPhone, que por baixo é Safari — as `<img>` de dentro do SVG do
- * `html-to-image` só são pintadas depois de algumas cargas do mesmo SVG: com
- * uma passagem só, a nota baixada no celular saía sem a logo e sem o QR do
- * Pix, com o resto inteiro. Três passagens em `pixelRatio: 1` custam pouco
- * perto de mandar ao cliente uma nota sem o QR que ele precisa pagar.
+ * `html-to-image` só são pintadas depois de algumas cargas do mesmo SVG.
+ *
+ * Isto NÃO garante a logo nem o QR: com três passagens a nota continuou
+ * saindo sem eles no celular. Esses agora são pintados direto no canvas (ver
+ * `ImagemPintada`); o aquecimento fica para o que ainda depende do SVG, o
+ * wallpaper.
  */
 const passagensDeAquecimento = () => {
   if (typeof navigator === "undefined") return 1;
@@ -187,6 +189,135 @@ const passagensDeAquecimento = () => {
 
   return iOS || safari ? 3 : 1;
 };
+
+/**
+ * Uma imagem que é pintada direto no canvas, e não pelo SVG do `html-to-image`.
+ *
+ * As três passagens de aquecimento não bastaram: no celular a nota continuou
+ * saindo sem a logo e sem o QR do Pix. O WebKit pinta as `<img>` de dentro do
+ * `<foreignObject>` quando quer — às vezes na terceira carga, às vezes nunca —,
+ * e não existe evento que diga "agora estão lá". Nenhum número de passagens
+ * é garantia.
+ *
+ * O que É garantido é `drawImage` de uma imagem já decodificada. Então a
+ * imagem sai do SVG (fica `visibility:hidden` na cópia, ocupando o mesmo
+ * lugar) e é desenhada por cima do canvas, na posição que o layout deu a ela.
+ * Funciona igual em qualquer navegador, porque não depende mais do SVG.
+ */
+type ImagemPintada = {
+  img: HTMLImageElement;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  ajuste: string;
+  raio: number;
+  opacidade: number;
+};
+
+/**
+ * Quem fica de fora: o wallpaper (`FundoNota`). Ele mora ATRÁS de uma película
+ * translúcida e do conteúdo — pintado por cima, cobriria a nota inteira. Fica
+ * com o SVG, como antes; se o WebKit deixá-lo de fora, a nota perde só o fundo.
+ */
+const ehFundo = (img: HTMLImageElement) => img.dataset.fundo !== undefined || getComputedStyle(img).position === "absolute";
+
+/** Opacidade efetiva: a da imagem vezes a de cada ancestral até a cópia. */
+const opacidadeAte = (el: HTMLElement, raiz: HTMLElement) => {
+  let total = 1;
+
+  for (let atual: HTMLElement | null = el; atual && atual !== raiz.parentElement; atual = atual.parentElement) {
+    total *= Number(getComputedStyle(atual).opacity) || 0;
+  }
+
+  return total;
+};
+
+const separarImagens = async (copia: HTMLElement): Promise<ImagemPintada[]> => {
+  const origem = copia.getBoundingClientRect();
+  const lista: ImagemPintada[] = [];
+
+  for (const img of Array.from(copia.querySelectorAll<HTMLImageElement>("img"))) {
+    if (ehFundo(img) || img.closest("[data-sem-foto]")) continue;
+
+    const caixa = img.getBoundingClientRect();
+    const estilo = getComputedStyle(img);
+
+    if (!caixa.width || !caixa.height || estilo.display === "none" || estilo.visibility === "hidden") continue;
+
+    /* Uma imagem nova, decodificada fora do SVG — a da cópia só guarda o lugar. */
+    const src = img.currentSrc || img.src;
+
+    /* Só o que não contamina o canvas: data URI (o `embutir` já converteu as
+       de fora) ou do próprio domínio. Outra origem deixaria `toBlob` proibido. */
+    if (!src.startsWith("data:") && !src.startsWith(window.location.origin)) continue;
+
+    const pronta = new Image();
+    pronta.src = src;
+
+    try {
+      await Promise.race([pronta.decode(), new Promise((_, erro) => setTimeout(erro, 2500))]);
+    } catch {
+      /* Não decodificou: fica com o SVG, que é o comportamento de antes. */
+      continue;
+    }
+
+    lista.push({
+      img: pronta,
+      x: caixa.left - origem.left,
+      y: caixa.top - origem.top,
+      w: caixa.width,
+      h: caixa.height,
+      ajuste: estilo.objectFit,
+      raio: parseFloat(estilo.borderTopLeftRadius) || 0,
+      opacidade: opacidadeAte(img, copia),
+    });
+
+    img.style.visibility = "hidden";
+  }
+
+  return lista;
+};
+
+/** `object-fit` reproduzido no canvas: `contain` e `cover` centram, o resto estica. */
+const pintarImagens = (canvas: HTMLCanvasElement, largura: number, imagens: ImagemPintada[]) => {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  /* A escala vem do canvas, e não do `pixelRatio`: o `html-to-image` reduz o
+     canvas sozinho quando ele passa do limite do aparelho. */
+  const escala = canvas.width / largura;
+
+  for (const p of imagens) {
+    const nw = p.img.naturalWidth || p.w;
+    const nh = p.img.naturalHeight || p.h;
+
+    let dw = p.w;
+    let dh = p.h;
+
+    if (p.ajuste === "contain" || p.ajuste === "cover") {
+      const fator = p.ajuste === "contain" ? Math.min(p.w / nw, p.h / nh) : Math.max(p.w / nw, p.h / nh);
+      dw = nw * fator;
+      dh = nh * fator;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = p.opacidade;
+    ctx.scale(escala, escala);
+
+    /* Recorta na caixa (o `cover` transborda) e nos cantos arredondados. */
+    ctx.beginPath();
+    if (p.raio && typeof ctx.roundRect === "function") ctx.roundRect(p.x, p.y, p.w, p.h, p.raio);
+    else ctx.rect(p.x, p.y, p.w, p.h);
+    ctx.clip();
+
+    ctx.drawImage(p.img, p.x + (p.w - dw) / 2, p.y + (p.h - dh) / 2, dw, dh);
+    ctx.restore();
+  }
+};
+
+const canvasParaBlob = (canvas: HTMLCanvasElement) =>
+  new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
 
 /** Largura fixa do documento gerado — a mesma do `max-w-[900px]` da nota. */
 const LARGURA_DOCUMENTO = 900;
@@ -349,7 +480,15 @@ export const gerarBlobNota = async (ref: RefObject<HTMLDivElement>): Promise<Blo
       await proximoQuadro();
     }
 
-    const blob = await toBlob(copia, opcoes);
+    /* Logo, QR e fotos saem do SVG e vão direto para o canvas — ver
+       `ImagemPintada`. O aquecimento acima continua valendo para o que fica no
+       SVG (o wallpaper). */
+    const imagens = await separarImagens(copia);
+
+    const canvas = await toCanvas(copia, opcoes);
+    pintarImagens(canvas, largura, imagens);
+
+    const blob = await canvasParaBlob(canvas);
 
     if (!blob) throw new Error("Falha ao gerar a imagem da nota.");
 
