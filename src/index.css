@@ -1049,6 +1049,22 @@ input[type="number"]::-webkit-outer-spin-button {
     padding-left: 0.875rem;
     padding-right: 0.875rem;
   }
+
+  /*
+   * Faixa que "sangra" até a borda com `-mx-4` (os KPIs que rolam de lado, a
+   * fileira de ações do PDV) foi escrita contra os 16px do `px-4` — e aqui eles
+   * viraram zero. A margem negativa sobrava sem padding para compensar, a
+   * faixa saía 16px de cada lado do aparelho e a TELA INTEIRA deslizava para o
+   * lado. Sem recuo no corpo, a borda já está onde a faixa queria chegar.
+   */
+  main main.overflow-y-auto > .-mx-4 {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  main main.overflow-y-auto > [class*="w-[calc(100%+2rem)]"] {
+    width: auto;
+  }
 }
 
 /* ---------- Papéis tipográficos ---------- */
