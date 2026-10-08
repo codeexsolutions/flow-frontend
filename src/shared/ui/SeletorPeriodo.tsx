@@ -236,6 +236,31 @@ const SeletorPeriodo = ({ valor, onChange, meses, comHoje = false }: Props) => {
             </button>
           )}
 
+          {/* Do dia 1 até hoje, sempre presente — mesmo antes da primeira venda
+              do mês, quando ele ainda não aparece em "meses com movimento". */}
+          {(() => {
+            const mesAtual = periodoDoMes(new Date());
+            const ativo = mesmoIntervalo(mesAtual, valor);
+
+            return (
+              <button
+                type="button"
+                onClick={() => escolher(mesAtual)}
+                className={`focus-ring flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors ${
+                  ativo ? "bg-accent/[0.12] text-accent-soft" : "text-mist hover:bg-fg/[0.06] hover:text-ink"
+                }`}
+              >
+                <span className="min-w-0 truncate">
+                  Este mês
+                  <span className="ml-1.5 text-[10.5px] tabular-nums text-faint">
+                    {curto(mesAtual.de!).slice(0, 5)} – {curto(mesAtual.ate!).slice(0, 5)}
+                  </span>
+                </span>
+                {ativo && <Check size={13} className="shrink-0" />}
+              </button>
+            );
+          })()}
+
           <button
             type="button"
             onClick={() => escolher(PERIODO_TUDO)}

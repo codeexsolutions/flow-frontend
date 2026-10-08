@@ -53,7 +53,11 @@ const useFinanceiroStore = create<FinanceiroState>((set, get) => ({
   },
 
   async criarMovimentacao(mov) {
-    await FinanceiroService.criarMovimentacao(mov);
+    /* `yyyy-mm-dd` puro é lido como meia-noite UTC — 21h do dia anterior em
+       Brasília. Meio-dia de Brasília fica no mesmo dia em qualquer fuso. */
+    const dia = /^\d{4}-\d{2}-\d{2}$/.test(mov.dataMovimentacao) ? `${mov.dataMovimentacao}T12:00:00-03:00` : mov.dataMovimentacao;
+
+    await FinanceiroService.criarMovimentacao({ ...mov, dataMovimentacao: dia });
     await get().fetchFinanceiro(true);
   },
 
