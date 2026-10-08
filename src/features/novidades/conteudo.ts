@@ -46,83 +46,103 @@ export type Novidade = {
  * vez). Não é o `BUILD_ID` de propósito — aquele muda a cada deploy, e um
  * anúncio a cada correção de CSS seria exatamente o que a regra 1 evita.
  */
-export const VERSAO = "2026-09";
+export const VERSAO = "2026-10";
 
 /** O título da leva, para a tela não abrir com "Novidades" e nada mais. */
-export const RESUMO = "WhatsApp, financeiro mais solto e a sua assinatura";
+export const RESUMO = "Cupom fiscal, Correios e a ordem de serviço saindo da venda";
 
 export const NOVIDADES: Novidade[] = [
     {
         tipo: "novo",
-        titulo: "WhatsApp da loja dentro do Flow",
+        titulo: "Cupom fiscal da venda",
         texto:
-            "Conecte o número da loja e atenda por aqui: caixa de entrada, funil de atendimento, "
-            + "áudio, foto e documento na conversa. A ficha do cliente, as vendas e as produções dele "
-            + "aparecem ao lado da conversa — e quem ainda não é cadastrado vira cliente em um clique. "
-            + "Está em versão de testes, e a tela avisa isso.",
-        rota: "/whatsapp",
+            "A NFC-e sai pelo botão na própria nota. Os dados que fazem o cupom sair (NCM, CSC, "
+            + "Inscrição Estadual) ficam na aba Fiscal do PDV, onde a falta deles aparece antes de o "
+            + "cliente estar esperando no balcão. Vale para os planos com emissão fiscal.",
+        rota: "/pdv",
     },
     {
         tipo: "novo",
-        titulo: "Como você quer ser chamado",
+        titulo: "Correios dentro do Flow",
         texto:
-            "Em Meu perfil dá para escolher o nome que assina o que você manda pelo WhatsApp da loja. "
-            + "Sem isso o sistema chutava o primeiro nome do cadastro — e errava com quem é conhecido "
-            + "pelo apelido ou pelo sobrenome.",
-        rota: "/configuracoes/perfil",
+            "Cote o frete com todas as opções lado a lado, escolha depois de ver o preço, gere a "
+            + "etiqueta e acompanhe o rastreio sem sair do sistema. Está no plano Professional.",
+        rota: "/correios",
     },
     {
         tipo: "novo",
-        titulo: "A página do seu cliente com a sua marca",
+        titulo: "A ordem de serviço nasce da venda",
         texto:
-            "O link que o cliente abre para acompanhar o pedido entra com a logo, a cor e o domínio da "
-            + "sua loja — e pode ser instalado como aplicativo no celular dele.",
+            "Em Produção › Pedidos aparece o que tem para produzir, com as peças de cada pedido e sem "
+            + "valores, e é de lá que você gera a ordem. A ficha foi redesenhada para ler de longe na "
+            + "bancada, cabe inteira na tela e leva foto da peça.",
+        rota: "/producao",
+    },
+    {
+        tipo: "novo",
+        titulo: "\"Este mês\" no seletor de período",
+        texto:
+            "Um toque e as telas mostram do dia 1 até hoje, mesmo antes da primeira venda do mês.",
     },
     {
         tipo: "melhor",
-        titulo: "A baixa leva direto ao extrato",
+        titulo: "Baixe o documento em PDF ou em imagem",
         texto:
-            "Deu baixa numa movimentação? O sistema abre o extrato no lançamento certo, em vez de "
-            + "deixar você procurar. E o que foi lançado errado agora vai para a lixeira, com volta.",
+            "A seta de baixar da nota, do orçamento e da ordem agora pergunta o formato. A imagem "
+            + "chega no WhatsApp do cliente como foto, sem pedir leitor de PDF.",
+    },
+    {
+        tipo: "melhor",
+        titulo: "Vencimentos ficam no carnê",
+        texto:
+            "A lista de vendas parou de mostrar só a próxima parcela. Quem paga em cada dia, o total "
+            + "do dia e os botões de avisar e dar baixa estão no carnê, num calendário do mês.",
         rota: "/financeiro",
     },
     {
         tipo: "melhor",
-        titulo: "Nota, recibo e orçamento baixam igual",
+        titulo: "Links de acompanhamento de volta",
         texto:
-            "Os três botões de download passaram a se comportar do mesmo jeito, com o mesmo nome de "
-            + "arquivo e a mesma qualidade de imagem — inclusive no celular.",
+            "Os links que você manda para o cliente acompanhar o pedido ganharam a aba Links, ao lado "
+            + "do Kanban: dá para listar, copiar e revogar.",
+        rota: "/producao/links",
     },
     {
         tipo: "melhor",
-        titulo: "A planilha da produção sem a caixa de \"Salvando…\"",
+        titulo: "Buscar atualização no celular",
         texto:
-            "O aviso que piscava a cada tecla digitada saiu. O que você escreve continua sendo salvo "
-            + "sozinho, só que sem tirar a sua atenção da linha.",
-        rota: "/producao/kanban",
+            "O botão que traz a versão nova do sistema saiu do fundo das configurações e está no Mais, "
+            + "junto com a versão que você tem instalada.",
     },
     {
         tipo: "corrigido",
-        titulo: "Remover pagamento de uma nota",
+        titulo: "Saída do caixa no dia certo",
         texto:
-            "Um pagamento lançado por engano travava a nota inteira. Agora ele sai, e a nota volta a "
-            + "aceitar o recebimento certo.",
+            "Uma saída lançada hoje aparecia no dia anterior. Agora ela entra e aparece na data em "
+            + "que foi lançada.",
+        rota: "/financeiro",
     },
     {
         tipo: "corrigido",
-        titulo: "Apagar nota cancelada",
+        titulo: "Nota no iPhone com logo e QR do Pix",
         texto:
-            "Nota cancelada ficava para sempre na lista, sem jeito de tirar. Depois de cancelada, ela "
-            + "pode ser apagada de vez.",
+            "A nota baixada pelo iPhone saía sem a logo e sem o QR do Pix. Os dois voltaram, em "
+            + "qualquer navegador do celular.",
     },
     {
-        tipo: "novo",
-        titulo: "Sua assinatura, sem susto",
+        tipo: "corrigido",
+        titulo: "Fim do \"Preparando o documento…\" sem fim",
         texto:
-            "O aviso de vencimento e a fatura passam a chegar no WhatsApp, com o PDF e o Pix copia e "
-            + "cola já no valor certo. Em Assinatura você vê o que está em aberto, paga e manda o "
-            + "comprovante — o acesso é liberado na hora.",
-        rota: "/configuracoes/faturas",
+            "Abrir a nota, o orçamento ou a ordem às vezes travava nessa mensagem. O documento agora "
+            + "abre, e se o navegador bloquear a guia ele é baixado em vez de ficar esperando.",
+    },
+    {
+        tipo: "corrigido",
+        titulo: "Pedidos e ordens que passavam da tela",
+        texto:
+            "As listas de Pedidos e de Ordem de serviço cortavam o que não cabia na janela. Agora "
+            + "elas rolam e têm páginas.",
+        rota: "/producao/os",
     },
 ];
 
