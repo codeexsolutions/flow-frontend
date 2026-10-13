@@ -60,6 +60,8 @@ export type PedidoType = {
   imagensServico?: string[];
   /** A nota sai com o QR do Pix? `true` é o padrão; falso na venda já quitada. */
   mostrarQr?: boolean;
+  /** Quanto o QR cobra (entrada/sinal). `null` = o saldo da nota. */
+  valorQr?: number | null;
 };
 
 /** Uma venda: o cliente e o pedido dele. */
@@ -89,6 +91,7 @@ export type NovoPedidoDto = {
   itensPedido: ItemPedidoDto[];
   imagensServico?: string[];
   mostrarQr?: boolean;
+  valorQr?: number | null;
 };
 
 /**
@@ -102,6 +105,8 @@ export type PedidoUpdateDto = {
   /* Ausentes = a tela não mexeu; `[]` limpa. Ver `pedidoUpdate`, na API. */
   imagensServico?: string[];
   mostrarQr?: boolean;
+  /* `null` = voltar a cobrar o saldo. */
+  valorQr?: number | null;
 };
 
 /* ─────────────────────────── Regras de negócio ─────────────────────────── */

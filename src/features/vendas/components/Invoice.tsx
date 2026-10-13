@@ -232,6 +232,9 @@ const emDias = (dias: number): string => {
 
 
 
+/** Valor gravado → texto do campo "Cobrar" ("2000,00"); vazio quando não há. */
+const paraCampoCobranca = (v: number | null | undefined) => (v && v > 0 ? v.toFixed(2).replace(".", ",") : "");
+
 const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = false, itensIniciais, orcamentoId, contatoInicial, validadeInicial, converterOrcamentoId, conversaId, orcamentoBase }: InvoiceProps) => {
   const alert = useAlert();
   const notaRef = useRef<HTMLDivElement>(null);
@@ -436,6 +439,8 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
         setValorPagoAnterior(Number(pedidoData.pedido.valorPago ?? 0));
         setImagensServico(pedidoData.pedido.imagensServico ?? []);
         setMostrarQr(pedidoData.pedido.mostrarQr !== false);
+        setCobrancaLivre(paraCampoCobranca(pedidoData.pedido.valorQr));
+        cobrancaGravada.current = pedidoData.pedido.valorQr ?? null;
 
         const itensOriginais = pedidoData.pedido.itensPedido ?? [];
         setItens(itensOriginais.map((item: ItemPedidoType) => ({ ...item })));
@@ -662,13 +667,45 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
    * digitação toda vez ("1500" onde era "150"), e quem paga por QR não confere
    * o valor — esse zero a mais vira estorno no dia seguinte.
    */
-  const valorCobranca = useMemo(() => {
+  /** O que está no campo "Cobrar", em reais — `null` quando vazio (= o total). */
+  const cobrancaDefinida = useMemo(() => {
     const digitado = Number(cobrancaLivre.replace(/\./g, "").replace(",", "."));
 
-    if (!cobrancaLivre.trim() || !Number.isFinite(digitado) || digitado <= 0) return total;
+    if (!cobrancaLivre.trim() || !Number.isFinite(digitado) || digitado <= 0) return null;
 
-    return Math.min(Math.round(digitado * 100) / 100, total);
-  }, [total, cobrancaLivre]);
+    return Math.round(digitado * 100) / 100;
+  }, [cobrancaLivre]);
+
+  const valorCobranca = useMemo(() => (cobrancaDefinida === null ? total : Math.min(cobrancaDefinida, total)), [total, cobrancaDefinida]);
+
+  /*
+   * O valor do "Cobrar" é gravado na venda — e sozinho, sem esperar o
+   * "Salvar".
+   *
+   * Ele vivia só na tela: quem definia R$ 2.000 numa nota de R$ 4.000,
+   * fechava e voltava, encontrava o QR cobrando o valor cheio de novo. E
+   * esperar o "Salvar" não resolvia: o campo é ajustado na hora de mandar a
+   * nota, com ela já salva, e ninguém salva de novo uma nota que não mudou.
+   *
+   * Nota nova (sem id) não tem onde gravar ainda: o valor vai junto do
+   * primeiro "Salvar". `cobrancaGravada` evita regravar o que acabou de
+   * chegar do servidor.
+   */
+  const cobrancaGravada = useRef<number | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!id || cobrancaGravada.current === undefined || cobrancaGravada.current === cobrancaDefinida) return;
+
+    const t = setTimeout(() => {
+      NoteService.salvarValorQr(id, cobrancaDefinida)
+        .then(() => {
+          cobrancaGravada.current = cobrancaDefinida;
+        })
+        .catch(() => alert.toast("error", "Não foi possível salvar o valor do Pix.", undefined, { position: "bottom-right", timer: 3000 }));
+    }, 700);
+
+    return () => clearTimeout(t);
+  }, [id, cobrancaDefinida]);
 
   const pixPayload = useMemo(() => {
     if (!pixConfigurado(configPix) || valorCobranca <= 0) return "";
@@ -748,9 +785,10 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
         itensPedido: itens,
         imagensServico,
         mostrarQr,
+        valorQr: cobrancaDefinida,
       },
     }),
-    [clienteId, nome, pedido, vendedor, id, total, totalPago, itens, imagensServico, mostrarQr],
+    [clienteId, nome, pedido, vendedor, id, total, totalPago, itens, imagensServico, mostrarQr, cobrancaDefinida],
   );
 
   /**
@@ -1087,8 +1125,9 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
       if (id) {
         // UPDATE — usa PedidoUpdateDto. Atenção: esse endpoint lê `produtosPedido`,
         // não `itensPedido`.
-        const payload: PedidoUpdateDto = { clienteId, produtosPedido: montarItens(itensDaNota), imagensServico, mostrarQr };
+        const payload: PedidoUpdateDto = { clienteId, produtosPedido: montarItens(itensDaNota), imagensServico, mostrarQr, valorQr: cobrancaDefinida };
         await NoteService.update(payload, id);
+        cobrancaGravada.current = cobrancaDefinida;
 
         // Não há pagamento pendente a gravar junto: registrar já grava direto
         // no servidor, então salvar a nota cuida só dos itens.
@@ -1097,8 +1136,10 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
         // CREATE — usa NovoPedidoDto. A nota criada NÃO fecha a tela: quem
         // paga "depois de salvar" precisa da nota aberta para registrar o
         // pagamento na sequência. O id novo mantém a nota em modo edição.
-        const payload: NovoPedidoDto = { clienteId, itensPedido: montarItens(itensDaNota), imagensServico, mostrarQr };
+        const payload: NovoPedidoDto = { clienteId, itensPedido: montarItens(itensDaNota), imagensServico, mostrarQr, valorQr: cobrancaDefinida };
         const criada = await NoteService.create(payload);
+        /* Gravado junto da nota: daqui em diante o campo salva sozinho. */
+        cobrancaGravada.current = cobrancaDefinida;
 
         const novoId = criada?.data?.data?.[0] as string | undefined;
 

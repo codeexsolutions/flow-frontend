@@ -34,6 +34,7 @@ import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
 import { gerarBlobNota, proximoQuadro } from "@/shared/ui/DownloadButton";
 import { entregarDocumento } from "@/shared/ui/downloadNota";
 import { pixDaNota, type PixDaNota } from "@/shared/domain/pixDaNota";
+import BotaoCopiarPix from "@/features/vendas/components/BotaoCopiarPix";
 import ProducaoService from "@/features/producao/services/producao.service";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 
@@ -1013,6 +1014,8 @@ const PontoDeVenda = () => {
                               ocupado={enviandoProducao === String(venda.pedido.pedidoId)}
                               onClick={() => void levarParaProducao(venda)}
                             />
+
+                            <BotaoCopiarPix venda={venda} />
 
                             <BotaoVerDocumento
                               variante="linha"

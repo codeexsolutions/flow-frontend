@@ -28,6 +28,7 @@ import { mesesComMovimento, vendasAtivas } from "@/shared/domain/serieVendas";
 import { gerarBlobNota, proximoQuadro } from "@/shared/ui/DownloadButton";
 import { entregarDocumento } from "@/shared/ui/downloadNota";
 import { pixDaNota, type PixDaNota } from "@/shared/domain/pixDaNota";
+import BotaoCopiarPix from "@/features/vendas/components/BotaoCopiarPix";
 import ProducaoService, { type ItemProducao } from "@/features/producao/services/producao.service";
 import useSincronizacao from "@/shared/realtime/useSincronizacao";
 import { useAlert } from "@/shared/ui/Alert";
@@ -791,6 +792,8 @@ const SalesList = () => {
                         onClick={() => void levarParaProducao(v)}
                       />
                     )}
+
+                    <BotaoCopiarPix venda={v} />
 
                     <BotaoVerDocumento
                       variante="linha"

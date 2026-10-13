@@ -6,6 +6,14 @@ const NoteService = {
   /** Cria novo pedido → POST /pedidos/novo-pedido */
   create: (note: NovoPedidoDto) => sysgrafix.post("/pedidos/novo-pedido", note, { carregamento: "Registrando a venda…" }),
 
+  /**
+   * Grava só o valor que o QR do Pix cobra → PATCH /pedidos/:id/valor-qr
+   *
+   * Sem `carregamento`: é o campo "Cobrar" salvando sozinho enquanto a pessoa
+   * digita, e uma tela de espera a cada tecla seria pior que o problema.
+   */
+  salvarValorQr: (pedidoId: string, valorQr: number | null) => sysgrafix.patch(`/pedidos/${pedidoId}/valor-qr`, { valorQr }),
+
   /** Lista todos os pedidos → GET /pedidos/ */
   getAll: () => sysgrafix.get("/pedidos/"),
 

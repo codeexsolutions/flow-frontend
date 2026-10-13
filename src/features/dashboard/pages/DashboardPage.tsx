@@ -28,7 +28,8 @@ import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { KpiFaixa } from "@/shared/ui/Painel";
 import { Rosca } from "@/shared/ui/Rosca";
 import { PageScreen } from "@/shared/ui/PageShell";
-import SeletorPeriodo, { PERIODO_TUDO, type Periodo } from "@/shared/ui/SeletorPeriodo";
+import SeletorPeriodo from "@/shared/ui/SeletorPeriodo";
+import { usePeriodoSalvo } from "@/shared/ui/usePeriodoSalvo";
 import { SkeletonKpis, SkeletonGrafico, SkeletonListaPainel } from "@/shared/ui/skeleton";
 import useAuth from "@/features/auth/store/auth.store";
 
@@ -340,8 +341,11 @@ const DashboardPage = () => {
    * existia no gráfico, sem os números ao lado. Abrindo em todo o período, a
    * primeira coisa que se vê é a loja inteira — e o mês continua a um clique,
    * no seletor do cabeçalho.
+   *
+   * Depois da primeira escolha, a tela lembra dela: sair e voltar não devolve
+   * o painel para todo o período (ver `usePeriodoSalvo`).
    */
-  const [periodo, setPeriodo] = useState<Periodo>(PERIODO_TUDO);
+  const [periodo, setPeriodo] = usePeriodoSalvo("flow:dashboard:periodo");
 
   const vendas = useVendaStore((s) => s.vendas);
   const fetchVendas = useVendaStore((s) => s.fetchVendas);
