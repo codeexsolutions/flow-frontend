@@ -116,7 +116,7 @@ const RastrearPage = () => {
           ) : (
             <div className="rounded-xl border border-warning/30 bg-warning/[0.08] px-5 py-4 text-sm text-warning">
               <span className="flex items-center gap-2">
-                <AlertTriangle size={16} /> Nenhum evento encontrado para o código <strong className="font-mono">{codigoAtual}</strong>
+                <AlertTriangle size={16} /> Nenhum evento encontrado para o código <strong >{codigoAtual}</strong>
               </span>
             </div>
           )}

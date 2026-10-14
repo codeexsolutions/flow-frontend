@@ -81,7 +81,7 @@ const CartaoContato = ({ conversa, aoMudar, onNovaVenda, onAbrirNota }: Props) =
 
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] text-ink">{conversa.nome}</span>
-          <span className="block truncate font-mono text-[10.5px] text-faint">
+          <span className="block truncate text-[10.5px] text-faint">
             {telefone}
             {/* Contato sem cadastro é oportunidade, não erro — a tela diz isso
                 sem alarde, e o botão de cadastrar está logo ao lado. */}
@@ -108,7 +108,7 @@ const CartaoContato = ({ conversa, aoMudar, onNovaVenda, onAbrirNota }: Props) =
 
             <div className="min-w-0 flex-1">
               <p className="truncate text-[15px] text-ink">{conversa.nome}</p>
-              <p className="truncate font-mono text-[12px] text-faint">{telefone}</p>
+              <p className="truncate text-[12px] text-faint">{telefone}</p>
 
               <span
                 className={`mt-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] ${

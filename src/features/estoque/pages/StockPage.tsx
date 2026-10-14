@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { ReactNode } from "react";
 import {
-  Tags, PackagePlus, Package, AlertTriangle, RotateCw, Boxes, Wallet,
+  Tags, PackagePlus, Package, AlertTriangle, RotateCw,
   Infinity as InfinityIcon, Layers, Wrench, ListFilter, Tag, Bookmark, FolderTree,
-  Blocks,
+  Blocks, LayoutDashboard,
 } from "lucide-react";
 
 import ProductType, { nivelEstoque, SEM_CATEGORIA, TIPO_ITEM, tipoDoItem, type NivelEstoque, type TipoItem } from "@/shared/domain/produto";
@@ -14,7 +13,8 @@ import EstoqueService from "@/features/estoque/services/estoque.service";
 import { ProdutoForm } from "@/features/estoque/components/ProdutoForm";
 import CategoriasPainel from "@/features/estoque/components/CategoriasPainel";
 import { ProductFormData } from "@/features/estoque/schema/product.schema";
-import { KpiFaixa } from "@/shared/ui/Painel";
+import { AbasTabela } from "@/shared/ui/AbasTabela";
+import EstoqueVisaoGeral from "@/features/estoque/components/EstoqueVisaoGeral";
 import { Modal } from "@/shared/ui/Modal";
 import Select from "@/shared/ui/Select";
 import BuscaSugestoes from "@/shared/ui/BuscaSugestoes";
@@ -212,35 +212,6 @@ const SkeletonRows = ({ count }: { count: number }) => (
 );
 
 /* -------------------------------------------------------------------------- */
-/* Peças da barra                                                             */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Cartão de número do topo.
- *
- * Os quatro substituem a coluna lateral que existia à direita da tabela. Ela
- * trazia os mesmos números, mas roubava um terço da largura da lista o tempo
- * todo — e a lista é o que se veio ver. Em cima, os números ocupam uma faixa
- * baixa e a tabela fica com a tela inteira.
- */
-const Kpi = ({ icon, label, valor, hint, tom }: { icon: ReactNode; label: string; valor: string; hint?: string; tom?: "danger" | "warning" }) => (
-  <div className="card glass-sheen flex items-center gap-3 rounded-lg px-4 py-3">
-    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset ${
-      tom === "danger" ? "bg-danger/[0.14] text-danger ring-danger/20"
-        : tom === "warning" ? "bg-warning/[0.14] text-warning ring-warning/20"
-        : "bg-accent/[0.15] text-accent-soft ring-accent/20"
-    }`}>
-      {icon}
-    </span>
-    <div className="min-w-0">
-      <p className="text-[10.5px] uppercase tracking-[0.1em] text-faint">{label}</p>
-      <p className="truncate text-[17px] leading-tight tabular-nums text-ink">{valor}</p>
-      {hint && <p className="truncate text-[10.5px] text-faint">{hint}</p>}
-    </div>
-  </div>
-);
-
-/* -------------------------------------------------------------------------- */
 /* Tela                                                                       */
 /* -------------------------------------------------------------------------- */
 
@@ -263,6 +234,15 @@ const Estoque = () => {
 
   const [modal, setModal] = useState<ModalType>(null);
   const fechar = () => setModal(null);
+
+  /*
+   * Duas abas no cartão, como em Vendas: a VISÃO GERAL (os números e os
+   * gráficos do estoque) e a lista de ITENS. Os números moravam numa faixa
+   * acima da tabela e roubavam altura dela o tempo todo; numa aba, quem quer
+   * a lista tem a tela inteira, e quem quer o panorama ganha espaço para mais
+   * do que quatro cartões.
+   */
+  const [aba, setAba] = useState<"visao-geral" | "itens">("itens");
 
   const { bodyRef, perPage } = useAutoPageSize<HTMLDivElement>();
 
@@ -463,23 +443,15 @@ const Estoque = () => {
   );
 
   /*
-   * Os números do topo seguem o FILTRO, não o catálogo inteiro.
-   *
-   * É o que faz "Serviços" responder "quantos serviços eu tenho" em vez de
-   * repetir o total geral em toda aba — um número que não muda quando o
-   * recorte muda é um número que ninguém lê depois da primeira vez.
+   * O que a visão geral olha: o TIPO escolhido (catálogo, produtos, serviços,
+   * insumos) e nenhum outro filtro — busca, situação, categoria e marca
+   * recortam a lista, e um panorama que mudasse a cada letra digitada deixaria
+   * de ser panorama.
    */
-  const stats = useMemo(() => {
-    const total = filtered.length;
-    const esgotados = filtered.filter((p) => stockLevel(p) === "esgotado").length;
-    const baixos = filtered.filter((p) => stockLevel(p) === "baixo").length;
-    const servicos = filtered.filter((p) => p.tipo === "SERVICO").length;
-    // Ver a nota em `nivelEstoque`: quantidade e valores chegam como string.
-    const unidades = filtered.reduce((acc, p) => acc + (Number(p.quantidade) || 0), 0);
-    const valorEstoque = filtered.reduce((acc, p) => acc + (Number(p.valorCompra) || 0) * (Number(p.quantidade) || 0), 0);
-
-    return { total, esgotados, baixos, servicos, unidades, valorEstoque };
-  }, [filtered]);
+  const itensDoTipo = useMemo(
+    () => products.filter((p) => passa(p, { tipo, situacao: "todos", categoria: "todas", marca: "todas", q: "" })),
+    [products, tipo],
+  );
 
   /**
    * A categoria de cada produto, pelo id.
@@ -572,58 +544,21 @@ const Estoque = () => {
         </div>
       )}
 
-      {/* ---------- Números ---------- */}
-      <KpiFaixa className="shrink-0 xl:grid-cols-4">
-        <Kpi
-          icon={<Package className="h-4 w-4" />}
-          label="Itens"
-          valor={formatNumber(stats.total)}
-          hint={stats.servicos > 0 ? `${formatNumber(stats.servicos)} ${stats.servicos === 1 ? "serviço" : "serviços"}` : undefined}
-        />
-        <Kpi
-          icon={<Wallet className="h-4 w-4" />}
-          label="Valor do estoque"
-          valor={brl(stats.valorEstoque)}
-          hint="Pelo preço de custo"
-        />
-        <Kpi
-          icon={<Boxes className="h-4 w-4" />}
-          label="Unidades"
-          valor={formatNumber(stats.unidades)}
-          hint="Somando todas as peças"
-        />
-        {/*
-         * O quarto cartão muda de cor conforme o que ele diz.
-         *
-         * Vermelho só quando há item esgotado — que é o único caso em que a
-         * venda de fato para. "Baixo" é aviso de compra, não emergência, e
-         * pintar os dois de vermelho ensina a ignorar o vermelho.
-         */}
-        <Kpi
-          icon={<AlertTriangle className="h-4 w-4" />}
-          label="Precisam de atenção"
-          valor={formatNumber(stats.esgotados + stats.baixos)}
-          hint={`${formatNumber(stats.esgotados)} esgotados · ${formatNumber(stats.baixos)} baixos`}
-          tom={stats.esgotados > 0 ? "danger" : stats.baixos > 0 ? "warning" : undefined}
-        />
-      </KpiFaixa>
-
       {/* ---------- Lista ---------- */}
       <section className="card glass-sheen flex min-h-[460px] min-w-0 flex-col overflow-hidden rounded-lg sm:min-h-[260px] sm:flex-1">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2.5 border-b border-fg/[0.06] px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/[0.14] text-accent-soft ring-1 ring-inset ring-accent/20">
-              <Package className="h-4 w-4" />
-            </span>
-            <div className="min-w-0">
-              <h2 className="truncate text-[13px] text-ink">
-                {tipo === "catalogo" ? "Tudo que você vende" : TIPO_ITEM[tipo].plural}
-              </h2>
-              <p className="text-[11px] text-faint">
-                {formatNumber(filtered.length)} {filtered.length === 1 ? "item" : "itens"}
-                {filtered.length !== products.length && ` de ${formatNumber(products.length)}`}
-              </p>
-            </div>
+          <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+            {/* Visão geral primeiro e sem contagem, como em Vendas: é a leitura
+                de cima, não mais uma lista com N itens. */}
+            <AbasTabela
+              grupo="abas-estoque"
+              valor={aba}
+              onValor={setAba}
+              abas={[
+                { id: "visao-geral", label: "Visão geral", icone: <LayoutDashboard size={13} /> },
+                { id: "itens", label: tipo === "catalogo" ? "Itens" : TIPO_ITEM[tipo].plural, icone: <Package size={13} />, contagem: filtered.length },
+              ]}
+            />
           </div>
 
           {/*
@@ -683,6 +618,7 @@ const Estoque = () => {
            * quem já sabe qual item quer e não quer procurá-lo na página
            * certa da tabela depois.
            */}
+          {aba === "itens" && (
           <BuscaSugestoes
             valor={search}
             onValor={setSearch}
@@ -692,6 +628,7 @@ const Estoque = () => {
             aria-label="Buscar item por nome, SKU ou código de barras"
             className="w-[210px] shrink-0"
           />
+          )}
 
           <Select
             valor={tipo}
@@ -702,6 +639,8 @@ const Estoque = () => {
             className="w-[150px] shrink-0"
           />
 
+          {aba === "itens" && (
+          <>
           <Select
             valor={situacao}
             onChange={(v) => setSituacao(v as Situacao)}
@@ -740,14 +679,26 @@ const Estoque = () => {
               className="w-[156px] shrink-0"
             />
           )}
+          </>
+          )}
         </BarraFiltros>
+
+        {/* A visão geral ocupa o corpo do cartão. A lista abaixo fica montada
+            e só ESCONDIDA: quem calcula quantas linhas cabem na página mede o
+            corpo dela uma vez, ao montar, e desmontar faria a paginação voltar
+            com a conta errada. */}
+        {aba === "visao-geral" && (
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            <EstoqueVisaoGeral itens={itensDoTipo} categorias={categorias} rotulo={tipo === "catalogo" ? "Itens no catálogo" : TIPO_ITEM[tipo].plural} />
+          </div>
+        )}
 
         {/* Colunas + linhas rolam juntas na horizontal quando a tela é estreita. */}
         {/* A largura mínima é do DESKTOP: ela existe para as seis colunas não
             se esmagarem. No celular a linha virou cartão (ver `ListaLinha`), e
             forçar 840px ali daria rolagem horizontal num conteúdo que já cabe
             em pé. Por variável porque `style` não aceita breakpoint. */}
-        <div className="flex min-h-0 flex-1 flex-col sm:overflow-x-auto">
+        <div className={`min-h-0 flex-1 flex-col sm:overflow-x-auto ${aba === "itens" ? "flex" : "hidden"}`}>
           <div
             className="flex min-h-0 flex-1 flex-col sm:[min-width:var(--tabela-min)]"
             style={{ "--tabela-min": `${TABLE_MIN_WIDTH}px` } as React.CSSProperties}
@@ -869,12 +820,14 @@ const Estoque = () => {
           </div>
         </div>
 
+        {aba === "itens" && (
         <TabelaPaginacao
           pagina={page}
           totalPaginas={totalPages}
           onPagina={setPage}
           resumo={`${formatNumber(filtered.length)} ${filtered.length === 1 ? "item" : "itens"}`}
         />
+        )}
       </section>
 
       {modais}

@@ -108,7 +108,7 @@ const CorporateBadge = () => {
             </span>
 
             {enterprise.codigoEmpresa && (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/20 bg-accent/[0.08] px-2 py-0.5 font-mono text-[10.5px] text-accent-soft">
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/20 bg-accent/[0.08] px-2 py-0.5 text-[10.5px] text-accent-soft">
                 <Hash size={10} />
                 {enterprise.codigoEmpresa}
               </span>

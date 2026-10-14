@@ -10,7 +10,6 @@ import { createRoot } from "react-dom/client";
  * o mesmo offline, que é requisito de PWA instalado.
  */
 import "@fontsource-variable/inter";
-import "@fontsource-variable/sora";
 
 import "./index.css";
 

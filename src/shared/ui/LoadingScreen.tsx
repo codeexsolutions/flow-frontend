@@ -110,7 +110,7 @@ const LoadingScreen = () => {
 
         {!carregandoMarca && (
           <motion.div className="mt-7 flex flex-col items-center gap-1.5" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1, ease: EASE }}>
-            <span className="font-display text-[22px] tracking-tight text-ink">
+            <span className="text-[22px] tracking-tight text-ink">
               {nome ?? (
                 <>
                   CodeEx <span className="text-accent-soft">Flow</span>

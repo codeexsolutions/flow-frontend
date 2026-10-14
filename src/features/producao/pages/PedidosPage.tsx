@@ -415,7 +415,7 @@ const PedidosPage = () => {
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate text-[12.5px] text-ink">{v.nomeCliente}</span>
-                        <span className="block truncate font-mono text-[10px] text-faint">#{id.slice(-6).toUpperCase()}</span>
+                        <span className="block truncate text-[10px] text-faint">#{id.slice(-6).toUpperCase()}</span>
                       </span>
                     </span>
 

@@ -180,7 +180,7 @@ const SeletorCliente = ({ valor, onChange, opcoes, naPlanilha, onConfirmar, plac
                     {/* O selo é o motivo de a lista existir: emitir link para
                         quem não está na planilha gera página vazia. */}
                     {naPlanilha.has(nome) && (
-                      <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                      <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent">
                         na produção
                       </span>
                     )}

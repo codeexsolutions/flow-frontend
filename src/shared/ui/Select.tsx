@@ -28,7 +28,23 @@ export type OpcaoSelect = {
    * aviso sempre aceso deixa de ser aviso em uma semana.
    */
   alerta?: boolean;
+  /**
+   * A cor da situação que a opção representa — um ponto antes do rótulo, na
+   * lista e no botão. Para filtros de status (pago, em aberto, cancelado), onde
+   * a cor é a mesma do selo que aparece na linha.
+   */
+  tom?: "sucesso" | "alerta" | "perigo" | "info";
 };
+
+const COR_TOM: Record<NonNullable<OpcaoSelect["tom"]>, string> = {
+  sucesso: "bg-success shadow-[0_0_6px_rgb(var(--success)/0.8)]",
+  alerta: "bg-warning shadow-[0_0_6px_rgb(var(--warning)/0.8)]",
+  perigo: "bg-danger shadow-[0_0_6px_rgb(var(--danger)/0.8)]",
+  info: "bg-accent-soft shadow-[0_0_6px_rgb(var(--accent-soft)/0.8)]",
+};
+
+const PontoTom = ({ tom }: { tom?: OpcaoSelect["tom"] }) =>
+  tom ? <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${COR_TOM[tom]}`} /> : null;
 
 type Props = {
   valor: string;
@@ -104,6 +120,8 @@ const Select = ({ valor, onChange, opcoes, icone, placeholder = "Selecionar", "a
       >
         {icone && <span className="shrink-0 text-muted">{icone}</span>}
 
+        <PontoTom tom={escolhida?.tom} />
+
         <span className="min-w-0 flex-1 truncate text-left">{escolhida?.label ?? placeholder}</span>
 
         {/* O ponto sobe para o botão quando o alerta está numa opção fechada:
@@ -131,6 +149,8 @@ const Select = ({ valor, onChange, opcoes, icone, placeholder = "Selecionar", "a
                   <span className={`grid h-4 w-4 shrink-0 place-items-center ${marcada ? "text-accent-soft" : "text-transparent"}`}>
                     <Check size={13} />
                   </span>
+
+                  <PontoTom tom={o.tom} />
 
                   <span className="min-w-0 flex-1 truncate">{o.label}</span>
 

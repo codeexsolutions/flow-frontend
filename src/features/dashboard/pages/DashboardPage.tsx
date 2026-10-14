@@ -22,8 +22,13 @@ import {
   Sun,
   Sunset,
   Moon,
+  Activity,
+  CalendarDays,
+  Gauge,
+  Hourglass,
+  UserCheck,
 } from "lucide-react";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 import { KpiFaixa } from "@/shared/ui/Painel";
 import { Rosca } from "@/shared/ui/Rosca";
@@ -31,12 +36,13 @@ import { PageScreen } from "@/shared/ui/PageShell";
 import SeletorPeriodo from "@/shared/ui/SeletorPeriodo";
 import { usePeriodoSalvo } from "@/shared/ui/usePeriodoSalvo";
 import { SkeletonKpis, SkeletonGrafico, SkeletonListaPainel } from "@/shared/ui/skeleton";
+import useSincronizacao from "@/shared/realtime/useSincronizacao";
+import { BarrasSemana, Medidor, Ranking, Sparkline } from "@/features/dashboard/components/graficos";
 import useAuth from "@/features/auth/store/auth.store";
 
 import useVendaStore from "@/features/vendas/store/venda.store";
 import useClienteStore from "@/features/clientes/store/cliente.store";
 import useProdutoStore, { stockLevel } from "@/features/estoque/store/produto.store";
-import { ehVendavel } from "@/shared/domain/produto";
 
 import { estaAberto, estaCancelado, totalDoPedido, recebidoDoPedido, valorPendenteDoPedido } from "@/shared/domain/pedido";
 import { mesesComMovimento as mesesComVenda, serieDeVendas } from "@/shared/domain/serieVendas";
@@ -144,7 +150,7 @@ const NumeroAnimado = ({ valor, moeda = true }: { valor: number; moeda?: boolean
  */
 const Variacao = ({ atual, anterior }: { atual: number; anterior: number }) => {
   if (anterior <= 0) {
-    return <span className="text-[11px] text-faint">{atual > 0 ? "primeiro período com movimento" : "sem base de comparação"}</span>;
+    return <span className="text-[11px] text-faint">{atual > 0 ? "novo" : "—"}</span>;
   }
 
   const pct = ((atual - anterior) / anterior) * 100;
@@ -154,10 +160,12 @@ const Variacao = ({ atual, anterior }: { atual: number; anterior: number }) => {
   const cor = parado ? "text-faint" : pct > 0 ? "text-success" : "text-danger";
 
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] ${cor}`}>
-      <Icone size={12} />
+    <span
+      title="vs. período anterior de mesmo tamanho"
+      className={`nums inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${cor} ${parado ? "border-fg/[0.08]" : pct > 0 ? "border-success/25 bg-success/[0.08]" : "border-danger/25 bg-danger/[0.08]"}`}
+    >
+      <Icone size={11} />
       {parado ? "estável" : `${pct > 0 ? "+" : ""}${pct.toFixed(1).replace(".", ",")}%`}
-      <span className="text-faint">vs. período anterior</span>
     </span>
   );
 };
@@ -177,6 +185,8 @@ const Kpi = ({
   hint,
   rodape,
   tone = "accent",
+  serie,
+  corSerie = "rgb(var(--accent))",
 }: {
   icon: ReactNode;
   label: string;
@@ -185,8 +195,11 @@ const Kpi = ({
   hint?: string;
   rodape?: ReactNode;
   tone?: keyof typeof TONES;
+  /** A curva do período no pé do cartão — ver `Sparkline`. */
+  serie?: { name: string; valor: number }[];
+  corSerie?: string;
 }) => (
-  <div className="card glass-sheen group relative overflow-hidden p-4 transition-transform duration-200 hover:-translate-y-0.5">
+  <div className="card glass-sheen hud-cantos group relative overflow-hidden p-4 transition-transform duration-200 hover:-translate-y-0.5">
     {/* Halo que acende no hover — o mesmo vocabulário de brilho da entrada,
         contido para não competir com o número. */}
     <span
@@ -195,34 +208,62 @@ const Kpi = ({
       style={{ background: "rgb(var(--accent) / 0.28)" }}
     />
 
-    <div className={`relative mb-2.5 flex h-9 w-9 items-center justify-center rounded-xl ring-1 ring-inset transition-transform duration-200 group-hover:scale-105 ${TONES[tone]}`}>{icon}</div>
-    <p className="relative text-[11px] text-faint">{label}</p>
+    <div className="relative mb-2.5 flex items-center justify-between gap-2">
+      <div className={`flex h-9 w-9 items-center justify-center rounded-xl ring-1 ring-inset transition-transform duration-200 group-hover:scale-105 ${TONES[tone]}`}>{icon}</div>
+      {rodape && <span className="min-w-0 truncate">{rodape}</span>}
+    </div>
+    <p className="relative truncate text-[12px] text-mist">{label}</p>
     {/*
       Um degrau menor no celular.
       Em duas colunas de 360px sobram ~130px para o número, e "R$ 48.320,00"
       em 20px não cabe — o `truncate` cortava justamente o dígito que decide a
       ordem de grandeza, e "R$ 48.32…" é pior do que número nenhum.
     */}
-    <p className="nums relative mt-0.5 truncate text-lg tracking-tight text-ink sm:text-xl">
+    <p className="nums relative mt-1 truncate text-lg tracking-tight text-ink sm:text-[22px]">
       <NumeroAnimado valor={valor} moeda={moeda} />
     </p>
     {hint && <p className="relative mt-0.5 truncate text-[11px] text-faint">{hint}</p>}
-    {rodape && <p className="relative mt-1 truncate">{rodape}</p>}
+    {serie && <Sparkline pontos={serie} cor={corSerie} formatar={moeda ? formatCurrency : (n) => formatNumber(Math.round(n))} />}
   </div>
 );
 
-const Painel = ({ title, subtitle, icon, action, children }: { title: string; subtitle?: string; icon: ReactNode; action?: ReactNode; children: ReactNode }) => (
-  <section className="card glass-sheen flex min-h-0 flex-col overflow-hidden">
+const Painel = ({
+  title,
+  subtitle,
+  icon,
+  action,
+  grade = false,
+  className = "",
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  icon: ReactNode;
+  action?: ReactNode;
+  /** Malha de pontos no fundo — para os painéis que são gráfico. */
+  grade?: boolean;
+  className?: string;
+  children: ReactNode;
+}) => (
+  <section className={`card glass-sheen hud-cantos relative flex min-h-0 flex-col overflow-hidden ${className}`}>
     <header className="flex shrink-0 items-center gap-2.5 border-b border-fg/[0.07] px-4 py-3">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/[0.14] text-accent-soft ring-1 ring-inset ring-accent/20">{icon}</span>
       <span className="min-w-0 flex-1">
         <h2 className="truncate text-[13.5px] leading-none text-ink">{title}</h2>
-        {subtitle && <p className="mt-1 truncate text-[11px] text-faint">{subtitle}</p>}
+        {subtitle && <p className="mt-1 truncate text-[11.5px] text-faint">{subtitle}</p>}
       </span>
       {action}
     </header>
-    <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+    <div className={`min-h-0 flex-1 overflow-y-auto ${grade ? "hud-grade" : ""}`}>{children}</div>
   </section>
+);
+
+/** Um número pequeno de apoio, no rodapé dos painéis de gráfico. */
+const MiniDado = ({ rotulo, valor }: { rotulo: string; valor: string }) => (
+  <div className="min-w-0 rounded-xl border border-fg/[0.07] bg-fg/[0.025] px-3 py-2">
+    <p className="truncate text-[11px] text-faint">{rotulo}</p>
+    <p className="nums mt-0.5 truncate text-[13.5px] text-ink">{valor}</p>
+  </div>
 );
 
 const VerTudo = ({ onClick }: { onClick: () => void }) => (
@@ -246,55 +287,6 @@ const BALAO = {
   fontSize: 11.5,
   boxShadow: "var(--shadow-2)",
 } as const;
-
-/**
- * Ranking em barras horizontais.
- *
- * Barra deitada, e não em pé, porque o rótulo é um nome de cliente ou de
- * produto: na vertical ele vira texto girado ou cortado, e ninguém lê gráfico
- * de cabeça inclinada. Deitado, o nome fica na horizontal, do tamanho que for.
- *
- * Uma cor só — é magnitude da mesma medida, não categorias diferentes. Pintar
- * cada barra de uma cor sugeriria que a cor significa algo, e ela não significa.
- */
-const Barras = ({
-  dados,
-  cor,
-  formatar,
-}: {
-  dados: { nome: string; valor: number; sub: string }[];
-  cor: string;
-  formatar: (n: number) => string;
-}) => (
-  <div className="px-2 py-3" style={{ height: Math.max(150, dados.length * 38 + 16) }}>
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={dados} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
-        <XAxis type="number" hide />
-        <YAxis
-          type="category"
-          dataKey="nome"
-          width={116}
-          tickLine={false}
-          axisLine={false}
-          tick={{ fontSize: 11, fill: "rgb(var(--mist))" }}
-          /* Nome longo empurraria o eixo até sobrar nada para a barra. */
-          tickFormatter={(v: string) => (v.length > 16 ? `${v.slice(0, 15)}…` : v)}
-        />
-
-        <Tooltip
-          cursor={{ fill: "rgb(var(--fg) / 0.04)" }}
-          contentStyle={BALAO}
-          labelStyle={{ color: "rgb(var(--faint))", marginBottom: 4 }}
-          itemStyle={{ padding: 0 }}
-          formatter={(v, _n, item) => [formatar(Number(v ?? 0)), item?.payload?.sub ?? ""]}
-        />
-
-        <Bar dataKey="valor" fill={cor} radius={[0, 4, 4, 0]} barSize={13} animationDuration={750} animationEasing="ease-out" />
-      </BarChart>
-    </ResponsiveContainer>
-  </div>
-);
-
 
 /* ──────────────────────────────── Página ────────────────────────────────── */
 
@@ -370,6 +362,12 @@ const DashboardPage = () => {
     fetchClientes();
     fetchProdutos();
   }, [fetchVendas, fetchClientes, fetchProdutos]);
+
+  /* O painel acompanha o balcão: venda fechada em outro aparelho aparece aqui
+     sem recarregar. */
+  useSincronizacao(["pedidos", "clientes", "produtos"], () => {
+    void Promise.all([fetchVendas(true), fetchClientes(true), fetchProdutos(true)]);
+  });
 
   const dados = useMemo(() => {
     const agora = new Date();
@@ -497,7 +495,7 @@ const DashboardPage = () => {
       atual.compras += 1;
       porCliente.set(v.clienteId, atual);
     });
-    const topClientes = [...porCliente.values()].sort((a, b) => b.total - a.total).slice(0, 5);
+    const topClientes = [...porCliente.values()].sort((a, b) => b.total - a.total).slice(0, 6);
 
     /* O que mais saiu no período — por quantidade, que é o que repõe estoque. */
     const porProduto = new Map<string, { nome: string; quantidade: number; total: number }>();
@@ -515,7 +513,10 @@ const DashboardPage = () => {
         porProduto.set(id, atual);
       });
     });
-    const topProdutos = [...porProduto.values()].sort((a, b) => b.quantidade - a.quantidade).slice(0, 5);
+    /* As duas leituras do mesmo ranking: o que mais SAI (repõe estoque) e o
+       que mais FATURA (paga as contas). A chave do painel escolhe. */
+    const topProdutos = [...porProduto.values()].sort((a, b) => b.quantidade - a.quantidade).slice(0, 8);
+    const topProdutosValor = [...porProduto.values()].sort((a, b) => b.total - a.total).slice(0, 8);
 
     /* Mix de recebimento. `formaPagamento` é a do último pagamento da nota — o
        subtítulo do painel diz isso, para ninguém ler como rateio exato. */
@@ -536,7 +537,62 @@ const DashboardPage = () => {
     });
     const formas = [...porForma.entries()].map(([forma, d]) => ({ forma, ...d })).sort((a, b) => b.total - a.total);
 
+    /* ─── O faturado por dia da semana — segunda primeiro, como a semana do balcão ─── */
+    const semana = Array.from({ length: 7 }, () => ({ valor: 0, vendas: 0 }));
+    noPeriodo.forEach((v) => {
+      const d = toDate(v.pedido.dataPedido);
+      if (!d) return;
+      semana[d.getDay()].valor += totalDoPedido(v);
+      semana[d.getDay()].vendas += 1;
+    });
+    const porSemana = [1, 2, 3, 4, 5, 6, 0].map((dia) => ({ dia, ...semana[dia] }));
+
+    /*
+     * O que está para receber, pela idade da venda.
+     *
+     * Como o "a receber", ignora o período: dívida é do agora. A idade é o
+     * que separa o fiado da semana — que é rotina — do de dois meses, que já
+     * é cobrança.
+     */
+    const FAIXAS = [
+      { nome: "Até 7 dias", ate: 7 },
+      { nome: "8 a 30 dias", ate: 30 },
+      { nome: "31 a 60 dias", ate: 60 },
+      { nome: "Mais de 60 dias", ate: Infinity },
+    ];
+    const idade = FAIXAS.map((f) => ({ nome: f.nome, valor: 0, notas: 0 }));
+    ativas.forEach((v) => {
+      const saldo = valorPendenteDoPedido(v);
+      const d = toDate(v.pedido.dataPedido);
+      if (saldo <= 0 || !d) return;
+      const dias = Math.floor((+agora - +d) / 86_400_000);
+      const i = FAIXAS.findIndex((f) => dias <= f.ate);
+      idade[i].valor += saldo;
+      idade[i].notas += 1;
+    });
+
+    /* Quem vendeu — só vira painel quando há mais de um vendedor. */
+    const porVendedor = new Map<string, { nome: string; total: number; vendas: number }>();
+    noPeriodo.forEach((v) => {
+      const nome = v.nomeVendedor?.trim();
+      if (!nome) return;
+      const chave = v.vendedorId ?? nome;
+      const atual = porVendedor.get(chave) ?? { nome, total: 0, vendas: 0 };
+      atual.total += totalDoPedido(v);
+      atual.vendas += 1;
+      porVendedor.set(chave, atual);
+    });
+    const vendedores = [...porVendedor.values()].sort((a, b) => b.total - a.total).slice(0, 6);
+
+    const itensVendidos = noPeriodo.reduce((acc, v) => acc + (v.pedido.itensPedido ?? []).reduce((a, it) => a + (Number(it.quantidadeItem) || 0), 0), 0);
+    const clientesNoPeriodo = new Set(noPeriodo.map((v) => v.clienteId)).size;
+
     return {
+      porSemana,
+      idade,
+      vendedores,
+      itensVendidos,
+      clientesNoPeriodo,
       faturado,
       recebido,
       aReceber,
@@ -559,6 +615,7 @@ const DashboardPage = () => {
       criticos,
       topClientes,
       topProdutos,
+      topProdutosValor,
       formas,
     };
   }, [vendas, produtos, periodo]);
@@ -576,6 +633,27 @@ const DashboardPage = () => {
   }, []);
 
   const primeiroNome = user?.nome?.trim().split(/\s+/)[0];
+
+  /* As curvas dos cartões — os mesmos baldes do gráfico grande. */
+  const sparks = useMemo(
+    () => ({
+      faturado: dados.serie.map((p) => ({ name: p.name, valor: p.faturado })),
+      recebido: dados.serie.map((p) => ({ name: p.name, valor: p.recebido })),
+      ticket: dados.serie.map((p) => ({ name: p.name, valor: p.vendas ? p.faturado / p.vendas : 0 })),
+      vendas: dados.serie.map((p) => ({ name: p.name, valor: p.vendas })),
+    }),
+    [dados.serie],
+  );
+
+  const melhorDia = useMemo(() => {
+    const m = [...dados.porSemana].sort((a, b) => b.valor - a.valor)[0];
+    return m && m.valor > 0 ? m : null;
+  }, [dados.porSemana]);
+
+  const DIAS_EXTENSO = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+
+  /* Mais vendidos por quantidade (padrão) ou por valor. */
+  const [produtosPor, setProdutosPor] = useState<"quantidade" | "valor">("quantidade");
 
   /**
    * Como está o dia — vira o subtítulo do cabeçalho.
@@ -624,7 +702,7 @@ const DashboardPage = () => {
 
       <span aria-hidden className="hidden h-5 w-px shrink-0 bg-fg/[0.08] sm:block" />
 
-      {ATALHOS.map(({ label, icone: Icone, para }) => (
+      {ATALHOS.map(({ label, icone: Icone, para }, i) => (
         <motion.button
           key={para}
           whileHover={{ y: -2 }}
@@ -634,9 +712,16 @@ const DashboardPage = () => {
           /* `shrink-0` e `whitespace-nowrap`: na faixa que rola (celular) o
              flex tentaria espremer os cinco na largura da tela, e "Financeiro"
              viraria duas linhas de cinco letras. */
-          className="focus-ring flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border border-fg/[0.08] bg-fg/[0.03] px-3 py-2 text-[11.5px] text-mist transition-colors hover:border-accent/40 hover:text-ink"
+          /* "Nova venda" é a ação do balcão — preenchida na cor de destaque.
+             Os outros são caminhos: o mesmo tom, bem mais leve, para a fileira
+             ler como um grupo sem disputar com o botão principal. */
+          className={`focus-ring flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-[11.5px] transition-colors ${
+            i === 0
+              ? "border-accent/60 bg-gradient-to-b from-accent to-accent-strong text-white shadow-glow hover:brightness-110"
+              : "border-accent/30 bg-accent/[0.13] text-ink hover:border-accent/55 hover:bg-accent/[0.22]"
+          }`}
         >
-          <Icone size={13} />
+          <Icone size={13} className={i === 0 ? "" : "text-accent-soft"} />
           {label}
         </motion.button>
       ))}
@@ -662,19 +747,22 @@ const DashboardPage = () => {
           <KpiFaixa className="sm:grid-cols-3 xl:grid-cols-5">
           <Kpi
             icon={<DollarSign size={16} />}
-            label={`Faturado · ${periodo.rotulo.toLowerCase()}`}
+            label="Faturamento"
             valor={dados.faturado}
-            hint={`${dados.vendasNoPeriodo} ${dados.vendasNoPeriodo === 1 ? "venda" : "vendas"}`}
+            hint={`${dados.vendasNoPeriodo} ${dados.vendasNoPeriodo === 1 ? "venda" : "vendas"} · ${periodo.rotulo.toLowerCase()}`}
             rodape={dados.temComparacao ? <Variacao atual={dados.faturado} anterior={dados.faturadoAnterior} /> : undefined}
             tone="accent"
+            serie={sparks.faturado}
           />
           <Kpi
             icon={<Wallet size={16} />}
-            label={`Recebido · ${periodo.rotulo.toLowerCase()}`}
+            label="Recebido"
             valor={dados.recebido}
             hint={dados.faturado > 0 ? `${Math.round((dados.recebido / dados.faturado) * 100)}% do faturado` : undefined}
             rodape={dados.temComparacao ? <Variacao atual={dados.recebido} anterior={dados.recebidoAnterior} /> : undefined}
             tone="success"
+            serie={sparks.recebido}
+            corSerie="rgb(var(--success))"
           />
           <Kpi
             icon={<AlertCircle size={16} />}
@@ -687,29 +775,36 @@ const DashboardPage = () => {
             icon={<Receipt size={16} />}
             label="Ticket médio"
             valor={dados.ticket}
-            hint="por venda no período"
+            hint="Valor médio por venda"
             rodape={dados.temComparacao ? <Variacao atual={dados.ticket} anterior={dados.ticketAnterior} /> : undefined}
             tone="accent"
+            serie={sparks.ticket}
           />
-          <Kpi icon={<Users size={16} />} label="Clientes" valor={clientes.length} moeda={false} /* Só o que se vende: a frase diz "produtos", e insumo não é um.
-                       A lista de estoque crítico logo abaixo continua
-                       incluindo material — material acabando é exatamente
-                       o que um painel precisa avisar. */
-            hint={`${formatNumber(produtos.filter(ehVendavel).length)} produtos cadastrados`} tone="danger" />
+          <Kpi
+            icon={<Users size={16} />}
+            label="Clientes"
+            valor={clientes.length}
+            moeda={false}
+            /* Quantos compraram no recorte: o total da base sozinho só cresce,
+               e não diz se a loja está atendendo gente. */
+            hint={`${formatNumber(dados.clientesNoPeriodo)} compraram no período`}
+            tone="danger"
+            serie={sparks.vendas}
+          />
           </KpiFaixa>
         </Bloco>
       )}
 
       {/* Gráfico do ano, agora dividindo a linha com a rosca de recebimento */}
       <Bloco i={1} className="grid shrink-0 grid-cols-1 gap-3 xl:grid-cols-3">
-        <section className="card glass-sheen overflow-hidden xl:col-span-2">
+        <section className="card glass-sheen hud-cantos relative overflow-hidden xl:col-span-2">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-fg/[0.07] px-4 py-3">
             <div className="flex items-center gap-2.5">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/[0.14] text-accent-soft ring-1 ring-inset ring-accent/20">
                 <TrendingUp size={15} />
               </span>
               <div>
-                <h2 className="text-[13.5px] leading-none text-ink">Faturamento</h2>
+                <h2 className="text-[13.5px] leading-none text-ink">Faturamento e recebimento</h2>
                 <p className="mt-1 text-[11.5px] text-faint">
                   {dados.granularidade === "dia" ? "Dia a dia" : "Mês a mês"} · {periodo.rotulo.toLowerCase()}
                 </p>
@@ -738,9 +833,9 @@ const DashboardPage = () => {
           </header>
 
           {carregando ? (
-            <SkeletonGrafico altura={176} />
+            <SkeletonGrafico altura={220} />
           ) : (
-            <div className="h-[176px] px-1 py-2">
+            <div className="hud-grade h-[220px] px-1 py-2">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={dados.serie} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
                   <defs>
@@ -776,18 +871,13 @@ const DashboardPage = () => {
                     tickMargin={8}
                     width={44}
                     tick={{ fontSize: 11, fill: "rgb(var(--faint))" }}
-                    tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                    /* Uma casa decimal: com zero, 1.500 e 2.000 viravam os dois "2k". */
+                    tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k` : String(v))}
                   />
 
                   <Tooltip
                     cursor={{ stroke: "rgb(var(--fg) / 0.12)", strokeDasharray: "4 4" }}
-                    contentStyle={{
-                      background: "rgb(var(--surface-raised))",
-                      border: "1px solid rgb(var(--fg) / 0.08)",
-                      borderRadius: 12,
-                      fontSize: 11.5,
-                      boxShadow: "var(--shadow-2)",
-                    }}
+                    contentStyle={BALAO}
                     labelStyle={{ color: "rgb(var(--faint))", marginBottom: 4 }}
                     itemStyle={{ padding: 0 }}
                     formatter={(v) => formatCurrency(Number(v ?? 0))}
@@ -830,45 +920,146 @@ const DashboardPage = () => {
           )}
         </section>
 
-        <Painel title="Como receberam" subtitle="última forma de cada nota quitada no período" icon={<CreditCard size={15} />} action={<VerTudo onClick={() => navigate("/vendas/financeiro")} />}>
-          {carregando ? <SkeletonGrafico altura={176} /> : dados.formas.length === 0 ? <Vazio>Nenhuma nota quitada neste período.</Vazio> : <Rosca fatias={dados.formas.map((f) => ({ nome: f.forma, valor: f.total }))} formatar={formatCurrency} />}
+        <Painel title="Taxa de recebimento" subtitle="Quanto do faturamento já entrou no caixa" icon={<Gauge size={15} />} grade>
+          {carregando ? (
+            <SkeletonGrafico altura={220} />
+          ) : (
+            <div className="flex flex-col gap-3 px-4 py-4">
+              <Medidor fracao={dados.faturado > 0 ? dados.recebido / dados.faturado : 0} rotulo="recebido" />
+              <p className="text-center text-[11.5px] text-mist">
+                <span className="nums text-ink">{formatCurrency(dados.recebido)}</span> de <span className="nums text-ink">{formatCurrency(dados.faturado)}</span>
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <MiniDado rotulo="Vendas" valor={formatNumber(dados.vendasNoPeriodo)} />
+                <MiniDado rotulo="Itens vendidos" valor={formatNumber(dados.itensVendidos)} />
+                <MiniDado rotulo="Itens por venda" valor={dados.vendasNoPeriodo ? (dados.itensVendidos / dados.vendasNoPeriodo).toFixed(1).replace(".", ",") : "0"} />
+              </div>
+            </div>
+          )}
         </Painel>
       </Bloco>
 
-      {/* Rankings, em barras */}
-      <Bloco i={2} className="grid shrink-0 grid-cols-1 gap-3 lg:grid-cols-2">
-        <Painel title="Quem mais comprou" subtitle="no período, por valor" icon={<Trophy size={15} />} action={<VerTudo onClick={() => navigate("/clientes")} />}>
+      {/* O que sai e quando a loja vende */}
+      <Bloco i={2} className="grid shrink-0 grid-cols-1 gap-3 xl:grid-cols-3">
+        <Painel
+          title="Produtos mais vendidos"
+          subtitle={produtosPor === "quantidade" ? "Por quantidade vendida no período" : "Por faturamento no período"}
+          icon={<Boxes size={15} />}
+          className="xl:col-span-2"
+          grade
+          action={
+            <div role="group" aria-label="Ordenar os mais vendidos" className="flex shrink-0 rounded-lg border border-fg/[0.08] bg-fg/[0.03] p-0.5">
+              {(
+                [
+                  ["quantidade", "Quantidade"],
+                  ["valor", "Valor"],
+                ] as const
+              ).map(([chave, rotulo]) => (
+                <button
+                  key={chave}
+                  type="button"
+                  aria-pressed={produtosPor === chave}
+                  onClick={() => setProdutosPor(chave)}
+                  className={`focus-ring cursor-pointer rounded-md px-2.5 py-1 text-[11.5px] transition-colors ${
+                    produtosPor === chave ? "bg-accent/[0.16] text-accent-soft" : "text-faint hover:text-ink"
+                  }`}
+                >
+                  {rotulo}
+                </button>
+              ))}
+            </div>
+          }
+        >
+          {carregando ? (
+            <SkeletonGrafico altura={220} />
+          ) : dados.topProdutos.length === 0 ? (
+            <Vazio>Nenhum item vendido neste período.</Vazio>
+          ) : produtosPor === "quantidade" ? (
+            <Ranking
+              formatar={(n) => `${formatNumber(n)} un.`}
+              itens={dados.topProdutos.map((p) => ({ nome: p.nome, valor: p.quantidade, sub: formatCurrency(p.total) }))}
+            />
+          ) : (
+            <Ranking
+              formatar={formatCurrency}
+              itens={dados.topProdutosValor.map((p) => ({ nome: p.nome, valor: p.total, sub: `${formatNumber(p.quantidade)} un.` }))}
+            />
+          )}
+        </Painel>
+
+        <Painel
+          title="Vendas por dia da semana"
+          subtitle={melhorDia ? `Melhor dia: ${DIAS_EXTENSO[melhorDia.dia]}` : "Faturamento no período"}
+          icon={<CalendarDays size={15} />}
+          grade
+        >
+          {carregando ? (
+            <SkeletonGrafico altura={196} />
+          ) : !melhorDia ? (
+            <Vazio>Sem vendas neste período.</Vazio>
+          ) : (
+            <div className="flex flex-col gap-3 pb-4">
+              <BarrasSemana dias={dados.porSemana} formatar={formatCurrency} />
+              <div className="grid grid-cols-3 gap-2 px-4">
+                <MiniDado rotulo="Melhor dia" valor={DIAS_EXTENSO[melhorDia.dia].replace(/^./, (c) => c.toUpperCase())} />
+                <MiniDado rotulo="Faturamento" valor={formatCurrency(melhorDia.valor)} />
+                <MiniDado rotulo="Vendas" valor={formatNumber(melhorDia.vendas)} />
+              </div>
+            </div>
+          )}
+        </Painel>
+      </Bloco>
+
+      {/* Dinheiro: como entrou, o que falta entrar e quem trouxe */}
+      <Bloco i={3} className={`grid shrink-0 grid-cols-1 gap-3 lg:grid-cols-2 ${dados.vendedores.length > 1 ? "" : "xl:grid-cols-3"}`}>
+        <Painel title="Formas de pagamento" subtitle="Como os clientes pagaram no período" icon={<CreditCard size={15} />} action={<VerTudo onClick={() => navigate("/vendas/financeiro")} />}>
+          {carregando ? <SkeletonGrafico altura={176} /> : dados.formas.length === 0 ? <Vazio>Nenhuma nota quitada neste período.</Vazio> : <Rosca fatias={dados.formas.map((f) => ({ nome: f.forma, valor: f.total }))} formatar={formatCurrency} />}
+        </Painel>
+
+        <Painel title="Contas a receber" subtitle="Saldo em aberto, pelo tempo desde a venda" icon={<Hourglass size={15} />} action={<VerTudo onClick={() => navigate("/vendas/financeiro")} />}>
+          {carregando ? (
+            <SkeletonGrafico altura={176} />
+          ) : dados.aReceber <= 0 ? (
+            <Vazio>Nada em aberto. Tudo recebido. 👌</Vazio>
+          ) : (
+            <Ranking
+              cor="var(--warning)"
+              formatar={formatCurrency}
+              itens={dados.idade.map((f) => ({ nome: f.nome, valor: f.valor, sub: `${f.notas} ${f.notas === 1 ? "nota" : "notas"}` }))}
+            />
+          )}
+        </Painel>
+
+        <Painel title="Melhores clientes" subtitle="Quem mais comprou no período" icon={<Trophy size={15} />} action={<VerTudo onClick={() => navigate("/clientes")} />} grade>
           {carregando ? (
             <SkeletonGrafico altura={176} />
           ) : dados.topClientes.length === 0 ? (
             <Vazio>Ainda não há compras neste período.</Vazio>
           ) : (
-            <Barras
-              cor={COR_FATURADO}
+            <Ranking
               formatar={formatCurrency}
-              dados={dados.topClientes.map((c) => ({ nome: c.nome, valor: c.total, sub: `${c.compras} ${c.compras === 1 ? "compra" : "compras"}` }))}
+              itens={dados.topClientes.map((c) => ({ nome: c.nome, valor: c.total, sub: `${c.compras} ${c.compras === 1 ? "compra" : "compras"}` }))}
             />
           )}
         </Painel>
 
-        <Painel title="Mais vendidos" subtitle="no período, por quantidade" icon={<Boxes size={15} />} action={<VerTudo onClick={() => navigate("/relatorios")} />}>
-          {carregando ? (
-            <SkeletonGrafico altura={176} />
-          ) : dados.topProdutos.length === 0 ? (
-            <Vazio>Nenhum item vendido neste período.</Vazio>
-          ) : (
-            <Barras
-              cor={COR_RECEBIDO}
-              formatar={(n) => `${formatNumber(n)} un.`}
-              dados={dados.topProdutos.map((p) => ({ nome: p.nome, valor: p.quantidade, sub: formatCurrency(p.total) }))}
-            />
-          )}
-        </Painel>
+        {dados.vendedores.length > 1 && (
+          <Painel title="Desempenho por vendedor" subtitle="Faturamento de cada vendedor no período" icon={<UserCheck size={15} />}>
+            {carregando ? (
+              <SkeletonGrafico altura={176} />
+            ) : (
+              <Ranking
+                formatar={formatCurrency}
+                itens={dados.vendedores.map((v) => ({ nome: v.nome, valor: v.total, sub: `${v.vendas} ${v.vendas === 1 ? "venda" : "vendas"}` }))}
+              />
+            )}
+          </Painel>
+        )}
       </Bloco>
 
       {/* Listas */}
-      <Bloco i={3} className="grid min-h-[280px] shrink-0 grid-cols-1 gap-3 lg:grid-cols-2">
-        <Painel title="Últimas vendas" icon={<ShoppingCart size={15} />} action={<VerTudo onClick={() => navigate("/vendas")} />}>
+      <Bloco i={4} className="grid min-h-[280px] shrink-0 grid-cols-1 gap-3 lg:grid-cols-2">
+        <Painel title="Últimas vendas" subtitle="As vendas mais recentes" icon={<Activity size={15} />} action={<VerTudo onClick={() => navigate("/vendas")} />}>
           {carregando ? (
             <SkeletonListaPainel />
           ) : dados.recentes.length === 0 ? (
@@ -890,7 +1081,7 @@ const DashboardPage = () => {
           )}
         </Painel>
 
-        <Painel title="Estoque crítico" icon={<Package size={15} />} action={<VerTudo onClick={() => navigate("/estoque")} />}>
+        <Painel title="Estoque baixo" subtitle="Produtos acabando ou esgotados" icon={<Package size={15} />} action={<VerTudo onClick={() => navigate("/estoque")} />}>
           {carregando ? (
             <SkeletonListaPainel linhas={4} />
           ) : dados.criticos.length === 0 ? (

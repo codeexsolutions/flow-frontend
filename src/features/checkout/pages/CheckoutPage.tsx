@@ -417,7 +417,7 @@ const CheckoutPage = ({ embutido = false }: { embutido?: boolean }) => {
             {/* O título fala da situação, não do módulo. Quem chega aqui com a
                 conta bloqueada quer saber o que fazer para entrar; "Assinatura
                 e faturas" descreve a tela e não responde nada. */}
-            <h1 className="font-display text-[15.5px] tracking-tight text-ink">
+            <h1 className="text-[15.5px] tracking-tight text-ink">
               {contaLiberada ? "Assinatura e faturas" : "Falta pouco para começar"}
             </h1>
             <p className="truncate text-[11px] text-faint">
@@ -743,7 +743,7 @@ const CheckoutPage = ({ embutido = false }: { embutido?: boolean }) => {
 
               <details className="mt-3 w-full">
                 <summary className="cursor-pointer list-none text-center text-[11px] text-faint transition-colors hover:text-mist">Ver o código completo</summary>
-                <p className="mt-2 max-h-24 select-all overflow-y-auto break-all rounded-xl border border-fg/[0.07] bg-canvas p-3 font-mono text-[11px] leading-relaxed text-mist">{cobranca.qrCode}</p>
+                <p className="mt-2 max-h-24 select-all overflow-y-auto break-all rounded-xl border border-fg/[0.07] bg-canvas p-3 text-[11px] leading-relaxed text-mist">{cobranca.qrCode}</p>
               </details>
             </>
           ) : qrLoading && automaticoDisponivel ? (
@@ -782,7 +782,7 @@ const CheckoutPage = ({ embutido = false }: { embutido?: boolean }) => {
 
               <details className="mt-3 w-full">
                 <summary className="cursor-pointer list-none text-center text-[11px] text-faint transition-colors hover:text-mist">Ver o código completo</summary>
-                <p className="mt-2 max-h-24 select-all overflow-y-auto break-all rounded-xl border border-fg/[0.07] bg-canvas p-3 font-mono text-[11px] leading-relaxed text-mist">{pix.copiaECola}</p>
+                <p className="mt-2 max-h-24 select-all overflow-y-auto break-all rounded-xl border border-fg/[0.07] bg-canvas p-3 text-[11px] leading-relaxed text-mist">{pix.copiaECola}</p>
               </details>
             </>
           ) : (

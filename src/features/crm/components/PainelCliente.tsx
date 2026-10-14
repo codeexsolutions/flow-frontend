@@ -248,7 +248,7 @@ const PainelCliente = ({ conversa, onFechar, onAbrirNota, embutida = false }: Pr
                     className="flex w-full items-center justify-between gap-2 rounded-xl border border-fg/[0.06] bg-fg/[0.02] p-2.5 text-left transition-colors hover:border-accent/30"
                   >
                     <span className="min-w-0">
-                      <span className="block truncate font-mono text-[10.5px] text-faint">
+                      <span className="block truncate text-[10.5px] text-faint">
                         #{v.pedido.pedidoId?.slice(-6).toUpperCase()}
                       </span>
                       <span className="block text-[11px] text-mist">{dataBr(String(v.pedido.dataPedido))}</span>

@@ -227,7 +227,7 @@ const LinksCliente = ({ planilhaId, colunas, registros }: Props) => {
   if (colunasCliente.length === 0) {
     return (
       <p className="py-10 text-center text-[13px] text-faint">
-        Esta produção não tem coluna de Cliente. Crie uma em <strong className="text-mist">Colunas</strong> para poder
+        Esta produção não tem coluna de Cliente. Crie uma em <strong className="font-normal text-mist">Colunas</strong> para poder
         enviar o acompanhamento a cada cliente.
       </p>
     );

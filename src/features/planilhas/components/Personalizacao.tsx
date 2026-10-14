@@ -97,10 +97,10 @@ const Personalizacao = ({ marca, onMudar, onSalvar }: Props) => {
                     />
                   )}
 
-                  <span className="relative grid h-6 w-6 shrink-0 place-items-center rounded bg-white/90 text-[9px] font-bold text-black">
+                  <span className="relative grid h-6 w-6 shrink-0 place-items-center rounded bg-white/90 text-[9px] text-black">
                     {marca.logo ? <img src={marca.logo} alt="" className="h-full w-full rounded object-contain p-0.5" /> : "L"}
                   </span>
-                  <span className="relative truncate text-[11px] font-semibold">{marca.nome || "Sua empresa"}</span>
+                  <span className="relative truncate text-[11px]">{marca.nome || "Sua empresa"}</span>
                 </div>
 
                 <div className="relative z-10 p-3">
@@ -123,7 +123,7 @@ const Personalizacao = ({ marca, onMudar, onSalvar }: Props) => {
                       <span className="text-[9px]" style={{ color: p.apagado }}>
                         Andamento
                       </span>
-                      <span className="text-[10px] font-bold" style={{ color: p.destaque }}>
+                      <span className="text-[10px]" style={{ color: p.destaque }}>
                         60%
                       </span>
                     </div>
@@ -135,7 +135,7 @@ const Personalizacao = ({ marca, onMudar, onSalvar }: Props) => {
                       {["#22c55e", "#f0a020", "#94a3b8"].map((c) => (
                         <span
                           key={c}
-                          className="rounded px-1.5 py-0.5 text-[8px] font-semibold"
+                          className="rounded px-1.5 py-0.5 text-[8px]"
                           style={{ backgroundColor: rgba(c, 0.15), color: c }}
                         >
                           ETAPA
@@ -224,7 +224,7 @@ const Personalizacao = ({ marca, onMudar, onSalvar }: Props) => {
                   branco vira um retângulo colado no canto da página, e o dono só
                   descobriria isso abrindo o próprio link. */}
               <p className="-mt-2 text-[11px] text-faint">
-                O mascote é um boneco <strong className="font-medium text-mist">recortado, em PNG de fundo transparente</strong> — a
+                O mascote é um boneco <strong className="font-normal text-mist">recortado, em PNG de fundo transparente</strong> — a
                 transparência sobrevive à conversão. Ele entra deslizando pela direita e fica no canto de baixo — no celular,
                 menor e encostado na quina. Passa sempre por TRÁS dos cartões, então nunca cobre o andamento nem o prazo.
               </p>

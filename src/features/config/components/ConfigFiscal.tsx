@@ -354,7 +354,7 @@ const ConfigFiscal = () => {
               <div key={p.id} className="rounded-xl border border-fg/[0.07] p-3">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{p.nome}</span>
-                  {p.sku && <span className="shrink-0 font-mono text-[10.5px] text-faint">{p.sku}</span>}
+                  {p.sku && <span className="shrink-0 text-[10.5px] text-faint">{p.sku}</span>}
                   {salvandoProduto === p.id && <Loader2 size={13} className="shrink-0 animate-spin text-accent" />}
                 </div>
 

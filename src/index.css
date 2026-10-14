@@ -78,7 +78,9 @@
   --dock-lift: max(10px, calc(env(safe-area-inset-bottom) - 10px));
   --dock-space: calc(var(--dock-h) + var(--dock-lift) + 14px);
 
-  --font-display: "Sora Variable", "Sora", system-ui, sans-serif;
+  /* Uma família só no sistema inteiro: a Inter. A Sora dos títulos saiu —
+     duas famílias e três pesos faziam cada tela parecer de um lugar. */
+  --font-display: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-body: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -773,6 +775,46 @@ input[type="number"]::-webkit-outer-spin-button {
 
   .card-interactive {
     @apply card transition-all duration-200;
+  }
+
+  /* Malha de pontos do painel — o fundo de "instrumento" dos gráficos do
+     Início. Tom do próprio texto, bem baixo: some no tema claro e no escuro
+     sem competir com a série. */
+  .hud-grade {
+    background-image: radial-gradient(rgb(var(--fg) / 0.07) 1px, transparent 1px);
+    background-size: 14px 14px;
+  }
+
+  /* Cantoneiras de destaque nos cartões do painel. */
+  .hud-cantos::before,
+  .hud-cantos::after {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    pointer-events: none;
+    border-color: rgb(var(--accent) / 0.55);
+    transition: width 0.25s ease, height 0.25s ease, border-color 0.25s ease;
+  }
+  .hud-cantos::before {
+    top: 0;
+    left: 0;
+    border-top-width: 1.5px;
+    border-left-width: 1.5px;
+    border-top-left-radius: 1rem;
+  }
+  .hud-cantos::after {
+    right: 0;
+    bottom: 0;
+    border-right-width: 1.5px;
+    border-bottom-width: 1.5px;
+    border-bottom-right-radius: 1rem;
+  }
+  .hud-cantos:hover::before,
+  .hud-cantos:hover::after {
+    width: 22px;
+    height: 22px;
+    border-color: rgb(var(--accent) / 0.9);
   }
   .card-interactive:hover {
     box-shadow: var(--shadow-2);

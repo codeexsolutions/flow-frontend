@@ -1565,7 +1565,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
               </span>
               <p className="text-[14px] text-ink">Esta produção ainda não tem coluna de etapa</p>
               <p className="max-w-sm text-[12.5px] leading-relaxed text-faint">
-                O quadro empilha as linhas por uma coluna do tipo <strong className="text-mist">Seleção</strong> — as
+                O quadro empilha as linhas por uma coluna do tipo <strong className="font-normal text-mist">Seleção</strong> — as
                 alternativas dela viram as raias. Crie uma (Etapa, Status, Situação) e as mesmas linhas desta produção
                 aparecem aqui como cartões.
               </p>
@@ -1601,7 +1601,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
               <tr>
                 {/* Número da linha, como em planilha de verdade. Gruda na
                     esquerda para não se perder o eixo ao rolar na horizontal. */}
-                <th className="sticky left-0 z-30 w-12 border-b border-r border-fg/[0.07] bg-surface-raised px-2 py-2.5 text-center text-[10px] font-medium text-faint">#</th>
+                <th className="sticky left-0 z-30 w-12 border-b border-r border-fg/[0.07] bg-surface-raised px-2 py-2.5 text-center text-[10px] text-faint">#</th>
 
                 {colunas.map((c) => {
                   const restrita = (c.permissoes?.length ?? 0) > 0;
@@ -1611,7 +1611,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                     <th
                       key={c.id}
                       style={{ minWidth: c.largura ?? 180 }}
-                      className="relative border-b border-r border-fg/[0.07] bg-surface-raised p-0 font-medium"
+                      className="relative border-b border-r border-fg/[0.07] bg-surface-raised p-0"
                     >
                       {/*
                        * A configuração da coluna mora NO cabeçalho dela.

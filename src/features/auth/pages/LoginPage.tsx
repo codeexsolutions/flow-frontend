@@ -142,7 +142,7 @@ const AuthPage = () => {
 
         <div className="relative flex items-center gap-3">
           <img src="/logo.png" alt="" width={40} height={40} className="h-10 w-10 rounded-xl shadow-glow" />
-          <span className="font-display text-[19px] tracking-tight text-ink">
+          <span className="text-[19px] tracking-tight text-ink">
             CodeEx <span className="text-accent-soft">Flow</span>
           </span>
         </div>
@@ -226,7 +226,7 @@ const AuthPage = () => {
           )}
 
           <div className="flex min-w-0 flex-col leading-tight">
-            <span className="truncate font-display text-[19px] tracking-tight text-ink">
+            <span className="truncate text-[19px] tracking-tight text-ink">
               {marca ? marca.nome : <>CodeEx <span className="text-accent-soft">Flow</span></>}
             </span>
             <span className="text-[10px] uppercase tracking-[2px] text-faint">Painel da empresa</span>

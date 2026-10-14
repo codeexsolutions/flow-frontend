@@ -75,6 +75,13 @@ const ROTULO_FILTRO: Record<StatusFiltro, string> = {
 
 const ORDEM_FILTRO: StatusFiltro[] = ["todos", "pago", "pendente", "cancelado"];
 
+/* A cor de cada situação no seletor — a mesma do selo da linha. */
+const TOM_FILTRO: Partial<Record<StatusFiltro, "sucesso" | "alerta" | "perigo">> = {
+  pago: "sucesso",
+  pendente: "alerta",
+  cancelado: "perigo",
+};
+
 /** O nome do cartão segue a aba — é o título da página, que aqui é o cartão. */
 const TITULO_ABA: Record<AbaVenda, string> = {
   "visao-geral": "Visão geral",
@@ -381,6 +388,7 @@ const SalesList = () => {
       ORDEM_FILTRO.map((s) => ({
         valor: s,
         label: ROTULO_FILTRO[s],
+        tom: TOM_FILTRO[s],
         contagem: porStatus(baseFiltrada, s).length,
       })),
     [baseFiltrada],
@@ -696,7 +704,7 @@ const SalesList = () => {
                 aparece no dia em que caiu, com o cliente e o botão de avisar
                 junto. */}
             <span className="flex items-center gap-1.5">
-              Total em aberto <strong className="nums text-[13px] text-danger">{formatCurrency(totalEmAberto)}</strong>
+              Total em aberto <strong className="font-normal nums text-[13px] text-danger">{formatCurrency(totalEmAberto)}</strong>
             </span>
 
             {totalPaginas > 1 && (
@@ -819,7 +827,7 @@ const SalesList = () => {
                           antes a lista não tinha onde dizer isso, e a única
                           forma de descobrir era clicar em gerar e ler a
                           recusa. */}
-                      <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-faint">
+                      <span className="flex min-w-0 items-center gap-1.5 text-[10px] text-faint">
                         <span className="truncate">#{idCurto}</span>
                         {ordem && (
                           <span className="shrink-0 text-accent-soft">· OS #{ordem.codigo}</span>

@@ -42,12 +42,19 @@ export function Selo({ tom = "neutro", children }: { tom?: TomSelo; children: Re
   );
 }
 
-/** Como cada status de pedido se apresenta. Vocabulário único do sistema. */
+/**
+ * Como cada status de pedido se apresenta. Vocabulário único do sistema.
+ *
+ * Uma cor por situação, a mesma em toda tela: verde é pago, amarelo é o que
+ * ainda espera dinheiro, vermelho é cancelado. `PAGO` faltava aqui e a nota
+ * paga aparecia cinza, com o texto cru do banco ("PAGO").
+ */
 const PEDIDO_LOOK: Record<string, { label: string; tom: TomSelo }> = {
+  [PEDIDO_STATUS.PAGO]: { label: "Pago", tom: "sucesso" },
   [PEDIDO_STATUS.FECHADO]: { label: "Pago", tom: "sucesso" },
   [PEDIDO_STATUS.ABERTO]: { label: "Em aberto", tom: "alerta" },
   [PEDIDO_STATUS.PENDENTE]: { label: "Pendente", tom: "alerta" },
-  [PEDIDO_STATUS.CANCELADO]: { label: "Cancelado", tom: "neutro" },
+  [PEDIDO_STATUS.CANCELADO]: { label: "Cancelado", tom: "perigo" },
 };
 
 export function PedidoStatusBadge({ status }: { status: string }) {

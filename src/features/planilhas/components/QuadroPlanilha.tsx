@@ -150,7 +150,7 @@ const QuadroPlanilha = ({ colunas, registros, etapa, colunaPrazoId, podeMover, o
         <p className="text-[14px] text-ink">A coluna “{etapa.nome}” ainda não tem alternativas</p>
         <p className="max-w-sm text-[12.5px] leading-relaxed text-faint">
           As raias do quadro são as alternativas dessa coluna — atendimento, arte, sublimação, o que for do seu processo.
-          Cadastre-as em <strong className="text-mist">Colunas</strong> e elas viram as pilhas daqui.
+          Cadastre-as em <strong className="font-normal text-mist">Colunas</strong> e elas viram as pilhas daqui.
         </p>
       </div>
     );

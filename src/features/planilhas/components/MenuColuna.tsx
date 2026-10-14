@@ -86,7 +86,7 @@ const MenuColuna = ({
         className="absolute left-0 top-[calc(100%+6px)] z-50 w-64 origin-top overflow-hidden rounded-xl border border-fg/[0.1] bg-surface shadow-2xl"
       >
         <div className="flex items-center gap-2 border-b border-fg/[0.06] px-3 py-2">
-          <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink">{coluna.nome}</span>
+          <span className="min-w-0 flex-1 truncate text-[12px] text-ink">{coluna.nome}</span>
           <span className="shrink-0 rounded bg-fg/[0.06] px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide text-faint">
             {coluna.tipo.replace("_", " ")}
           </span>

@@ -66,7 +66,7 @@ export const mesesComMovimento = (vendas: PedidoClienteType[]): Date[] => {
     .sort((a, b) => +b - +a);
 };
 
-export type PontoSerie = { name: string; faturado: number; recebido: number };
+export type PontoSerie = { name: string; faturado: number; recebido: number; /** Quantas vendas caíram no balde. */ vendas: number };
 
 /**
  * A curva do período, na granularidade que o recorte pede.
@@ -112,7 +112,7 @@ export const serieDeVendas = (vendas: PedidoClienteType[], periodo: Periodo): { 
    * Filtrar a lista inteira dentro do laço das barras seria varrer todas as
    * vendas trinta vezes para montar um mês.
    */
-  const baldes = new Map<string, { faturado: number; recebido: number }>();
+  const baldes = new Map<string, { faturado: number; recebido: number; vendas: number }>();
 
   for (const v of ativas) {
     const d = toDate(v.pedido.dataPedido);
@@ -120,10 +120,11 @@ export const serieDeVendas = (vendas: PedidoClienteType[], periodo: Periodo): { 
     if (!d) continue;
 
     const chave = chaveDe(d);
-    const balde = baldes.get(chave) ?? { faturado: 0, recebido: 0 };
+    const balde = baldes.get(chave) ?? { faturado: 0, recebido: 0, vendas: 0 };
     const valor = totalDoPedido(v);
 
     balde.faturado += valor;
+    balde.vendas += 1;
 
     /* A linha verde é DINHEIRO, não status: o recebimento parcial entra no dia
        em que entrou. Antes ela só subia quando a nota inteira era baixada, e o
@@ -174,7 +175,7 @@ export const serieDeVendas = (vendas: PedidoClienteType[], periodo: Periodo): { 
   const serie = pontos.map((d) => {
     const balde = baldes.get(chaveDe(d));
 
-    return { name: rotular(d), faturado: balde?.faturado ?? 0, recebido: balde?.recebido ?? 0 };
+    return { name: rotular(d), faturado: balde?.faturado ?? 0, recebido: balde?.recebido ?? 0, vendas: balde?.vendas ?? 0 };
   });
 
   return { serie, porDia };

@@ -479,7 +479,7 @@ const AcompanharProducaoPage = () => {
         {fundo}
         <div className="w-full max-w-sm rounded-3xl p-8 text-center shadow-lg" style={{ backgroundColor: p.cartao, border: `1px solid ${p.linha}` }}>
           <CircleAlert className="mx-auto mb-3" size={28} style={{ color: p.fraco }} />
-          <h1 className="text-base font-semibold" style={{ color: p.tinta }}>
+          <h1 className="text-base" style={{ color: p.tinta }}>
             Link indisponível
           </h1>
           <p className="mt-2 text-sm" style={{ color: p.apagado }}>
@@ -619,7 +619,7 @@ const AcompanharProducaoPage = () => {
           )}
 
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-semibold leading-tight">{empresa.nome || "Acompanhamento"}</p>
+            <p className="truncate text-[15px] leading-tight">{empresa.nome || "Acompanhamento"}</p>
             {/* O nome de quem acompanha subiu para cá: era um título grande no
                 cartão que sumiu junto com ele, e responde a "esta página é
                 minha mesmo?" — pergunta que se faz uma vez, ao abrir. */}
@@ -631,7 +631,7 @@ const AcompanharProducaoPage = () => {
               href={`https://wa.me/${whats.length <= 11 ? `55${whats}` : whats}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium ring-1 ring-white/20 backdrop-blur transition hover:opacity-90"
+              className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-xs ring-1 ring-white/20 backdrop-blur transition hover:opacity-90"
               style={{ backgroundColor: rgba(p.sobreCapa === "#ffffff" ? "#ffffff" : "#000000", 0.18) }}
             >
               <MessageCircle size={14} />
@@ -666,7 +666,7 @@ const AcompanharProducaoPage = () => {
                   type="button"
                   onClick={() => irPara(i)}
                   aria-current={on ? "page" : undefined}
-                  className="relative flex shrink-0 cursor-pointer items-center gap-2 rounded-xl px-3 py-1.5 text-[12.5px] font-medium transition-colors"
+                  className="relative flex shrink-0 cursor-pointer items-center gap-2 rounded-xl px-3 py-1.5 text-[12.5px] transition-colors"
                   style={{ color: on ? p.tinta : p.apagado }}
                 >
                   {on && (
@@ -722,11 +722,11 @@ const AcompanharProducaoPage = () => {
         >
           <div className="mx-auto w-full max-w-5xl xl:max-w-6xl">
             <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[11.5px] font-medium" style={{ color: p.apagado }}>
+              <span className="text-[11.5px]" style={{ color: p.apagado }}>
                 Andamento
               </span>
 
-              <span className="flex items-center gap-1 text-[13px] font-bold tabular-nums" style={{ color: r.concluido ? VERDE : corDoPedido(indice) }}>
+              <span className="flex items-center gap-1 text-[13px] tabular-nums" style={{ color: r.concluido ? VERDE : corDoPedido(indice) }}>
                 {r.concluido && <Check size={13} />}
                 {r.pct}%
               </span>
@@ -838,7 +838,7 @@ const AcompanharProducaoPage = () => {
 
                         <span className="pointer-events-none absolute inset-x-0 bottom-0 h-20" style={{ background: `linear-gradient(to top, ${rgba("#000000", 0.6)}, transparent)` }} />
 
-                        <span className="absolute bottom-3 left-3.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/85">{colunas[r.guia].nome}</span>
+                        <span className="absolute bottom-3 left-3.5 text-[10px] uppercase tracking-[0.14em] text-white/85">{colunas[r.guia].nome}</span>
 
                         <span className="absolute bottom-2.5 right-3 grid h-7 w-7 place-items-center rounded-full bg-black/45 text-white backdrop-blur-sm transition group-hover:bg-black/65">
                           <Maximize2 size={13} />
@@ -872,16 +872,16 @@ const AcompanharProducaoPage = () => {
                       </span>
 
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[9.5px] font-bold uppercase tracking-[0.14em]" style={{ color: rgba(prazo.cor, 0.85) }}>
+                        <p className="truncate text-[9.5px] uppercase tracking-[0.14em]" style={{ color: rgba(prazo.cor, 0.85) }}>
                           {colunas[iPrazo].nome}
                         </p>
-                        <p className="truncate text-[15px] font-semibold tabular-nums" style={{ color: p.tinta }}>
+                        <p className="truncate text-[15px] tabular-nums" style={{ color: p.tinta }}>
                           {dataBr(r.prazoValor)}
                         </p>
                       </div>
 
                       {prazo.frase && (
-                        <span className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ backgroundColor: rgba(prazo.cor, 0.16), color: prazo.cor }}>
+                        <span className="shrink-0 rounded-full px-2.5 py-1 text-[11px]" style={{ backgroundColor: rgba(prazo.cor, 0.16), color: prazo.cor }}>
                           {prazo.frase}
                         </span>
                       )}
@@ -913,10 +913,10 @@ const AcompanharProducaoPage = () => {
                               border: `1px solid ${vazio ? "transparent" : rgba(cor, 0.22)}`,
                             }}
                           >
-                            <p className="truncate text-[9px] font-bold uppercase tracking-wider" style={{ color: vazio ? p.fraco : rgba(cor, 0.9) }}>
+                            <p className="truncate text-[9px] uppercase tracking-wider" style={{ color: vazio ? p.fraco : rgba(cor, 0.9) }}>
                               {coluna.nome}
                             </p>
-                            <p className="truncate text-[11.5px] font-semibold" style={{ color: vazio ? p.fraco : cor }}>
+                            <p className="truncate text-[11.5px]" style={{ color: vazio ? p.fraco : cor }}>
                               {valor ?? "—"}
                             </p>
                           </motion.div>
@@ -938,10 +938,10 @@ const AcompanharProducaoPage = () => {
 
                         return (
                           <div key={coluna.nome} className="min-w-0">
-                            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: p.fraco }}>
+                            <p className="text-[9px] uppercase tracking-wider" style={{ color: p.fraco }}>
                               {coluna.nome}
                             </p>
-                            <p className="truncate text-[13px] font-medium tabular-nums" style={{ color: p.tinta }}>
+                            <p className="truncate text-[13px] tabular-nums" style={{ color: p.tinta }}>
                               {coluna.tipo === "DATA" ? dataBr(valor) : valor}
                             </p>
                           </div>
@@ -958,7 +958,7 @@ const AcompanharProducaoPage = () => {
                     <div className="flex flex-wrap gap-3 rounded-2xl px-4 py-3" style={{ backgroundColor: p.cartao, border: `1px solid ${p.linha}` }}>
                       {r.extras.map((i) => (
                         <button key={colunas[i].nome} onClick={() => setAmpliada(linha.valores[i] as string)} className="group text-left">
-                          <p className="mb-1 text-[9px] font-bold uppercase tracking-wider" style={{ color: p.fraco }}>
+                          <p className="mb-1 text-[9px] uppercase tracking-wider" style={{ color: p.fraco }}>
                             {colunas[i].nome}
                           </p>
                           <img
@@ -1012,7 +1012,7 @@ const AcompanharProducaoPage = () => {
             {/* O anexo também aqui: quem ampliou a imagem é quem está tentando
                 enxergar o detalhe, e é nesse momento que se descobre que a tela
                 não basta. Vale para as miniaturas, que não têm botão próprio. */}
-            <a href={ampliada} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="absolute left-4 top-4 flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2.5 text-[12px] font-medium text-white backdrop-blur transition hover:bg-white/20">
+            <a href={ampliada} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="absolute left-4 top-4 flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2.5 text-[12px] text-white backdrop-blur transition hover:bg-white/20">
               <Paperclip size={13} />
               Abrir anexo
             </a>

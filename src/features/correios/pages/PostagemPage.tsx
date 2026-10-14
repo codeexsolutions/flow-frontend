@@ -424,7 +424,7 @@ const PostagemPage = () => {
                     <Package size={13} />
                   </span>
                   <span className="min-w-0">
-                    <span className="block font-mono text-[11px] text-accent-soft">{p.codigoObjeto || "—"}</span>
+                    <span className="block text-[11px] text-accent-soft">{p.codigoObjeto || "—"}</span>
                     <span className="block truncate text-[11px] text-faint">{p.cliente}</span>
                   </span>
                 </span>
@@ -623,7 +623,7 @@ const PostagemPage = () => {
           <div className="flex flex-col gap-4 text-[13px]">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
               <dt className="text-[10px] uppercase tracking-wider text-faint">Código do objeto</dt>
-              <dd className="font-mono text-ink">{detalheAberto.codigoObjeto || "—"}</dd>
+              <dd className="text-ink">{detalheAberto.codigoObjeto || "—"}</dd>
 
               <dt className="text-[10px] uppercase tracking-wider text-faint">Cliente</dt>
               <dd className="text-ink">{detalheAberto.cliente || "—"}</dd>

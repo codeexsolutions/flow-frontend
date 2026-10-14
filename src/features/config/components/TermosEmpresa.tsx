@@ -128,7 +128,7 @@ const TermosEmpresa = () => {
                   i > 0 ? "border-t border-fg/[0.05]" : ""
                 }`}
               >
-                <span className="font-mono text-[12px] text-ink">{linha.versao}</span>
+                <span className="text-[12px] text-ink">{linha.versao}</span>
                 <span className="text-[12.5px] text-mist">{formatDateTime(linha.aceito_em)}</span>
                 <span className="min-w-0 flex-1 truncate text-[12.5px] text-faint">
                   {linha.usuario_nome ?? "—"}

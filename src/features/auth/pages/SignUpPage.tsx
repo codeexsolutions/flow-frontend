@@ -428,7 +428,7 @@ const CadastroEmpresaPage = () => {
 
         <div className="relative flex items-center gap-3">
           <img src="/logo.png" alt="" width={40} height={40} className="h-10 w-10 rounded-xl shadow-glow" />
-          <span className="font-display text-[19px] tracking-tight text-ink">
+          <span className="text-[19px] tracking-tight text-ink">
             CodeEx <span className="text-accent-soft">Flow</span>
           </span>
         </div>
@@ -521,7 +521,7 @@ const CadastroEmpresaPage = () => {
         <div className="cf-rise mb-3 flex items-center justify-center gap-2.5">
           <img src="/logo.png" alt="CodeEx Flow" width={36} height={36} className="h-9 w-9 rounded-lg shadow-glow" />
           <div className="flex flex-col leading-none">
-            <span className="font-display text-[17px] tracking-tight text-ink">
+            <span className="text-[17px] tracking-tight text-ink">
               CodeEx <span className="text-accent-soft">Flow</span>
             </span>
             <span className="mt-1 text-[9.5px] uppercase tracking-[2px] text-faint">Cadastro de empresa</span>

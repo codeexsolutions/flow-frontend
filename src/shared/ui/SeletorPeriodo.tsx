@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarRange, Check, ChevronDown } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { CalendarRange, ChevronDown } from "lucide-react";
 
-import { MESES_EXTENSO } from "@/shared/utils/date";
+import Suspenso from "@/shared/ui/Suspenso";
+import { MESES_EXTENSO, MONTHS } from "@/shared/utils/date";
 
 /**
  * O recorte de tempo de uma tela inteira.
@@ -135,7 +137,8 @@ type Props = {
  */
 const SeletorPeriodo = ({ valor, onChange, meses, comHoje = false }: Props) => {
   const [aberto, setAberto] = useState(false);
-  const caixa = useRef<HTMLDivElement>(null);
+  const botao = useRef<HTMLButtonElement>(null);
+  const fechar = useCallback(() => setAberto(false), []);
 
   /* Rascunho do intervalo livre. Separado do valor aplicado: enquanto a pessoa
      digita "de", o "até" ainda está vazio, e aplicar a cada tecla recalcularia
@@ -150,25 +153,20 @@ const SeletorPeriodo = ({ valor, onChange, meses, comHoje = false }: Props) => {
     setAte(paraCampo(valor.ate));
   }, [aberto, valor.de, valor.ate]);
 
-  useEffect(() => {
-    if (!aberto) return;
+  /*
+   * Os meses com movimento, agrupados por ano — do mais recente ao mais antigo.
+   *
+   * Em grade de três, e não numa lista: doze meses de um ano cabem em quatro
+   * linhas em vez de doze, e o ano vira um bloco que se lê de relance. Dentro
+   * do ano a ordem é a do calendário (jan → dez), que é como se procura um mês.
+   */
+  const anos = useMemo(() => {
+    const porAno = new Map<number, Date[]>();
 
-    const foraDaCaixa = (ev: MouseEvent) => {
-      if (caixa.current && !caixa.current.contains(ev.target as Node)) setAberto(false);
-    };
-    const noEsc = (ev: KeyboardEvent) => ev.key === "Escape" && setAberto(false);
+    meses.forEach((m) => porAno.set(m.getFullYear(), [...(porAno.get(m.getFullYear()) ?? []), m]));
 
-    document.addEventListener("mousedown", foraDaCaixa);
-    document.addEventListener("keydown", noEsc);
-
-    return () => {
-      document.removeEventListener("mousedown", foraDaCaixa);
-      document.removeEventListener("keydown", noEsc);
-    };
-  }, [aberto]);
-
-  /* A lista pronta: todo o período no topo, os meses com movimento abaixo. */
-  const opcoes = useMemo(() => meses.map((mes) => ({ mes, periodo: periodoDoMes(mes) })), [meses]);
+    return [...porAno.entries()].sort((x, y) => y[0] - x[0]).map(([ano, lista]) => ({ ano, meses: lista.sort((x, y) => +x - +y) }));
+  }, [meses]);
 
   const mesmoIntervalo = (a: Periodo, b: Periodo) =>
     (a.de?.getTime() ?? null) === (b.de?.getTime() ?? null) && (a.ate?.getTime() ?? null) === (b.ate?.getTime() ?? null);
@@ -176,6 +174,7 @@ const SeletorPeriodo = ({ valor, onChange, meses, comHoje = false }: Props) => {
   const escolher = (periodo: Periodo) => {
     onChange(periodo);
     setAberto(false);
+    botao.current?.focus();
   };
 
   const aplicarLivre = () => {
@@ -192,143 +191,146 @@ const SeletorPeriodo = ({ valor, onChange, meses, comHoje = false }: Props) => {
     escolher({ de: inicioDoDia(a), ate: fimDoDia(b), rotulo: `${curto(a)} – ${curto(b)}` });
   };
 
+  const mesAtual = periodoDoMes(new Date());
+
+  /* Os atalhos do topo: os extremos que se procura sem pensar. */
+  const atalhos = [
+    ...(comHoje ? [{ chave: "hoje", rotulo: "Hoje", detalhe: "", periodo: periodoDeHoje(), ativo: valor.rotulo === "Hoje" }] : []),
+    {
+      chave: "mes",
+      rotulo: "Este mês",
+      detalhe: `${curto(mesAtual.de!).slice(0, 5)} – ${curto(mesAtual.ate!).slice(0, 5)}`,
+      periodo: mesAtual,
+      ativo: mesmoIntervalo(mesAtual, valor),
+    },
+    {
+      chave: "tudo",
+      rotulo: "Todo o período",
+      detalhe: meses.length ? `${meses.length} ${meses.length === 1 ? "mês" : "meses"}` : "",
+      periodo: PERIODO_TUDO,
+      ativo: mesmoIntervalo(PERIODO_TUDO, valor),
+    },
+  ];
+
+  /* Entrada em cascata do conteúdo, depois que o painel abre. */
+  const entrar = (i: number) => ({
+    initial: { opacity: 0, y: 6 },
+    animate: { opacity: 1, y: 0 },
+    transition: { delay: 0.04 + i * 0.025, duration: 0.22, ease: [0.22, 0.61, 0.36, 1] as const },
+  });
+
+  const rotuloSecao = "px-1 pb-1.5  text-[9.5px] uppercase tracking-[0.14em] text-faint";
+
   return (
-    <div ref={caixa} className="relative shrink-0">
+    <>
+      {/* O mesmo botão do `Select` do sistema — um seletor tem a mesma cara em
+          toda tela, seja de status, de vendedor ou de período. */}
       <button
+        ref={botao}
         type="button"
         onClick={() => setAberto((a) => !a)}
         aria-expanded={aberto}
         aria-haspopup="dialog"
-        title="Escolher o período do painel"
-        className={`focus-ring flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-[11.5px] transition-colors ${
-          aberto ? "border-accent/50 bg-accent/[0.08] text-ink" : "border-fg/[0.08] bg-fg/[0.03] text-mist hover:border-accent/40 hover:text-ink"
+        title="Escolher o período"
+        className={`focus-ring flex h-[34px] shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl border bg-fg/[0.04] px-3 text-[12px] transition-colors ${
+          aberto ? "border-accent/60 text-ink" : "border-fg/[0.08] text-mist hover:border-fg/[0.16] hover:text-ink"
         }`}
       >
-        <CalendarRange size={13} className="text-accent-soft" />
+        <CalendarRange size={14} className="shrink-0 text-accent-soft" />
         {/* `MESES_EXTENSO` é minúsculo na origem — é ele que serve tanto ao
             rótulo quanto às frases corridas ("faturado · setembro de 2026").
             A maiúscula é decisão de quem exibe. */}
         <span className="first-letter:uppercase">{valor.rotulo}</span>
-        <ChevronDown size={12} className={`text-faint transition-transform ${aberto ? "rotate-180" : ""}`} />
+        <ChevronDown size={14} className={`shrink-0 text-muted transition-transform duration-200 ${aberto ? "rotate-180" : ""}`} />
       </button>
 
-      {aberto && (
-        <div
-          role="dialog"
-          aria-label="Escolher período"
-          /* `right-0`: o seletor mora na ponta direita do cabeçalho, e um
-             popover ancorado à esquerda sairia da tela no notebook. */
-          className="absolute right-0 top-[calc(100%+8px)] z-40 w-[268px] rounded-2xl border border-fg/[0.1] bg-surface p-2 shadow-e3"
-        >
-          {/* Hoje e "todo o período" ficam FORA da rolagem dos meses: são os
-              dois extremos que se procura sem pensar, e não podem subir junto
-              com a lista quando alguém rolar até 2024 atrás de um mês antigo. */}
-          {comHoje && (
-            <button
-              type="button"
-              onClick={() => escolher(periodoDeHoje())}
-              className={`focus-ring flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors ${
-                valor.rotulo === "Hoje" ? "bg-accent/[0.12] text-accent-soft" : "text-mist hover:bg-fg/[0.06] hover:text-ink"
-              }`}
-            >
-              <span className="min-w-0 truncate">Hoje</span>
-              {valor.rotulo === "Hoje" && <Check size={13} className="shrink-0" />}
-            </button>
-          )}
-
-          {/* Do dia 1 até hoje, sempre presente — mesmo antes da primeira venda
-              do mês, quando ele ainda não aparece em "meses com movimento". */}
-          {(() => {
-            const mesAtual = periodoDoMes(new Date());
-            const ativo = mesmoIntervalo(mesAtual, valor);
-
-            return (
-              <button
+      {/* Pelo `Suspenso`, como o `Select`: abre animado, fecha no clique fora e
+          no Esc, e não é recortado pelo cabeçalho. `right`: o seletor mora na
+          ponta direita, e ancorado à esquerda sairia da tela no notebook. */}
+      <Suspenso aberto={aberto} onFechar={fechar} ancora={botao} largura={300} alinhar="fim" alturaMax={560} className="!p-2.5">
+        <div role="dialog" aria-label="Escolher período" className="flex flex-col gap-3">
+          {/* Atalhos */}
+          <div className="flex flex-col gap-1">
+            {atalhos.map((a, i) => (
+              <motion.button
+                key={a.chave}
                 type="button"
-                onClick={() => escolher(mesAtual)}
-                className={`focus-ring flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors ${
-                  ativo ? "bg-accent/[0.12] text-accent-soft" : "text-mist hover:bg-fg/[0.06] hover:text-ink"
+                {...entrar(i)}
+                onClick={() => escolher(a.periodo)}
+                aria-pressed={a.ativo}
+                className={`focus-ring flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-[12.5px] transition-colors ${
+                  a.ativo
+                    ? "border-accent/50 bg-accent/[0.14] text-ink"
+                    : "border-transparent text-mist hover:border-fg/[0.08] hover:bg-fg/[0.05] hover:text-ink"
                 }`}
               >
-                <span className="min-w-0 truncate">
-                  Este mês
-                  <span className="ml-1.5 text-[10.5px] tabular-nums text-faint">
-                    {curto(mesAtual.de!).slice(0, 5)} – {curto(mesAtual.ate!).slice(0, 5)}
-                  </span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full transition-colors ${a.ativo ? "bg-accent shadow-[0_0_8px_rgb(var(--accent))]" : "bg-fg/20"}`} />
+                  <span className="truncate">{a.rotulo}</span>
                 </span>
-                {ativo && <Check size={13} className="shrink-0" />}
-              </button>
-            );
-          })()}
+                {a.detalhe && <span className="shrink-0 text-[10.5px] tabular-nums text-faint">{a.detalhe}</span>}
+              </motion.button>
+            ))}
+          </div>
 
-          <button
-            type="button"
-            onClick={() => escolher(PERIODO_TUDO)}
-            className={`focus-ring flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors ${
-              mesmoIntervalo(PERIODO_TUDO, valor) ? "bg-accent/[0.12] text-accent-soft" : "text-mist hover:bg-fg/[0.06] hover:text-ink"
-            }`}
-          >
-            <span className="min-w-0 truncate">
-              {PERIODO_TUDO.rotulo}
-              {opcoes.length > 0 && (
-                <span className="ml-1.5 text-[10.5px] text-faint">
-                  {opcoes.length} {opcoes.length === 1 ? "mês" : "meses"}
-                </span>
-              )}
-            </span>
+          {/* Meses com movimento, em grade por ano */}
+          {anos.length > 0 && (
+            <div className="border-t border-fg/[0.07] pt-2.5">
+              <p className={rotuloSecao}>Meses com movimento</p>
 
-            {mesmoIntervalo(PERIODO_TUDO, valor) && <Check size={13} className="shrink-0" />}
-          </button>
+              {/* Teto de altura, não de quantidade: cortar a lista esconderia
+                  justamente o mês antigo que alguém veio procurar. */}
+              <div className="flex max-h-[230px] flex-col gap-2.5 overflow-y-auto pr-0.5">
+                {anos.map(({ ano, meses: doAno }, ia) => (
+                  <motion.div key={ano} {...entrar(atalhos.length + ia)}>
+                    <p className="mb-1 flex items-center gap-2 px-1 text-[10px] tabular-nums text-mist">
+                      {ano}
+                      <span className="h-px flex-1 bg-fg/[0.07]" />
+                    </p>
 
-          {opcoes.length > 0 && (
-            <div className="mt-1.5 border-t border-fg/[0.07] pt-1.5">
-              <p className="px-2.5 pb-1 text-[10px] uppercase tracking-[0.1em] text-faint">Meses com movimento</p>
+                    <div className="grid grid-cols-4 gap-1">
+                      {doAno.map((mes) => {
+                        const periodo = periodoDoMes(mes);
+                        const ativo = mesmoIntervalo(periodo, valor);
 
-              {/* Teto de altura, não de quantidade: cortar a lista em doze
-                  esconderia justamente o mês antigo que alguém veio procurar. */}
-              <div className="flex max-h-[196px] flex-col overflow-y-auto pr-0.5">
-                {opcoes.map(({ mes, periodo }, i) => {
-                  const ativo = mesmoIntervalo(periodo, valor);
-                  /* O ano vira uma faixa quando muda, em vez de repetir "de
-                     2026" em cada uma das doze linhas. */
-                  const viraAno = i === 0 || mes.getFullYear() !== opcoes[i - 1].mes.getFullYear();
-
-                  return (
-                    <div key={`${mes.getFullYear()}-${mes.getMonth()}`}>
-                      {viraAno && (
-                        <p className="px-2.5 pb-0.5 pt-1.5 text-[10px] tabular-nums text-faint first:pt-0">{mes.getFullYear()}</p>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => escolher(periodo)}
-                        className={`focus-ring flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] capitalize transition-colors ${
-                          ativo ? "bg-accent/[0.12] text-accent-soft" : "text-mist hover:bg-fg/[0.06] hover:text-ink"
-                        }`}
-                      >
-                        <span className="min-w-0 truncate">{MESES_EXTENSO[mes.getMonth()]}</span>
-                        {ativo && <Check size={13} className="shrink-0" />}
-                      </button>
+                        return (
+                          <motion.button
+                            key={mes.getMonth()}
+                            type="button"
+                            whileTap={{ scale: 0.94 }}
+                            onClick={() => escolher(periodo)}
+                            aria-pressed={ativo}
+                            aria-label={`${MESES_EXTENSO[mes.getMonth()]} de ${ano}`}
+                            className={`focus-ring cursor-pointer rounded-lg border py-1.5 text-center text-[12px] transition-colors ${
+                              ativo
+                                ? "border-accent/60 bg-accent text-white shadow-[0_6px_18px_-6px_rgb(var(--accent)/0.8)]"
+                                : "border-fg/[0.07] bg-fg/[0.025] text-mist hover:border-accent/40 hover:bg-accent/[0.1] hover:text-ink"
+                            }`}
+                          >
+                            {MONTHS[mes.getMonth()]}
+                          </motion.button>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  </motion.div>
+                ))}
               </div>
             </div>
           )}
 
           {/* Intervalo livre — o que nenhum atalho cobre: "de 12 de maio ao
               fim da feira", "os três dias da promoção". */}
-          <div className="mt-2 border-t border-fg/[0.07] pt-2">
-            <p className="px-2.5 pb-1.5 text-[10px] uppercase tracking-[0.1em] text-faint">Período específico</p>
+          <motion.div {...entrar(atalhos.length + anos.length)} className="border-t border-fg/[0.07] pt-2.5">
+            <p className={rotuloSecao}>Período específico</p>
 
-            <div className="flex items-center gap-1.5 px-1">
+            <div className="flex items-center gap-1.5">
               <input
                 type="date"
                 value={de}
                 max={ate || undefined}
                 onChange={(e) => setDe(e.target.value)}
                 aria-label="Data inicial"
-                className="focus-ring min-w-0 flex-1 rounded-lg border border-fg/[0.08] bg-fg/[0.03] px-2 py-1.5 text-[11.5px] tabular-nums text-ink outline-none focus:border-accent/60"
+                className="focus-ring min-w-0 flex-1 rounded-lg border border-fg/[0.08] bg-fg/[0.04] px-2 py-1.5 text-[11.5px] tabular-nums text-ink outline-none transition-colors focus:border-accent/60"
               />
               <span className="shrink-0 text-[11px] text-faint">até</span>
               <input
@@ -337,7 +339,7 @@ const SeletorPeriodo = ({ valor, onChange, meses, comHoje = false }: Props) => {
                 min={de || undefined}
                 onChange={(e) => setAte(e.target.value)}
                 aria-label="Data final"
-                className="focus-ring min-w-0 flex-1 rounded-lg border border-fg/[0.08] bg-fg/[0.03] px-2 py-1.5 text-[11.5px] tabular-nums text-ink outline-none focus:border-accent/60"
+                className="focus-ring min-w-0 flex-1 rounded-lg border border-fg/[0.08] bg-fg/[0.04] px-2 py-1.5 text-[11.5px] tabular-nums text-ink outline-none transition-colors focus:border-accent/60"
               />
             </div>
 
@@ -345,14 +347,14 @@ const SeletorPeriodo = ({ valor, onChange, meses, comHoje = false }: Props) => {
               type="button"
               onClick={aplicarLivre}
               disabled={!de || !ate}
-              className="focus-ring mt-2 w-full cursor-pointer rounded-lg bg-accent px-3 py-1.5 text-[12px] text-white transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              className="focus-ring mt-2 w-full cursor-pointer rounded-lg bg-gradient-to-b from-accent to-accent-strong px-3 py-2 text-[12px] text-white transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Aplicar
+              Aplicar período
             </button>
-          </div>
+          </motion.div>
         </div>
-      )}
-    </div>
+      </Suspenso>
+    </>
   );
 };
 

@@ -229,7 +229,7 @@ const AjudaPage = () => {
           />
 
           <div className="min-w-0">
-            <p className="font-display text-[30px] leading-none tracking-tight text-ink">
+            <p className="text-[30px] leading-none tracking-tight text-ink">
               CodeEx <span className="text-accent-soft">Flow</span>
             </p>
             <p className="mt-2 text-[12.5px] leading-relaxed text-mist">Gestão para quem vende no balcão</p>

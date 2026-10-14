@@ -28,7 +28,7 @@ const AvisoTeste = () => (
         </span>
 
         <p className="text-[11.5px] leading-relaxed text-mist">
-            <span className="font-medium text-ink">WhatsApp em versão de testes.</span>{" "}
+            <span className="text-ink">WhatsApp em versão de testes.</span>{" "}
             Já dá para conversar com seus clientes por aqui, mas ainda estamos acertando os
             detalhes — pode acontecer de uma mensagem demorar ou de a conexão cair. Confira no
             celular da loja o que for importante, e nos avise quando algo parecer errado.

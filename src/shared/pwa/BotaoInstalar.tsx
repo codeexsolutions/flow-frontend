@@ -54,10 +54,11 @@ const BotaoInstalar = ({ variante = "solto", className = "" }: Props) => {
         <button
           type="button"
           onClick={aoClicar}
-          className={`group focus-ring relative flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-[13.5px] text-mist transition-colors duration-200 hover:bg-fg/[0.05] hover:text-ink ${className}`}
+          className={`group focus-ring relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[15px] text-mist transition-colors duration-200 hover:bg-fg/[0.06] hover:text-ink ${className}`}
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-fg/[0.04] text-faint transition-colors group-hover:bg-fg/[0.08] group-hover:text-accent-soft">
-            <Download size={17} />
+          {/* O mesmo desenho dos itens do menu: ícone solto, sem caixa. */}
+          <span className="flex w-6 shrink-0 justify-center text-faint transition-colors group-hover:text-accent-soft">
+            <Download size={18} />
           </span>
           <span className="flex-1">{rotulo}</span>
         </button>

@@ -126,8 +126,10 @@ const Kpi = ({ icon, label, value, tone = "neutral" }: { icon: ReactNode; label:
   </div>
 );
 
-const TOM_PAGAMENTO = { PAGA: "sucesso", PARCIAL: "info", ABERTA: "alerta" } as const;
-const ROTULO_PAGAMENTO = { PAGA: "Pago", PARCIAL: "Parcial", ABERTA: "Em aberto" } as const;
+/* Verde pago, azul parcial, amarelo em aberto, vermelho cancelado — as mesmas
+   cores do selo de pedido no resto do sistema. */
+const TOM_PAGAMENTO = { PAGA: "sucesso", PARCIAL: "info", ABERTA: "alerta", CANCELADA: "perigo" } as const;
+const ROTULO_PAGAMENTO = { PAGA: "Pago", PARCIAL: "Parcial", ABERTA: "Em aberto", CANCELADA: "Cancelado" } as const;
 
 const StatusBadge = ({ status }: { status: keyof typeof TOM_PAGAMENTO }) => (
   <Selo tom={TOM_PAGAMENTO[status]}>{ROTULO_PAGAMENTO[status]}</Selo>
@@ -143,7 +145,9 @@ const Avatar = ({ name, size = "md" }: { name?: string; size?: "sm" | "md" }) =>
  * pedido) — assim uma nota com pagamento parcial aparece como "Parcial",
  * não como "Em aberto" cheio.
  */
-const statusPagamentoVenda = (v: { pedido: { valorPago?: number } }, total: number): "ABERTA" | "PARCIAL" | "PAGA" => {
+const statusPagamentoVenda = (v: { pedido: { valorPago?: number; pedidoStatus?: string } }, total: number): keyof typeof TOM_PAGAMENTO => {
+  if (v.pedido.pedidoStatus === "CANCELADO") return "CANCELADA";
+
   const pago = Number(v.pedido.valorPago ?? 0);
   if (pago <= 0) return "ABERTA";
   if (pago >= total) return "PAGA";

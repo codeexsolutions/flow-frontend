@@ -204,7 +204,7 @@ export const ChartTip = ({ active, payload, label, formatar = formatCurrency }: 
 
       {payload.map((p) => (
         <p key={p.dataKey ?? p.name} className="mt-0.5" style={{ color: p.color ?? p.payload?.fill ?? C.accent }}>
-          {p.name ?? p.dataKey}: <strong>{typeof p.value === "number" ? formatar(p.value) : p.value}</strong>
+          {p.name ?? p.dataKey}: <strong className="font-normal">{typeof p.value === "number" ? formatar(p.value) : p.value}</strong>
         </p>
       ))}
     </div>

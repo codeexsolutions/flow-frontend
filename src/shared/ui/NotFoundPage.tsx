@@ -81,7 +81,7 @@ const NotFoundPage = () => {
           ) : (
             <motion.span
               key={i}
-              className="font-display text-[76px] leading-none tracking-tight text-ink sm:text-[104px]"
+              className="text-[76px] leading-none tracking-tight text-ink sm:text-[104px]"
               initial={reduzir ? false : { opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.12, duration: 0.5, ease: [0.22, 0.61, 0.36, 1] }}

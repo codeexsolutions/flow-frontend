@@ -121,7 +121,7 @@ const BotaoCupomFiscal = ({ pedidoId, versao }: Props) => {
           {cupom.ambiente === 2 && <span className="text-warning">· homologação</span>}
         </span>
 
-        {cupom.chave && <span className="truncate font-mono text-[10px] text-faint">{cupom.chave}</span>}
+        {cupom.chave && <span className="truncate text-[10px] text-faint">{cupom.chave}</span>}
 
         <button
           type="button"

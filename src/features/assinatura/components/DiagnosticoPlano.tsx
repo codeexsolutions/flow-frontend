@@ -341,7 +341,7 @@ const CartaoPlano = ({
     }`}
   >
     {marcado && (
-      <span className="absolute -top-2.5 left-6 inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-0.5 text-[10px] font-bold text-white shadow-[0_6px_16px_-4px_rgb(var(--accent))]">
+      <span className="absolute -top-2.5 left-6 inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-0.5 text-[10px] text-white shadow-[0_6px_16px_-4px_rgb(var(--accent))]">
         <Check size={11} />
         Escolhido
       </span>
@@ -349,12 +349,12 @@ const CartaoPlano = ({
 
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <h4 className="text-[17px] font-bold leading-tight text-ink">{plano.nome}</h4>
+        <h4 className="text-[17px] leading-tight text-ink">{plano.nome}</h4>
         {plano.publicoAlvo && <p className="mt-0.5 text-[11px] text-faint">{plano.publicoAlvo}</p>}
       </div>
 
       <p className="flex shrink-0 items-baseline gap-1">
-        <span className="text-[24px] font-extrabold leading-none tracking-tight text-ink">
+        <span className="text-[24px] leading-none tracking-tight text-ink">
           {formatCurrencyFromCents(plano.precoCentavos)}
         </span>
         <span className="text-[11px] text-faint">{CICLO_LABEL[plano.ciclo]}</span>
