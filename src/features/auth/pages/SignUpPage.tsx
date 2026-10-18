@@ -102,47 +102,80 @@ type CadastroFormInputs = z.infer<typeof cadastroSchema>;
 /* Etapas */
 /* ------------------------------------------------------------------ */
 
-/* A primeira etapa chamava "Diagnóstico" desde que existia o questionário de
-   três perguntas. Ele saiu; o rótulo tinha ficado. */
-const STEPS = ["Seu plano", "Sobre você", "Seu contato", "Endereço", "Sua senha"] as const;
+/*
+ * Uma pergunta por tela.
+ *
+ * O cadastro era cinco telas de formulário; para quem nunca usou sistema,
+ * uma tela com três campos já é um formulário de banco. Agora o Flow faz
+ * uma pergunta de cada vez, a pessoa responde e aperta Enter (ou
+ * "Continuar"). São mais telas, mas cada uma se responde sem pensar.
+ */
+const STEPS = ["Plano", "Negócio", "Seu nome", "CPF ou CNPJ", "E-mail", "Celular", "CEP", "Endereço", "Senha", "Confirmar"] as const;
+
+const PASSO = {
+  PLANO: 0, NEGOCIO: 1, NOME: 2, DOCUMENTO: 3, EMAIL: 4, CELULAR: 5, CEP: 6, ENDERECO: 7, SENHA: 8, CONFIRMAR: 9,
+} as const;
 
 const STEP_FIELDS: Record<number, string[]> = {
-  0: ["planoCodigo"],
-  1: ["nomeFantasia", "nomeRepresentante", "cpfCnpj"],
-  2: ["contato.email", "contato.celular", "contato.whatsapp"],
-  3: ["endereco.cep", "endereco.logradouro", "endereco.numero", "endereco.complemento", "endereco.bairro", "endereco.cidade", "endereco.uf"],
-  4: ["senha", "aceite"],
+  [PASSO.PLANO]: ["planoCodigo"],
+  [PASSO.NEGOCIO]: ["nomeFantasia"],
+  [PASSO.NOME]: ["nomeRepresentante"],
+  [PASSO.DOCUMENTO]: ["cpfCnpj"],
+  [PASSO.EMAIL]: ["contato.email"],
+  [PASSO.CELULAR]: ["contato.celular", "contato.whatsapp"],
+  [PASSO.CEP]: ["endereco.cep"],
+  [PASSO.ENDERECO]: ["endereco.logradouro", "endereco.numero", "endereco.complemento", "endereco.bairro", "endereco.cidade", "endereco.uf"],
+  [PASSO.SENHA]: ["senha"],
+  [PASSO.CONFIRMAR]: ["aceite"],
+};
+
+type Valores = {
+  nome: string;
+  endereco: { logradouro?: string; bairro?: string; cidade?: string; uf?: string };
+  enderecoManual: boolean;
 };
 
 /**
- * O que o Flow "fala" no começo de cada etapa.
- *
- * O cadastro conversa em vez de listar campos: uma frase diz o que vem e
- * por quê, e só então aparecem as perguntas. Para quem nunca preencheu um
- * cadastro de sistema, saber o motivo de cada pergunta é o que tira o medo
- * de errar.
+ * O que o Flow pergunta em cada tela — a pergunta é o próprio rótulo do
+ * campo. Depois que a pessoa diz o nome, o Flow passa a chamá-la por ele.
  */
-const FALAS: Record<number, { titulo: string; texto: string }> = {
-  0: {
-    titulo: "Oi! Vamos criar a sua conta juntos.",
-    texto: "Primeiro, escolha um plano. Se você só quer conhecer o sistema, o Starter é o mais simples, e dá para mudar depois.",
-  },
-  1: {
-    titulo: "Agora me conta um pouco sobre você.",
-    texto: "São só três perguntas rapidinhas.",
-  },
-  2: {
-    titulo: "Como a gente fala com você?",
-    texto: "O seu e-mail vai ser o login para entrar no sistema.",
-  },
-  3: {
-    titulo: "Onde fica o seu negócio?",
-    texto: "Digite o CEP que a gente completa a rua, o bairro e a cidade para você.",
-  },
-  4: {
-    titulo: "Falta pouco! Crie uma senha.",
-    texto: "Confira se está tudo certo aqui embaixo e pronto: sua conta fica criada.",
-  },
+const falaDoPasso = (passo: number, v: Valores): { titulo: string; texto: string } => {
+  const primeiroNome = v.nome.trim().split(/\s+/)[0] ?? "";
+
+  switch (passo) {
+    case PASSO.PLANO:
+      return {
+        titulo: "Oi! Vamos criar a sua conta juntos.",
+        texto: "Primeiro, escolha um plano. Se você só quer conhecer o sistema, comece pelo Starter. Dá para mudar depois.",
+      };
+    case PASSO.NEGOCIO:
+      return { titulo: "Qual é o nome do seu negócio?", texto: "É o nome que os seus clientes conhecem." };
+    case PASSO.NOME:
+      return { titulo: "E qual é o seu nome?", texto: "Para a gente saber com quem está falando." };
+    case PASSO.DOCUMENTO:
+      return {
+        titulo: primeiroNome ? `Prazer, ${primeiroNome}! Qual é o seu CPF ou o CNPJ da empresa?` : "Qual é o seu CPF ou o CNPJ da empresa?",
+        texto: "Não tem CNPJ? Sem problema, use o seu CPF.",
+      };
+    case PASSO.EMAIL:
+      return { titulo: "Qual é o seu e-mail?", texto: "Guarde bem: você vai usar ele para entrar no sistema." };
+    case PASSO.CELULAR:
+      return { titulo: "Qual é o seu celular, com DDD?", texto: "É por ele que a gente fala com você se precisar." };
+    case PASSO.CEP:
+      return { titulo: "Qual é o CEP do seu negócio?", texto: "A gente completa a rua, o bairro e a cidade para você." };
+    case PASSO.ENDERECO:
+      return v.enderecoManual
+        ? { titulo: "Me conta o endereço, então.", texto: "Não encontrei esse CEP. Preencha aqui embaixo." }
+        : {
+            titulo: "Achei! Qual é o número?",
+            texto: [v.endereco.logradouro, v.endereco.bairro].filter(Boolean).join(", ")
+              + (v.endereco.cidade ? ` — ${v.endereco.cidade}/${v.endereco.uf ?? ""}` : ""),
+          };
+    case PASSO.SENHA:
+      return { titulo: "Agora crie uma senha.", texto: "Pelo menos 6 letras ou números. Toque em \"Mostrar\" para conferir o que digitou." };
+    default:
+      return { titulo: "Prontinho! Está tudo certo?", texto: "Confira os seus dados. Se estiver tudo certo, é só criar a conta." };
+  }
 };
 
 /**
@@ -185,6 +218,8 @@ const CadastroEmpresaPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
   const [verSenha, setVerSenha] = useState(false);
+  /* CEP não encontrado (ou endereço errado): abre os campos para digitar. */
+  const [enderecoManual, setEnderecoManual] = useState(false);
 
   /*
    * Os planos vêm do catálogo compartilhado, carregado no boot do app.
@@ -269,23 +304,23 @@ const CadastroEmpresaPage = () => {
 
   /* ------------------------- ViaCEP ------------------------- */
 
-  const buscarCep = async () => {
+  /** Preenche o endereço pelo CEP. Devolve `true` se encontrou. */
+  const buscarCep = async (): Promise<boolean> => {
     const cep = onlyDigits(getValues("endereco.cep") ?? "");
-    if (cep.length !== 8) return;
+    if (cep.length !== 8) return false;
     setCepLoading(true);
     try {
       const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
       const data = await res.json();
-      if (data.erro) {
-        toast.warn("CEP não encontrado");
-        return;
-      }
-      setValue("endereco.logradouro", data.logradouro ?? "", { shouldValidate: true });
-      setValue("endereco.bairro", data.bairro ?? "", { shouldValidate: true });
-      setValue("endereco.cidade", data.localidade ?? "", { shouldValidate: true });
-      setValue("endereco.uf", data.uf ?? "", { shouldValidate: true });
+      if (data.erro) return false;
+      setValue("endereco.logradouro", data.logradouro ?? "", { shouldValidate: false });
+      setValue("endereco.bairro", data.bairro ?? "", { shouldValidate: false });
+      setValue("endereco.cidade", data.localidade ?? "", { shouldValidate: false });
+      setValue("endereco.uf", data.uf ?? "", { shouldValidate: false });
+      // CEP de cidade pequena vem sem rua: aí a pessoa precisa digitar.
+      return Boolean(data.logradouro);
     } catch {
-      toast.warn("Não foi possível buscar o CEP");
+      return false;
     } finally {
       setCepLoading(false);
     }
@@ -295,7 +330,19 @@ const CadastroEmpresaPage = () => {
 
   const nextStep = async () => {
     const valid = await trigger(STEP_FIELDS[step] as never[]);
-    if (!valid) return;
+
+    if (!valid) {
+      // Faltou rua, bairro ou cidade: mostra os campos em vez de um erro
+      // sobre algo que a pessoa nem está vendo.
+      if (step === PASSO.ENDERECO) setEnderecoManual(true);
+      return;
+    }
+
+    if (step === PASSO.CEP) {
+      const achou = await buscarCep();
+      setEnderecoManual(!achou);
+    }
+
     setDirecao(1);
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
@@ -445,9 +492,10 @@ const CadastroEmpresaPage = () => {
   /* Rótulo em frase e em tamanho de leitura: a etiqueta de 10px em caixa
      alta lia como formulário de repartição, não como pergunta. */
   const labelCls = "block text-[13px] text-ink mb-1";
-  const dicaCls = "mt-0.5 min-h-[13px] text-[11px] leading-[14px] text-faint";
-  const inputCls = "cf-input w-full flex-1 min-w-0 bg-transparent outline-none py-2.5 text-[13px] sm:text-sm text-ink placeholder:text-faint";
-  const errCls = "mt-0.5 min-h-[13px] text-[10px] leading-[13px] text-danger";
+  /* Campo grande: é uma pergunta por tela, então sobra espaço — e letra
+     de 13px é pequena para quem digita devagar no celular. */
+  const inputCls = "cf-input w-full flex-1 min-w-0 bg-transparent outline-none py-3.5 text-base text-ink placeholder:text-faint";
+  const errCls = "mt-1 min-h-[15px] text-[12px] leading-[15px] text-danger";
 
   /* registros com máscara */
   const regCpfCnpj = register("cpfCnpj");
@@ -470,6 +518,12 @@ const CadastroEmpresaPage = () => {
       },
     ].filter((linha) => linha.valor);
   };
+
+  const fala = falaDoPasso(step, {
+    nome: getValues("nomeRepresentante") ?? "",
+    endereco: getValues("endereco") ?? {},
+    enderecoManual,
+  });
 
   return (
     /* Mesma moldura do login: painel da marca à esquerda, conteúdo à direita.
@@ -633,7 +687,18 @@ const CadastroEmpresaPage = () => {
             ))}
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-1.5">
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            /* Enter responde e vai para a próxima pergunta, como numa conversa.
+               Só na última tela ele envia o formulário. */
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || step >= STEPS.length - 1) return;
+              if ((e.target as HTMLElement).tagName === "BUTTON") return;
+              e.preventDefault();
+              nextStep();
+            }}
+            className="flex flex-col gap-1.5"
+          >
             <AnimatePresence mode="popLayout" initial={false} custom={direcao}>
               <motion.div
                 key={step}
@@ -649,13 +714,13 @@ const CadastroEmpresaPage = () => {
             <div className="mb-1.5 flex items-start gap-2.5">
               <img src="/logo.png" alt="" width={28} height={28} className="mt-0.5 h-7 w-7 shrink-0 rounded-full" />
               <div className="min-w-0 rounded-2xl rounded-tl-sm border border-accent/20 bg-accent/[0.07] px-3.5 py-2.5">
-                <p className="text-[13.5px] text-ink">{FALAS[step].titulo}</p>
-                <p className="mt-0.5 text-[12.5px] leading-relaxed text-mist">{FALAS[step].texto}</p>
+                <p className="text-[15px] text-ink">{fala.titulo}</p>
+                {fala.texto && <p className="mt-0.5 text-[13px] leading-relaxed text-mist">{fala.texto}</p>}
               </div>
             </div>
 
             {/* ---------------- Etapa 1: Plano ---------------- */}
-            {step === 0 && (
+            {step === PASSO.PLANO && (
               <>
                 {planosLoading && (
                   <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-mist">
@@ -709,81 +774,73 @@ const CadastroEmpresaPage = () => {
               </>
             )}
 
-            {/* ---------------- Etapa 2: Empresa ---------------- */}
-            {step === 1 && (
-              <>
-                <div>
-                  <label className={labelCls}>Qual é o nome do seu negócio?</label>
-                  <div className={fieldBox}>
-                    <Building2 size={14} className="shrink-0 text-muted" />
-                    <input {...register("nomeFantasia")} placeholder="Ex.: Gráfica Bom Preço" autoComplete="organization" className={inputCls} />
-                  </div>
-                  {errors.nomeFantasia ? (
-                    <p role="alert" className={errCls}>{errors.nomeFantasia.message}</p>
-                  ) : (
-                    <p className={dicaCls}>É o nome que os seus clientes conhecem.</p>
-                  )}
+            {/* ---------------- Nome do negócio ---------------- */}
+            {step === PASSO.NEGOCIO && (
+              <div>
+                <div className={fieldBox}>
+                  <Building2 size={16} className="shrink-0 text-muted" />
+                  <input {...register("nomeFantasia")} autoFocus placeholder="Ex.: Gráfica Bom Preço" autoComplete="organization" className={inputCls} />
                 </div>
-
-                <div>
-                  <label className={labelCls}>E qual é o seu nome?</label>
-                  <div className={fieldBox}>
-                    <User size={14} className="shrink-0 text-muted" />
-                    <input {...register("nomeRepresentante")} placeholder="Seu nome completo" autoComplete="name" className={inputCls} />
-                  </div>
-                  <p role="alert" className={errCls}>{errors.nomeRepresentante?.message}</p>
-                </div>
-
-                <div>
-                  <label className={labelCls}>Seu CPF ou o CNPJ da empresa</label>
-                  <div className={fieldBox}>
-                    <FileText size={14} className="shrink-0 text-muted" />
-                    <input
-                      {...regCpfCnpj}
-                      onChange={(e) => {
-                        e.target.value = maskCpfCnpj(e.target.value);
-                        regCpfCnpj.onChange(e);
-                      }}
-                      inputMode="numeric"
-                      placeholder="Só os números"
-                      className={inputCls}
-                    />
-                  </div>
-                  {errors.cpfCnpj ? (
-                    <p role="alert" className={errCls}>{errors.cpfCnpj.message}</p>
-                  ) : (
-                    <p className={dicaCls}>Não tem CNPJ? Sem problema, use o seu CPF.</p>
-                  )}
-                </div>
-              </>
+                <p role="alert" className={errCls}>{errors.nomeFantasia?.message}</p>
+              </div>
             )}
 
-            {/* ---------------- Etapa 3: Contato ---------------- */}
-            {step === 2 && (
+            {/* ---------------- Nome da pessoa ---------------- */}
+            {step === PASSO.NOME && (
+              <div>
+                <div className={fieldBox}>
+                  <User size={16} className="shrink-0 text-muted" />
+                  <input {...register("nomeRepresentante")} autoFocus placeholder="Seu nome completo" autoComplete="name" className={inputCls} />
+                </div>
+                <p role="alert" className={errCls}>{errors.nomeRepresentante?.message}</p>
+              </div>
+            )}
+
+            {/* ---------------- CPF ou CNPJ ---------------- */}
+            {step === PASSO.DOCUMENTO && (
+              <div>
+                <div className={fieldBox}>
+                  <FileText size={16} className="shrink-0 text-muted" />
+                  <input
+                    {...regCpfCnpj}
+                    onChange={(e) => {
+                      e.target.value = maskCpfCnpj(e.target.value);
+                      regCpfCnpj.onChange(e);
+                    }}
+                    autoFocus
+                    inputMode="numeric"
+                    placeholder="Só os números"
+                    className={inputCls}
+                  />
+                </div>
+                <p role="alert" className={errCls}>{errors.cpfCnpj?.message}</p>
+              </div>
+            )}
+
+            {/* ---------------- E-mail ---------------- */}
+            {step === PASSO.EMAIL && (
+              <div>
+                <div className={fieldBox}>
+                  <Mail size={16} className="shrink-0 text-muted" />
+                  <input {...register("contato.email")} autoFocus type="email" placeholder="voce@email.com" autoComplete="email" className={inputCls} />
+                </div>
+                <p role="alert" className={errCls}>{errors.contato?.email?.message}</p>
+              </div>
+            )}
+
+            {/* ---------------- Celular ---------------- */}
+            {step === PASSO.CELULAR && (
               <>
                 <div>
-                  <label className={labelCls}>Qual é o seu e-mail?</label>
                   <div className={fieldBox}>
-                    <Mail size={14} className="shrink-0 text-muted" />
-                    <input {...register("contato.email")} type="email" placeholder="voce@email.com" autoComplete="email" className={inputCls} />
-                  </div>
-                  {errors.contato?.email ? (
-                    <p role="alert" className={errCls}>{errors.contato.email.message}</p>
-                  ) : (
-                    <p className={dicaCls}>Guarde bem: você vai usar ele para entrar no sistema.</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className={labelCls}>E o seu celular, com DDD?</label>
-                  <div className={fieldBox}>
-                    <Smartphone size={14} className="shrink-0 text-muted" />
+                    <Smartphone size={16} className="shrink-0 text-muted" />
                     <input
                       {...regCelular}
                       onChange={(e) => {
                         e.target.value = maskPhone(e.target.value);
                         regCelular.onChange(e);
                       }}
+                      autoFocus
                       inputMode="numeric"
                       autoComplete="tel"
                       placeholder="(00) 00000-0000"
@@ -793,16 +850,16 @@ const CadastroEmpresaPage = () => {
                   <p role="alert" className={errCls}>{errors.contato?.celular?.message}</p>
                 </div>
 
-                <label className="flex cursor-pointer items-center gap-2 text-[13px] text-mist">
-                  <input type="checkbox" {...register("contato.mesmoWhatsapp")} className="h-4 w-4 shrink-0 accent-[rgb(var(--accent))]" />
+                <label className="flex cursor-pointer items-center gap-2 text-[14px] text-mist">
+                  <input type="checkbox" {...register("contato.mesmoWhatsapp")} className="h-[18px] w-[18px] shrink-0 accent-[rgb(var(--accent))]" />
                   Esse celular também é o meu WhatsApp
                 </label>
 
                 {!mesmoWhatsapp && (
-                  <div className="mt-1.5">
-                    <label className={labelCls}>Qual é o seu WhatsApp?</label>
+                  <div className="mt-2">
+                    <label className={labelCls}>Qual é o seu WhatsApp? (se não tiver, deixe em branco)</label>
                     <div className={fieldBox}>
-                      <MessageCircle size={14} className="shrink-0 text-muted" />
+                      <MessageCircle size={16} className="shrink-0 text-muted" />
                       <input
                         {...regWhatsapp}
                         onChange={(e) => {
@@ -814,146 +871,131 @@ const CadastroEmpresaPage = () => {
                         className={inputCls}
                       />
                     </div>
-                    {errors.contato?.whatsapp ? (
-                      <p role="alert" className={errCls}>{errors.contato.whatsapp.message}</p>
-                    ) : (
-                      <p className={dicaCls}>Se não tiver WhatsApp, pode deixar em branco.</p>
-                    )}
+                    <p role="alert" className={errCls}>{errors.contato?.whatsapp?.message}</p>
                   </div>
                 )}
               </>
             )}
 
-            {/* ---------------- Etapa 4: Endereço ---------------- */}
-            {step === 3 && (
-              <>
-                <div className="grid grid-cols-[1fr_90px] gap-x-3 gap-y-1.5">
-                  <div>
-                    <label className={labelCls}>CEP</label>
-                    <div className={fieldBox}>
-                      <MapPin size={14} className="shrink-0 text-muted" />
-                      <input
-                        {...regCep}
-                        onChange={(e) => {
-                          e.target.value = maskCep(e.target.value);
-                          regCep.onChange(e);
-                        }}
-                        onBlur={(e) => {
-                          regCep.onBlur(e);
-                          buscarCep();
-                        }}
-                        inputMode="numeric"
-                        placeholder="00000-000"
-                        className={inputCls}
-                      />
-                      {cepLoading && <Loader2 size={14} className="shrink-0 animate-spin text-accent" />}
-                    </div>
-                    {errors.endereco?.cep ? (
-                      <p role="alert" className={errCls}>{errors.endereco.cep.message}</p>
-                    ) : (
-                      <p className={dicaCls}>Assim que terminar de digitar, a gente busca o endereço.</p>
-                    )}
-                  </div>
+            {/* ---------------- CEP ---------------- */}
+            {step === PASSO.CEP && (
+              <div>
+                <div className={fieldBox}>
+                  <MapPin size={16} className="shrink-0 text-muted" />
+                  <input
+                    {...regCep}
+                    onChange={(e) => {
+                      e.target.value = maskCep(e.target.value);
+                      regCep.onChange(e);
+                    }}
+                    autoFocus
+                    inputMode="numeric"
+                    placeholder="00000-000"
+                    className={inputCls}
+                  />
+                  {cepLoading && <Loader2 size={16} className="shrink-0 animate-spin text-accent" />}
+                </div>
+                <p role="alert" className={errCls}>{errors.endereco?.cep?.message}</p>
+              </div>
+            )}
 
+            {/* ---------------- Número (e o resto, se o CEP não achou) ---------------- */}
+            {step === PASSO.ENDERECO && (
+              <>
+                <div className="grid grid-cols-2 gap-x-3">
                   <div>
                     <label className={labelCls}>Número</label>
                     <div className={fieldBox}>
-                      <Hash size={14} className="shrink-0 text-muted" />
-                      <input {...register("endereco.numero")} placeholder="123" className={inputCls} />
+                      <Hash size={16} className="shrink-0 text-muted" />
+                      <input {...register("endereco.numero")} autoFocus={!enderecoManual} placeholder="Ex.: 123" className={inputCls} />
                     </div>
                     <p role="alert" className={errCls}>{errors.endereco?.numero?.message}</p>
                   </div>
-                </div>
 
-                <div>
-                  <label className={labelCls}>Rua</label>
-                  <div className={fieldBox}>
-                    <MapPin size={14} className="shrink-0 text-muted" />
-                    <input {...register("endereco.logradouro")} placeholder="Rua, avenida, travessa..." className={inputCls} />
-                  </div>
-                  <p role="alert" className={errCls}>{errors.endereco?.logradouro?.message}</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
                   <div>
                     <label className={labelCls}>Complemento</label>
                     <div className={fieldBox}>
-                      <Hash size={14} className="shrink-0 text-muted" />
-                      <input {...register("endereco.complemento")} placeholder="Sala, loja... (se tiver)" className={inputCls} />
+                      <input {...register("endereco.complemento")} placeholder="Se tiver" className={inputCls} />
                     </div>
-                    <p role="alert" className={errCls}>{errors.endereco?.complemento?.message}</p>
-                  </div>
-
-                  <div>
-                    <label className={labelCls}>Bairro</label>
-                    <div className={fieldBox}>
-                      <MapPin size={14} className="shrink-0 text-muted" />
-                      <input {...register("endereco.bairro")} placeholder="Seu bairro" className={inputCls} />
-                    </div>
-                    <p role="alert" className={errCls}>{errors.endereco?.bairro?.message}</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-[1fr_90px] gap-x-3 gap-y-1.5">
-                  <div>
-                    <label className={labelCls}>Cidade</label>
-                    <div className={fieldBox}>
-                      <Building2 size={14} className="shrink-0 text-muted" />
-                      <input {...register("endereco.cidade")} placeholder="Sua cidade" className={inputCls} />
+                {enderecoManual ? (
+                  <>
+                    <div>
+                      <label className={labelCls}>Rua</label>
+                      <div className={fieldBox}>
+                        <MapPin size={16} className="shrink-0 text-muted" />
+                        <input {...register("endereco.logradouro")} autoFocus placeholder="Rua, avenida, travessa..." className={inputCls} />
+                      </div>
+                      <p role="alert" className={errCls}>{errors.endereco?.logradouro?.message}</p>
                     </div>
-                    <p role="alert" className={errCls}>{errors.endereco?.cidade?.message}</p>
-                  </div>
 
-                  <div>
-                    <label className={labelCls}>Estado</label>
-                    <div className={fieldBox}>
-                      <select {...register("endereco.uf")} className={`${inputCls} cursor-pointer appearance-none [&>option]:bg-surface-raised`}>
-                        <option value="">UF</option>
-                        {UFS.map((uf) => (
-                          <option key={uf} value={uf}>
-                            {uf}
-                          </option>
-                        ))}
-                      </select>
+                    <div>
+                      <label className={labelCls}>Bairro</label>
+                      <div className={fieldBox}>
+                        <input {...register("endereco.bairro")} placeholder="Seu bairro" className={inputCls} />
+                      </div>
+                      <p role="alert" className={errCls}>{errors.endereco?.bairro?.message}</p>
                     </div>
-                    <p role="alert" className={errCls}>{errors.endereco?.uf?.message}</p>
-                  </div>
-                </div>
+
+                    <div className="grid grid-cols-[1fr_96px] gap-x-3">
+                      <div>
+                        <label className={labelCls}>Cidade</label>
+                        <div className={fieldBox}>
+                          <input {...register("endereco.cidade")} placeholder="Sua cidade" className={inputCls} />
+                        </div>
+                        <p role="alert" className={errCls}>{errors.endereco?.cidade?.message}</p>
+                      </div>
+
+                      <div>
+                        <label className={labelCls}>Estado</label>
+                        <div className={fieldBox}>
+                          <select {...register("endereco.uf")} className={`${inputCls} cursor-pointer appearance-none [&>option]:bg-surface-raised`}>
+                            <option value="">UF</option>
+                            {UFS.map((uf) => (
+                              <option key={uf} value={uf}>
+                                {uf}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <p role="alert" className={errCls}>{errors.endereco?.uf?.message}</p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => setEnderecoManual(true)} className="w-fit text-[13px] text-accent transition-colors hover:text-accent-soft">
+                    O endereço está errado? Corrigir
+                  </button>
+                )}
               </>
             )}
 
-            {/* ---------------- Etapa 5: Acesso e revisão ---------------- */}
-            {step === 4 && (
-              <>
-                {/* Uma senha só, com o botão para ver o que digitou. "Repita a
-                    senha" era um campo a mais para errar; ver a senha resolve
-                    o mesmo problema. */}
-                <div>
-                  <label className={labelCls}>Crie uma senha</label>
-                  <div className={fieldBox}>
-                    <Lock size={14} className="shrink-0 text-muted" />
-                    <input {...register("senha")} type={verSenha ? "text" : "password"} placeholder="Pelo menos 6 letras ou números" autoComplete="new-password" className={inputCls} />
-                    <button type="button" onClick={() => setVerSenha((v) => !v)} className="flex shrink-0 items-center gap-1 text-[11px] text-muted transition hover:text-ink" aria-label={verSenha ? "Esconder senha" : "Mostrar senha"}>
-                      {verSenha ? <EyeOff size={14} /> : <Eye size={14} />}
-                      {verSenha ? "Esconder" : "Mostrar"}
-                    </button>
-                  </div>
-                  {errors.senha ? (
-                    <p role="alert" className={errCls}>{errors.senha.message}</p>
-                  ) : (
-                    <p className={dicaCls}>Toque em "Mostrar" para conferir o que você digitou.</p>
-                  )}
+            {/* ---------------- Senha ---------------- */}
+            {step === PASSO.SENHA && (
+              <div>
+                <div className={fieldBox}>
+                  <Lock size={16} className="shrink-0 text-muted" />
+                  <input {...register("senha")} autoFocus type={verSenha ? "text" : "password"} placeholder="Sua senha" autoComplete="new-password" className={inputCls} />
+                  <button type="button" onClick={() => setVerSenha((v) => !v)} className="flex shrink-0 items-center gap-1 text-[12px] text-muted transition hover:text-ink" aria-label={verSenha ? "Esconder senha" : "Mostrar senha"}>
+                    {verSenha ? <EyeOff size={15} /> : <Eye size={15} />}
+                    {verSenha ? "Esconder" : "Mostrar"}
+                  </button>
                 </div>
+                <p role="alert" className={errCls}>{errors.senha?.message}</p>
+              </div>
+            )}
 
-                {/* Revisão — o cliente confere antes de enviar */}
-                <div className="mt-1 rounded-xl border border-fg/[0.08] bg-fg/[0.02] p-3.5">
-                  <p className={labelCls}>Está tudo certo?</p>
-
+            {/* ---------------- Confirmar ---------------- */}
+            {step === PASSO.CONFIRMAR && (
+              <>
+                <div className="rounded-xl border border-fg/[0.08] bg-fg/[0.02] p-3.5">
                   <div className="flex flex-col divide-y divide-fg/[0.05]">
                     {planoEscolhido && (
-                      <div className="flex items-center justify-between gap-3 py-1.5">
-                        <span className="text-[12px] text-mist">Plano</span>
-                        <span className="truncate text-[12px] text-ink">
+                      <div className="flex items-center justify-between gap-3 py-2">
+                        <span className="text-[13px] text-mist">Plano</span>
+                        <span className="truncate text-[13px] text-ink">
                           {planoEscolhido.nome} — {formatCurrencyFromCents(planoEscolhido.precoCentavos)}
                           {CICLO_LABEL[planoEscolhido.ciclo]}
                         </span>
@@ -961,16 +1003,16 @@ const CadastroEmpresaPage = () => {
                     )}
 
                     {resumo().map((linha) => (
-                      <div key={linha.label} className="flex items-center justify-between gap-3 py-1.5">
-                        <span className="shrink-0 text-[12px] text-mist">{linha.label}</span>
-                        <span className="min-w-0 truncate text-right text-[12px] text-ink">{linha.valor}</span>
+                      <div key={linha.label} className="flex items-center justify-between gap-3 py-2">
+                        <span className="shrink-0 text-[13px] text-mist">{linha.label}</span>
+                        <span className="min-w-0 truncate text-right text-[13px] text-ink">{linha.valor}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <label className="mt-1 flex cursor-pointer items-start gap-2 text-[12.5px] leading-relaxed text-mist">
-                  <input type="checkbox" {...register("aceite")} className="mt-0.5 h-4 w-4 shrink-0 accent-[rgb(var(--accent))]" />
+                <label className="mt-2 flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed text-mist">
+                  <input type="checkbox" {...register("aceite")} className="mt-0.5 h-[18px] w-[18px] shrink-0 accent-[rgb(var(--accent))]" />
                   <span>
                     Entendi que pago a mensalidade por Pix e que o sistema é liberado depois que o primeiro pagamento
                     for confirmado.
