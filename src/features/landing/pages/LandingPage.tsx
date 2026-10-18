@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   ShoppingCart, Package, Users, Wallet, BarChart3, Bell, Smartphone, ShieldCheck,
   QrCode, ArrowRight, Zap, Palette, WifiOff, Store, UserRound, MessageCircle,
-  Target, Truck, Sparkles,
+  Target, Truck, Sparkles, Factory,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -328,9 +328,10 @@ const LandingPage = () => {
                         [`${limite(p.limiteProdutos)} produtos`, true, Package],
                         [`${limite(p.limitePedidosMes)} vendas por mês`, true, ShoppingCart],
                         ["Módulo financeiro", Boolean(p.recursos?.financeiro), Wallet],
-                        // CRM e Correios são o que separa um degrau do outro
-                        // hoje. Fora desta lista, os três cartões pareciam o
-                        // mesmo plano com preços diferentes.
+                        // Produção com equipe, CRM e Correios são o que separa
+                        // um degrau do outro hoje. Fora desta lista, os três
+                        // cartões pareciam o mesmo plano com preços diferentes.
+                        ["Produção, equipe e ponto", Boolean(p.recursos?.producao && p.recursos?.funcionarios), Factory],
                         ["CRM com funil de vendas", Boolean(p.recursos?.crm), Target],
                         ["Correios integrado", Boolean(p.recursos?.correios), Truck],
                         ["Relatórios gerenciais", Boolean(p.recursos?.relatorios), BarChart3],

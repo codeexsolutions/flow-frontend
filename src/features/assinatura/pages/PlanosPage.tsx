@@ -64,7 +64,7 @@ const PlanosPage = () => {
           <p className="mt-2.5 max-w-lg text-[13px] leading-relaxed text-mist">
             {umPlanoSo
               ? "Um plano, o sistema inteiro: PDV, clientes, produtos, financeiro, produções e relatórios. Sem pacote para destravar depois."
-              : "Do empreendedor que vende sozinho à operação com mais de uma loja. Você troca de plano quando quiser, pagando só a diferença."}
+              : "Do primeiro passo para conhecer o sistema à gráfica com equipe na produção. Você troca de plano quando quiser, pagando só a diferença."}
           </p>
 
           {/* A saída para quem abriu esta página e travou: o caminho curto para

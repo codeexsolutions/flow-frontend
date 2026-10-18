@@ -3,8 +3,8 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
-  Building2, User, Mail, Phone, Smartphone, MessageCircle, MapPin, Hash, FileText,
-  Image as ImageIcon, ArrowLeft, ArrowRight, Loader2, Lock, Eye, EyeOff, Sparkles,
+  Building2, User, Mail, Smartphone, MessageCircle, MapPin, Hash, FileText,
+  ArrowLeft, ArrowRight, Loader2, Lock, Eye, EyeOff, Sparkles,
   Zap, QrCode, Repeat, LogIn,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -41,55 +41,60 @@ const DESTAQUES_CAD = [
 /* Schema Zod */
 /* ------------------------------------------------------------------ */
 
-const optionalUrl = z.string().url("URL inválida").or(z.literal("")).optional();
+/*
+ * As mensagens falam com a pessoa, não com o formulário.
+ *
+ * Quem se cadastra aqui muitas vezes nunca usou um sistema de gestão:
+ * "Obrigatório" e "CPF/CNPJ inválido" soam como bronca e não dizem o que
+ * fazer. Cada mensagem diz o que falta e como resolver.
+ *
+ * Saíram do cadastro a inscrição municipal, o logo, o telefone fixo e a
+ * confirmação de senha. Nenhum deles é preciso para começar a usar — a
+ * inscrição e o logo se preenchem depois, em Configurações › Empresa — e
+ * cada campo a mais é um motivo para a pessoa leiga parar no meio.
+ */
+const cadastroSchema = z.object({
+  planoCodigo: z.string().min(1, "Escolha um dos planos para continuar."),
 
-const cadastroSchema = z
-  .object({
-    planoCodigo: z.string().min(1, "Escolha um plano"),
+  nomeFantasia: z.string().trim().min(1, "Escreva o nome do seu negócio."),
+  nomeRepresentante: z.string().trim().min(1, "Escreva o seu nome."),
+  cpfCnpj: z
+    .string()
+    .min(1, "Digite o seu CPF ou o CNPJ da empresa.")
+    .refine(isValidCpfCnpj, "Esse número não está certo. Confere de novo?"),
 
-    nomeFantasia: z.string().min(1, "Obrigatório"),
-    nomeRepresentante: z.string().min(1, "Obrigatório"),
-    cpfCnpj: z.string().min(1, "Obrigatório").refine(isValidCpfCnpj, "CPF/CNPJ inválido"),
-    inscMunicipal: z.string().optional(),
-    urlLogo: optionalUrl,
+  contato: z.object({
+    email: z.string().trim().min(1, "Digite o seu e-mail.").email("Esse e-mail não parece certo. Confere de novo?"),
+    celular: z
+      .string()
+      .min(1, "Digite o seu celular.")
+      .refine((v) => onlyDigits(v).length === 11, "Faltam números. Coloque o DDD e os 9 dígitos."),
+    /* Marcado de início: para quase todo mundo o celular É o WhatsApp, e
+       perguntar o mesmo número duas vezes faz a pessoa achar que entendeu
+       errado. */
+    mesmoWhatsapp: z.boolean(),
+    whatsapp: z
+      .string()
+      .optional()
+      .refine((v) => !v || onlyDigits(v).length === 11, "Faltam números. Coloque o DDD e os 9 dígitos."),
+  }),
 
-    contato: z.object({
-      email: z.string().min(1, "Obrigatório").email("Email inválido"),
-      celular: z
-        .string()
-        .min(1, "Obrigatório")
-        .refine((v) => onlyDigits(v).length === 11, "Celular incompleto"),
-      telefone: z
-        .string()
-        .optional()
-        .refine((v) => !v || onlyDigits(v).length >= 10, "Telefone incompleto"),
-      whatsapp: z
-        .string()
-        .optional()
-        .refine((v) => !v || onlyDigits(v).length === 11, "WhatsApp incompleto"),
-    }),
+  endereco: z.object({
+    cep: z
+      .string()
+      .min(1, "Digite o CEP.")
+      .refine((v) => onlyDigits(v).length === 8, "O CEP tem 8 números."),
+    logradouro: z.string().trim().min(1, "Escreva o nome da rua."),
+    numero: z.string().trim().min(1, "Coloque o número (se não tiver, escreva S/N)."),
+    complemento: z.string().optional(),
+    bairro: z.string().trim().min(1, "Escreva o bairro."),
+    cidade: z.string().trim().min(1, "Escreva a cidade."),
+    uf: z.string().min(1, "Escolha"),
+  }),
 
-    endereco: z.object({
-      cep: z
-        .string()
-        .min(1, "Obrigatório")
-        .refine((v) => onlyDigits(v).length === 8, "CEP incompleto"),
-      logradouro: z.string().min(1, "Obrigatório"),
-      numero: z.string().min(1, "Obrigatório"),
-      complemento: z.string().optional(),
-      bairro: z.string().min(1, "Obrigatório"),
-      cidade: z.string().min(1, "Obrigatória"),
-      uf: z.string().min(1, "UF"),
-    }),
-
-    senha: z.string().min(6, "Mínimo de 6 caracteres"),
-    confirmarSenha: z.string().min(1, "Confirme a senha"),
-    aceite: z.boolean().refine((v) => v === true, "É preciso aceitar para continuar"),
-  })
-  .refine((d) => d.senha === d.confirmarSenha, {
-    message: "As senhas não conferem",
-    path: ["confirmarSenha"],
-  });
+  senha: z.string().min(6, "A senha precisa ter pelo menos 6 letras ou números."),
+  aceite: z.boolean().refine((v) => v === true, "Marque aqui para continuar."),
+});
 
 type CadastroFormInputs = z.infer<typeof cadastroSchema>;
 
@@ -99,15 +104,55 @@ type CadastroFormInputs = z.infer<typeof cadastroSchema>;
 
 /* A primeira etapa chamava "Diagnóstico" desde que existia o questionário de
    três perguntas. Ele saiu; o rótulo tinha ficado. */
-const STEPS = ["Plano", "Empresa", "Contato", "Endereço", "Acesso"] as const;
+const STEPS = ["Seu plano", "Sobre você", "Seu contato", "Endereço", "Sua senha"] as const;
 
 const STEP_FIELDS: Record<number, string[]> = {
   0: ["planoCodigo"],
-  1: ["nomeFantasia", "nomeRepresentante", "cpfCnpj", "inscMunicipal", "urlLogo"],
-  2: ["contato.email", "contato.celular", "contato.telefone", "contato.whatsapp"],
+  1: ["nomeFantasia", "nomeRepresentante", "cpfCnpj"],
+  2: ["contato.email", "contato.celular", "contato.whatsapp"],
   3: ["endereco.cep", "endereco.logradouro", "endereco.numero", "endereco.complemento", "endereco.bairro", "endereco.cidade", "endereco.uf"],
-  4: ["senha", "confirmarSenha", "aceite"],
+  4: ["senha", "aceite"],
 };
+
+/**
+ * O que o Flow "fala" no começo de cada etapa.
+ *
+ * O cadastro conversa em vez de listar campos: uma frase diz o que vem e
+ * por quê, e só então aparecem as perguntas. Para quem nunca preencheu um
+ * cadastro de sistema, saber o motivo de cada pergunta é o que tira o medo
+ * de errar.
+ */
+const FALAS: Record<number, { titulo: string; texto: string }> = {
+  0: {
+    titulo: "Oi! Vamos criar a sua conta juntos.",
+    texto: "Primeiro, escolha um plano. Se você só quer conhecer o sistema, o Starter é o mais simples, e dá para mudar depois.",
+  },
+  1: {
+    titulo: "Agora me conta um pouco sobre você.",
+    texto: "São só três perguntas rapidinhas.",
+  },
+  2: {
+    titulo: "Como a gente fala com você?",
+    texto: "O seu e-mail vai ser o login para entrar no sistema.",
+  },
+  3: {
+    titulo: "Onde fica o seu negócio?",
+    texto: "Digite o CEP que a gente completa a rua, o bairro e a cidade para você.",
+  },
+  4: {
+    titulo: "Falta pouco! Crie uma senha.",
+    texto: "Confira se está tudo certo aqui embaixo e pronto: sua conta fica criada.",
+  },
+};
+
+/**
+ * Só estes planos aparecem no cadastro.
+ *
+ * A API já filtra a vitrine (`catalogo.ts`); o filtro aqui é a segunda
+ * trava, para um ajuste no banco ou na API não fazer o cadastro oferecer
+ * Premium ou Enterprise a quem está começando.
+ */
+const PLANOS_DO_CADASTRO = ["STARTER", "STANDARD", "PROFESSIONAL"];
 
 /* ------------------------------------------------------------------ */
 /* Componente */
@@ -148,7 +193,8 @@ const CadastroEmpresaPage = () => {
    * memória e a etapa do plano nasce com o cartão pronto. Buscar aqui fazia a
    * etapa abrir vazia e o cartão entrar depois, empurrando o layout.
    */
-  const planos = useCatalogo((s) => s.planos);
+  const todosPlanos = useCatalogo((s) => s.planos);
+  const planos = useMemo(() => todosPlanos.filter((p) => PLANOS_DO_CADASTRO.includes(p.codigo)), [todosPlanos]);
   const catalogoCarregado = useCatalogo((s) => s.carregado);
   const erroCatalogo = useCatalogo((s) => s.erro);
   const carregarCatalogo = useCatalogo((s) => s.carregar);
@@ -176,10 +222,16 @@ const CadastroEmpresaPage = () => {
     formState: { errors },
   } = useForm<CadastroFormInputs>({
     resolver: zodResolver(cadastroSchema),
-    defaultValues: { endereco: { uf: "" }, planoCodigo: searchParams.get("plano") ?? "", aceite: false },
+    defaultValues: {
+      endereco: { uf: "" },
+      contato: { mesmoWhatsapp: true },
+      planoCodigo: searchParams.get("plano") ?? "",
+      aceite: false,
+    },
   });
 
   const planoCodigo = watch("planoCodigo");
+  const mesmoWhatsapp = watch("contato.mesmoWhatsapp");
   const planoEscolhido = useMemo(() => planos.find((p) => p.codigo === planoCodigo) ?? null, [planos, planoCodigo]);
 
   /* ------------------------- Planos ------------------------- */
@@ -258,7 +310,7 @@ const CadastroEmpresaPage = () => {
   const onSubmit = async (data: CadastroFormInputs) => {
     if (isLoading) return;
     setIsLoading(true);
-    const toastId = toast.loading("Cadastrando empresa...");
+    const toastId = toast.loading("Criando a sua conta...");
 
     const cpfCnpj = onlyDigits(data.cpfCnpj);
 
@@ -266,15 +318,16 @@ const CadastroEmpresaPage = () => {
       nomeRepresentante: data.nomeRepresentante,
       nomeFantasia: data.nomeFantasia,
       cpfCnpj,
-      inscMunicipal: data.inscMunicipal ?? "",
-      urlLogo: data.urlLogo ?? "",
+      // Fora do cadastro: preenchidos depois, em Configurações › Empresa.
+      inscMunicipal: "",
+      urlLogo: "",
       planoCodigo: data.planoCodigo,
       senha: data.senha,
       contato: {
         email: data.contato.email,
         celular: onlyDigits(data.contato.celular),
-        telefone: onlyDigits(data.contato.telefone ?? ""),
-        whatsapp: onlyDigits(data.contato.whatsapp ?? ""),
+        telefone: "",
+        whatsapp: onlyDigits(data.contato.mesmoWhatsapp ? data.contato.celular : data.contato.whatsapp ?? ""),
       },
       endereco: {
         cep: onlyDigits(data.endereco.cep),
@@ -290,7 +343,7 @@ const CadastroEmpresaPage = () => {
     try {
       const cadastro = await AssinaturaService.cadastrar(payload);
 
-      toast.update(toastId, { render: "Cadastro realizado! Entrando...", type: "success", isLoading: false, autoClose: 1500 });
+      toast.update(toastId, { render: "Pronto! Sua conta foi criada. Entrando...", type: "success", isLoading: false, autoClose: 1500 });
 
       /*
        * O cadastro termina numa conversa, não numa tela de Pix.
@@ -311,7 +364,7 @@ const CadastroEmpresaPage = () => {
           nome: data.nomeRepresentante,
           empresa: data.nomeFantasia,
           email: data.contato.email,
-          telefone: onlyDigits(data.contato.whatsapp || data.contato.celular),
+          telefone: onlyDigits((!data.contato.mesmoWhatsapp && data.contato.whatsapp) || data.contato.celular),
           cpfCnpj,
           codigoEmpresa: cadastro?.codigoEmpresa ?? null,
           planoRecomendado: data.planoCodigo,
@@ -365,7 +418,7 @@ const CadastroEmpresaPage = () => {
       // mandar para o login é melhor do que sugerir cadastrar de novo.
       if (mensagem === "login-falhou") {
         toast.update(toastId, {
-          render: "Cadastro criado! Faça login para continuar.",
+          render: "Sua conta foi criada! Agora é só entrar com o seu e-mail e senha.",
           type: "info",
           isLoading: false,
           autoClose: 3000,
@@ -376,7 +429,7 @@ const CadastroEmpresaPage = () => {
       }
 
       toast.update(toastId, {
-        render: `Erro ao cadastrar empresa: ${mensagem}`,
+        render: `Não deu para criar a conta: ${mensagem}`,
         type: "error",
         isLoading: false,
         autoClose: 4000,
@@ -389,14 +442,16 @@ const CadastroEmpresaPage = () => {
   /* ------------------------- Estilos compactos ------------------------- */
 
   const fieldBox = "flex min-w-0 items-center gap-2 px-3 rounded-lg bg-fg/[0.035] border border-fg/[0.08] transition-all duration-200 hover:border-fg/[0.14] focus-within:border-accent focus-within:bg-fg/[0.05] focus-within:ring-2 focus-within:ring-accent/15";
-  const labelCls = "block text-[10px] uppercase tracking-[0.7px] text-faint mb-1";
+  /* Rótulo em frase e em tamanho de leitura: a etiqueta de 10px em caixa
+     alta lia como formulário de repartição, não como pergunta. */
+  const labelCls = "block text-[13px] text-ink mb-1";
+  const dicaCls = "mt-0.5 min-h-[13px] text-[11px] leading-[14px] text-faint";
   const inputCls = "cf-input w-full flex-1 min-w-0 bg-transparent outline-none py-2.5 text-[13px] sm:text-sm text-ink placeholder:text-faint";
   const errCls = "mt-0.5 min-h-[13px] text-[10px] leading-[13px] text-danger";
 
   /* registros com máscara */
   const regCpfCnpj = register("cpfCnpj");
   const regCep = register("endereco.cep");
-  const regTelefone = register("contato.telefone");
   const regCelular = register("contato.celular");
   const regWhatsapp = register("contato.whatsapp");
 
@@ -404,10 +459,10 @@ const CadastroEmpresaPage = () => {
   const resumo = () => {
     const v = getValues();
     return [
-      { label: "Empresa", valor: v.nomeFantasia },
-      { label: "Representante", valor: v.nomeRepresentante },
-      { label: "CPF/CNPJ", valor: v.cpfCnpj },
-      { label: "E-mail de acesso", valor: v.contato?.email },
+      { label: "Negócio", valor: v.nomeFantasia },
+      { label: "Seu nome", valor: v.nomeRepresentante },
+      { label: "CPF ou CNPJ", valor: v.cpfCnpj },
+      { label: "E-mail (seu login)", valor: v.contato?.email },
       { label: "Celular", valor: v.contato?.celular },
       {
         label: "Endereço",
@@ -524,7 +579,7 @@ const CadastroEmpresaPage = () => {
             <span className="text-[17px] tracking-tight text-ink">
               CodeEx <span className="text-accent-soft">Flow</span>
             </span>
-            <span className="mt-1 text-[9.5px] uppercase tracking-[2px] text-faint">Cadastro de empresa</span>
+            <span className="mt-1 text-[9.5px] uppercase tracking-[2px] text-faint">Criar conta</span>
           </div>
         </div>
 
@@ -533,9 +588,9 @@ const CadastroEmpresaPage = () => {
           <span className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-accent-soft to-transparent opacity-70" />
 
           <div className="mb-0.5 flex items-baseline justify-between">
-            <h1 className="text-base text-ink sm:text-lg">Cadastre sua empresa</h1>
+            <h1 className="text-base text-ink sm:text-lg">Vamos criar a sua conta</h1>
             <span className="text-[11px] text-mist">
-              {step + 1}/{STEPS.length}
+              Passo {step + 1} de {STEPS.length}
             </span>
           </div>
 
@@ -590,6 +645,15 @@ const CadastroEmpresaPage = () => {
                 transition={{ duration: 0.2, ease: [0.22, 0.61, 0.36, 1] }}
                 className="flex flex-col gap-1.5 sm:gap-2"
               >
+            {/* A fala do Flow abre cada etapa, como numa conversa. */}
+            <div className="mb-1.5 flex items-start gap-2.5">
+              <img src="/logo.png" alt="" width={28} height={28} className="mt-0.5 h-7 w-7 shrink-0 rounded-full" />
+              <div className="min-w-0 rounded-2xl rounded-tl-sm border border-accent/20 bg-accent/[0.07] px-3.5 py-2.5">
+                <p className="text-[13.5px] text-ink">{FALAS[step].titulo}</p>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-mist">{FALAS[step].texto}</p>
+              </div>
+            </div>
+
             {/* ---------------- Etapa 1: Plano ---------------- */}
             {step === 0 && (
               <>
@@ -649,63 +713,47 @@ const CadastroEmpresaPage = () => {
             {step === 1 && (
               <>
                 <div>
-                  <label className={labelCls}>Nome fantasia</label>
+                  <label className={labelCls}>Qual é o nome do seu negócio?</label>
                   <div className={fieldBox}>
                     <Building2 size={14} className="shrink-0 text-muted" />
-                    <input {...register("nomeFantasia")} placeholder="Nome da sua empresa" className={inputCls} />
+                    <input {...register("nomeFantasia")} placeholder="Ex.: Gráfica Bom Preço" autoComplete="organization" className={inputCls} />
                   </div>
-                  <p role="alert" className={errCls}>{errors.nomeFantasia?.message}</p>
+                  {errors.nomeFantasia ? (
+                    <p role="alert" className={errCls}>{errors.nomeFantasia.message}</p>
+                  ) : (
+                    <p className={dicaCls}>É o nome que os seus clientes conhecem.</p>
+                  )}
                 </div>
 
                 <div>
-                  <label className={labelCls}>Representante</label>
+                  <label className={labelCls}>E qual é o seu nome?</label>
                   <div className={fieldBox}>
                     <User size={14} className="shrink-0 text-muted" />
-                    <input {...register("nomeRepresentante")} placeholder="Nome completo do responsável" className={inputCls} />
+                    <input {...register("nomeRepresentante")} placeholder="Seu nome completo" autoComplete="name" className={inputCls} />
                   </div>
                   <p role="alert" className={errCls}>{errors.nomeRepresentante?.message}</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                  <div>
-                    <label className={labelCls}>CPF ou CNPJ</label>
-                    <div className={fieldBox}>
-                      <FileText size={14} className="shrink-0 text-muted" />
-                      <input
-                        {...regCpfCnpj}
-                        onChange={(e) => {
-                          e.target.value = maskCpfCnpj(e.target.value);
-                          regCpfCnpj.onChange(e);
-                        }}
-                        inputMode="numeric"
-                        placeholder="000.000.000-00"
-                        className={inputCls}
-                      />
-                    </div>
-                    <p role="alert" className={errCls}>{errors.cpfCnpj?.message}</p>
-                  </div>
-
-                  <div>
-                    <label className={labelCls}>Insc. municipal</label>
-                    <div className={fieldBox}>
-                      <Hash size={14} className="shrink-0 text-muted" />
-                      <input {...register("inscMunicipal")} placeholder="Opcional" className={inputCls} />
-                    </div>
-                    <p role="alert" className={errCls}>{errors.inscMunicipal?.message}</p>
-                  </div>
-                </div>
-
-                {/* Só o logo. A "URL da imagem" ao lado apontava para um
-                    campo que nenhuma tela usava — e, num cadastro, um campo
-                    sem destino é trabalho pedido à toa. A logo em si se envia
-                    depois, por arquivo, em Configurações › Empresa. */}
                 <div>
-                  <label className={labelCls}>URL do logo</label>
+                  <label className={labelCls}>Seu CPF ou o CNPJ da empresa</label>
                   <div className={fieldBox}>
-                    <ImageIcon size={14} className="shrink-0 text-muted" />
-                    <input {...register("urlLogo")} placeholder="Opcional" className={inputCls} />
+                    <FileText size={14} className="shrink-0 text-muted" />
+                    <input
+                      {...regCpfCnpj}
+                      onChange={(e) => {
+                        e.target.value = maskCpfCnpj(e.target.value);
+                        regCpfCnpj.onChange(e);
+                      }}
+                      inputMode="numeric"
+                      placeholder="Só os números"
+                      className={inputCls}
+                    />
                   </div>
-                  <p role="alert" className={errCls}>{errors.urlLogo?.message}</p>
+                  {errors.cpfCnpj ? (
+                    <p role="alert" className={errCls}>{errors.cpfCnpj.message}</p>
+                  ) : (
+                    <p className={dicaCls}>Não tem CNPJ? Sem problema, use o seu CPF.</p>
+                  )}
                 </div>
               </>
             )}
@@ -714,86 +762,65 @@ const CadastroEmpresaPage = () => {
             {step === 2 && (
               <>
                 <div>
-                  <label className={labelCls}>Email</label>
+                  <label className={labelCls}>Qual é o seu e-mail?</label>
                   <div className={fieldBox}>
                     <Mail size={14} className="shrink-0 text-muted" />
-                    <input {...register("contato.email")} type="email" placeholder="empresa@email.com" autoComplete="email" className={inputCls} />
+                    <input {...register("contato.email")} type="email" placeholder="voce@email.com" autoComplete="email" className={inputCls} />
                   </div>
                   {errors.contato?.email ? (
                     <p role="alert" className={errCls}>{errors.contato.email.message}</p>
                   ) : (
-                    <p className="mt-0.5 min-h-[13px] text-[10px] leading-[13px] text-faint">Este e-mail será seu login no sistema.</p>
+                    <p className={dicaCls}>Guarde bem: você vai usar ele para entrar no sistema.</p>
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                  <div>
-                    <label className={labelCls}>Celular</label>
+                <div>
+                  <label className={labelCls}>E o seu celular, com DDD?</label>
+                  <div className={fieldBox}>
+                    <Smartphone size={14} className="shrink-0 text-muted" />
+                    <input
+                      {...regCelular}
+                      onChange={(e) => {
+                        e.target.value = maskPhone(e.target.value);
+                        regCelular.onChange(e);
+                      }}
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      placeholder="(00) 00000-0000"
+                      className={inputCls}
+                    />
+                  </div>
+                  <p role="alert" className={errCls}>{errors.contato?.celular?.message}</p>
+                </div>
+
+                <label className="flex cursor-pointer items-center gap-2 text-[13px] text-mist">
+                  <input type="checkbox" {...register("contato.mesmoWhatsapp")} className="h-4 w-4 shrink-0 accent-[rgb(var(--accent))]" />
+                  Esse celular também é o meu WhatsApp
+                </label>
+
+                {!mesmoWhatsapp && (
+                  <div className="mt-1.5">
+                    <label className={labelCls}>Qual é o seu WhatsApp?</label>
                     <div className={fieldBox}>
-                      <Smartphone size={14} className="shrink-0 text-muted" />
+                      <MessageCircle size={14} className="shrink-0 text-muted" />
                       <input
-                        {...regCelular}
+                        {...regWhatsapp}
                         onChange={(e) => {
                           e.target.value = maskPhone(e.target.value);
-                          regCelular.onChange(e);
+                          regWhatsapp.onChange(e);
                         }}
                         inputMode="numeric"
                         placeholder="(00) 00000-0000"
                         className={inputCls}
                       />
                     </div>
-                    <p role="alert" className={errCls}>{errors.contato?.celular?.message}</p>
+                    {errors.contato?.whatsapp ? (
+                      <p role="alert" className={errCls}>{errors.contato.whatsapp.message}</p>
+                    ) : (
+                      <p className={dicaCls}>Se não tiver WhatsApp, pode deixar em branco.</p>
+                    )}
                   </div>
-
-                  <div>
-                    <label className={labelCls}>Telefone</label>
-                    <div className={fieldBox}>
-                      <Phone size={14} className="shrink-0 text-muted" />
-                      <input
-                        {...regTelefone}
-                        onChange={(e) => {
-                          e.target.value = maskPhone(e.target.value);
-                          regTelefone.onChange(e);
-                        }}
-                        inputMode="numeric"
-                        placeholder="Opcional"
-                        className={inputCls}
-                      />
-                    </div>
-                    <p role="alert" className={errCls}>{errors.contato?.telefone?.message}</p>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-1 flex items-center justify-between">
-                    <label className={`${labelCls} mb-0`}>WhatsApp</label>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setValue("contato.whatsapp", getValues("contato.celular") ?? "", {
-                          shouldValidate: true,
-                        })
-                      }
-                      className="text-[10px] text-accent transition-colors hover:text-accent-soft"
-                    >
-                      Usar mesmo do celular
-                    </button>
-                  </div>
-                  <div className={fieldBox}>
-                    <MessageCircle size={14} className="shrink-0 text-muted" />
-                    <input
-                      {...regWhatsapp}
-                      onChange={(e) => {
-                        e.target.value = maskPhone(e.target.value);
-                        regWhatsapp.onChange(e);
-                      }}
-                      inputMode="numeric"
-                      placeholder="(00) 00000-0000 (opcional)"
-                      className={inputCls}
-                    />
-                  </div>
-                  <p role="alert" className={errCls}>{errors.contato?.whatsapp?.message}</p>
-                </div>
+                )}
               </>
             )}
 
@@ -821,7 +848,11 @@ const CadastroEmpresaPage = () => {
                       />
                       {cepLoading && <Loader2 size={14} className="shrink-0 animate-spin text-accent" />}
                     </div>
-                    <p role="alert" className={errCls}>{errors.endereco?.cep?.message}</p>
+                    {errors.endereco?.cep ? (
+                      <p role="alert" className={errCls}>{errors.endereco.cep.message}</p>
+                    ) : (
+                      <p className={dicaCls}>Assim que terminar de digitar, a gente busca o endereço.</p>
+                    )}
                   </div>
 
                   <div>
@@ -835,10 +866,10 @@ const CadastroEmpresaPage = () => {
                 </div>
 
                 <div>
-                  <label className={labelCls}>Logradouro</label>
+                  <label className={labelCls}>Rua</label>
                   <div className={fieldBox}>
                     <MapPin size={14} className="shrink-0 text-muted" />
-                    <input {...register("endereco.logradouro")} placeholder="Rua, avenida..." className={inputCls} />
+                    <input {...register("endereco.logradouro")} placeholder="Rua, avenida, travessa..." className={inputCls} />
                   </div>
                   <p role="alert" className={errCls}>{errors.endereco?.logradouro?.message}</p>
                 </div>
@@ -848,7 +879,7 @@ const CadastroEmpresaPage = () => {
                     <label className={labelCls}>Complemento</label>
                     <div className={fieldBox}>
                       <Hash size={14} className="shrink-0 text-muted" />
-                      <input {...register("endereco.complemento")} placeholder="Opcional" className={inputCls} />
+                      <input {...register("endereco.complemento")} placeholder="Sala, loja... (se tiver)" className={inputCls} />
                     </div>
                     <p role="alert" className={errCls}>{errors.endereco?.complemento?.message}</p>
                   </div>
@@ -874,7 +905,7 @@ const CadastroEmpresaPage = () => {
                   </div>
 
                   <div>
-                    <label className={labelCls}>UF</label>
+                    <label className={labelCls}>Estado</label>
                     <div className={fieldBox}>
                       <select {...register("endereco.uf")} className={`${inputCls} cursor-pointer appearance-none [&>option]:bg-surface-raised`}>
                         <option value="">UF</option>
@@ -894,32 +925,29 @@ const CadastroEmpresaPage = () => {
             {/* ---------------- Etapa 5: Acesso e revisão ---------------- */}
             {step === 4 && (
               <>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                  <div>
-                    <label className={labelCls}>Senha</label>
-                    <div className={fieldBox}>
-                      <Lock size={14} className="shrink-0 text-muted" />
-                      <input {...register("senha")} type={verSenha ? "text" : "password"} placeholder="Mínimo 6 caracteres" autoComplete="new-password" className={inputCls} />
-                      <button type="button" onClick={() => setVerSenha((v) => !v)} className="shrink-0 text-muted transition hover:text-ink" aria-label={verSenha ? "Ocultar senha" : "Mostrar senha"}>
-                        {verSenha ? <EyeOff size={14} /> : <Eye size={14} />}
-                      </button>
-                    </div>
-                    <p role="alert" className={errCls}>{errors.senha?.message}</p>
+                {/* Uma senha só, com o botão para ver o que digitou. "Repita a
+                    senha" era um campo a mais para errar; ver a senha resolve
+                    o mesmo problema. */}
+                <div>
+                  <label className={labelCls}>Crie uma senha</label>
+                  <div className={fieldBox}>
+                    <Lock size={14} className="shrink-0 text-muted" />
+                    <input {...register("senha")} type={verSenha ? "text" : "password"} placeholder="Pelo menos 6 letras ou números" autoComplete="new-password" className={inputCls} />
+                    <button type="button" onClick={() => setVerSenha((v) => !v)} className="flex shrink-0 items-center gap-1 text-[11px] text-muted transition hover:text-ink" aria-label={verSenha ? "Esconder senha" : "Mostrar senha"}>
+                      {verSenha ? <EyeOff size={14} /> : <Eye size={14} />}
+                      {verSenha ? "Esconder" : "Mostrar"}
+                    </button>
                   </div>
-
-                  <div>
-                    <label className={labelCls}>Confirmar senha</label>
-                    <div className={fieldBox}>
-                      <Lock size={14} className="shrink-0 text-muted" />
-                      <input {...register("confirmarSenha")} type={verSenha ? "text" : "password"} placeholder="Repita a senha" autoComplete="new-password" className={inputCls} />
-                    </div>
-                    <p role="alert" className={errCls}>{errors.confirmarSenha?.message}</p>
-                  </div>
+                  {errors.senha ? (
+                    <p role="alert" className={errCls}>{errors.senha.message}</p>
+                  ) : (
+                    <p className={dicaCls}>Toque em "Mostrar" para conferir o que você digitou.</p>
+                  )}
                 </div>
 
                 {/* Revisão — o cliente confere antes de enviar */}
                 <div className="mt-1 rounded-xl border border-fg/[0.08] bg-fg/[0.02] p-3.5">
-                  <p className={labelCls}>Confira seus dados</p>
+                  <p className={labelCls}>Está tudo certo?</p>
 
                   <div className="flex flex-col divide-y divide-fg/[0.05]">
                     {planoEscolhido && (
@@ -941,11 +969,11 @@ const CadastroEmpresaPage = () => {
                   </div>
                 </div>
 
-                <label className="mt-1 flex cursor-pointer items-start gap-2 text-[11px] leading-relaxed text-mist">
-                  <input type="checkbox" {...register("aceite")} className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[rgb(var(--accent))]" />
+                <label className="mt-1 flex cursor-pointer items-start gap-2 text-[12.5px] leading-relaxed text-mist">
+                  <input type="checkbox" {...register("aceite")} className="mt-0.5 h-4 w-4 shrink-0 accent-[rgb(var(--accent))]" />
                   <span>
-                    Concordo em pagar a assinatura via Pix e entendo que o acesso é liberado após a confirmação do
-                    primeiro pagamento.
+                    Entendi que pago a mensalidade por Pix e que o sistema é liberado depois que o primeiro pagamento
+                    for confirmado.
                   </span>
                 </label>
                 <p role="alert" className={errCls}>{errors.aceite?.message}</p>
@@ -983,7 +1011,7 @@ const CadastroEmpresaPage = () => {
                   className="group relative min-h-[48px] flex-1 overflow-hidden rounded-xl bg-gradient-to-r from-accent-soft via-accent to-accent-strong px-3 text-[14px] text-white sm:min-h-0 sm:rounded-lg sm:py-2.5 shadow-[0_10px_25px_-8px_rgba(108,92,231,0.7)] transition-all duration-200 hover:brightness-110 hover:shadow-[0_14px_35px_-8px_rgba(59,110,245,0.65)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100 sm:text-sm"
                 >
                   <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-fg/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-                  <span className="relative">{isLoading ? "Cadastrando..." : "Criar conta e falar com a gente"}</span>
+                  <span className="relative">{isLoading ? "Criando sua conta..." : "Criar minha conta"}</span>
                 </button>
               )}
             </div>

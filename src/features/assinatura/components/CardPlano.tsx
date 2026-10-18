@@ -2,7 +2,7 @@ import {
   ArrowRight, Users, Package, ShoppingCart, UserRound, Wallet, BarChart3,
   MessageCircle, Zap, Sparkles, Check, Infinity as InfinityIcon, Store, Truck,
   Target, Workflow, Table2, FileText, Code2, Building2, Headset, Bot, Factory,
-  ShieldCheck, Loader2,
+  ShieldCheck, Loader2, ReceiptText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -27,6 +27,8 @@ const RECURSO_ICONE: Record<string, LucideIcon> = {
   orcamentos: FileText,
   planilhas: Table2,
   producao: Factory,
+  funcionarios: Users,
+  fiscal: ReceiptText,
   areas: ShieldCheck,
   crm: Target,
   crmMultiAtendente: Headset,
