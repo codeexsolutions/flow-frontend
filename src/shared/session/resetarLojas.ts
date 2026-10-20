@@ -3,6 +3,7 @@ import useProdutoStore from "@/features/estoque/store/produto.store";
 import useFinanceiroStore from "@/features/financeiro/store/financeiro.store";
 import useVendaStore from "@/features/vendas/store/venda.store";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
+import { limparCacheLocal } from "@/shared/cache/cacheLocal";
 
 /**
  * Devolve todas as lojas de dados ao estado inicial.
@@ -24,6 +25,9 @@ const LOJAS = [useClienteStore, useProdutoStore, useFinanceiroStore, useVendaSto
 const INICIAIS = LOJAS.map((loja) => loja.getState());
 
 export function resetarLojas(): void {
+  /* Ao sair, o que o PDV guardou no aparelho vai junto. */
+  limparCacheLocal();
+
   LOJAS.forEach((loja, i) => {
     (loja as unknown as { setState: (estado: unknown, substituir: boolean) => void }).setState(INICIAIS[i], true);
   });

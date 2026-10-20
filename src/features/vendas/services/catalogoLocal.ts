@@ -28,8 +28,8 @@ const LIMITE = 400;
 /** Teto do placar de uso — os que menos saem são esquecidos primeiro. */
 const LIMITE_USO = 1_000;
 
-const CHAVE_CATALOGO = "codeex-flow:catalogo:v1";
-const CHAVE_USO = "codeex-flow:catalogo-uso:v1";
+const CHAVE_CATALOGO = "codeex-flow:cache:catalogo:v1";
+const CHAVE_USO = "codeex-flow:cache:catalogo-uso:v1";
 
 /** Os campos que a busca do balcão usa. Nenhum a mais. */
 type ItemGuardado = Pick<

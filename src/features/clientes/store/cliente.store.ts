@@ -3,6 +3,11 @@ import { create } from "zustand";
 import ClientService from "@/features/clientes/services/client.service";
 import ClientType from "@/shared/domain/cliente";
 import { unwrapList } from "@/shared/api/types";
+import { gravarCache, lerCache } from "@/shared/cache/cacheLocal";
+
+/* Clientes no aparelho — só nome, documento e contato, sem endereço nem
+   observações — para o "Iniciar venda" abrir com a lista na hora. */
+const CLIENTES_GUARDADOS = 100;
 
 interface ClienteState {
   clientes: ClientType[];
@@ -28,11 +33,21 @@ const useClienteStore = create<ClienteState>((set, get) => ({
     if (get().loading) return;
     if (get().carregado && !force) return;
 
+    if (get().clientes.length === 0) {
+      const guardados = lerCache<ClientType[]>("clientes:v1");
+      if (guardados?.length) set({ clientes: guardados });
+    }
+
     set({ loading: true, error: null });
     try {
       const res = await ClientService.getAll();
       const lista = Array.isArray(res.data) ? (res.data as ClientType[]) : unwrapList<ClientType>(res.data);
       set({ clientes: lista, carregado: true });
+
+      gravarCache(
+        "clientes:v1",
+        lista.slice(0, CLIENTES_GUARDADOS).map((c) => ({ id: c.id, nome: c.nome, cpfCnpj: c.cpfCnpj, status: c.status, contato: c.contato }) as ClientType),
+      );
     } catch {
       set({ error: "Não foi possível carregar os clientes." });
     } finally {

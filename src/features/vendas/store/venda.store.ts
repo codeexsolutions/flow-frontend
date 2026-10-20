@@ -5,6 +5,11 @@ import { type PedidoClienteType, estaAberto, estaPendente, estaCancelado, estaFe
 
 import { isSameDay, isSameMonth } from "@/shared/utils/date";
 import { unwrapList } from "@/shared/api/types";
+import { gravarCache, lerCache } from "@/shared/cache/cacheLocal";
+
+/* As 15 notas mais recentes ficam no aparelho — só texto, sem as fotos —
+   para o PDV abrir com a lista na hora. Ver `shared/cache/cacheLocal`. */
+const NOTAS_GUARDADAS = 15;
 
 export type ResumoVendas = {
   faturamento: number;
@@ -75,16 +80,31 @@ const useVendaStore = create<VendaState>((set, get) => ({
 
     if (get().carregado && !force) return;
 
+    /* Lista vazia na memória: mostra já as guardadas no aparelho. */
+    if (get().vendas.length === 0) {
+      const guardadas = lerCache<PedidoClienteType[]>("notas:v1");
+      if (guardadas?.length) set({ vendas: guardadas });
+    }
+
     set({ loading: true, error: null });
 
     buscaEmCurso = (async () => {
       try {
         const { data } = await NoteService.getAll();
-        set({ vendas: unwrapList<PedidoClienteType>(data).filter(isPedidoValido), carregado: true });
+        const lista = unwrapList<PedidoClienteType>(data).filter(isPedidoValido);
+
+        set({ vendas: lista, carregado: true });
+
+        gravarCache(
+          "notas:v1",
+          [...lista]
+            .sort((a, b) => +new Date(b.pedido.dataPedido) - +new Date(a.pedido.dataPedido))
+            .slice(0, NOTAS_GUARDADAS)
+            .map((v) => ({ ...v, pedido: { ...v.pedido, imagensServico: [] } })),
+        );
       } catch {
-        // Diferente do commit remoto, uma resposta vazia zera a lista em vez de
-        // manter dados antigos na tela.
-        set({ vendas: [], error: "Não foi possível carregar as vendas." });
+        /* Sem servidor, a lista guardada continua na tela. */
+        set({ error: "Não foi possível carregar as vendas." });
       } finally {
         set({ loading: false });
         buscaEmCurso = null;
