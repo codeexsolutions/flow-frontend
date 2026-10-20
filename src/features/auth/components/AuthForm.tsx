@@ -5,6 +5,7 @@ import { Mail, Lock, Eye, EyeOff, FileText, AlertCircle } from "lucide-react";
 
 import AuthFormInputs, { authSchema } from "@/features/auth/schema/auth.schema";
 import { formatDocument } from "@/shared/utils/format";
+import { maskCpfCnpj } from "@/shared/validation/masks";
 
 type AuthFormProps = {
   onSubmit: (data: AuthFormInputs) => Promise<void>;
@@ -91,6 +92,7 @@ const AuthForm = ({ onSubmit, isLoading, loginError, documentoEmpresa }: AuthFor
             id="cpfCnpjEmpresa"
             inputMode="numeric"
             placeholder="00.000.000/0000-00"
+            maxLength={18}
             readOnly={travado}
             aria-readonly={travado || undefined}
             aria-invalid={!!errors.cpfCnpjEmpresa}
@@ -106,9 +108,21 @@ const AuthForm = ({ onSubmit, isLoading, loginError, documentoEmpresa }: AuthFor
             onChange={(e) => {
               if (travado) return;
 
-              const formatted = formatDocument(e.target.value);
+              /*
+               * A máscara se monta A CADA TECLA, e não no número completo.
+               *
+               * `formatDocument` só formata 11 ou 14 dígitos: no meio da
+               * digitação o campo ficava cru, e a pontuação aparecia de uma vez
+               * no último número. `maskCpfCnpj` vai pontuando enquanto se
+               * digita — CPF até o 11º dígito, CNPJ a partir do 12º — e corta
+               * no 14º.
+               *
+               * Valida só se o campo JÁ estiver com erro: validar a cada tecla
+               * mostrava "documento inválido" desde o primeiro número digitado.
+               */
+              const formatted = maskCpfCnpj(e.target.value);
               e.target.value = formatted;
-              setValue("cpfCnpjEmpresa", formatted, { shouldValidate: true });
+              setValue("cpfCnpjEmpresa", formatted, { shouldValidate: Boolean(errors.cpfCnpjEmpresa) });
             }}
           />
         </div>

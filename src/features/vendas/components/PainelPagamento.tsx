@@ -6,6 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import PagamentoForm from "@/shared/ui/PagamentoForm";
 import PrazoNota from "@/features/vendas/components/PrazoNota";
 import RecebimentosNota from "@/features/financeiro/components/RecebimentosNota";
+import type { RecebimentoNota } from "@/features/financeiro/services/financeiro.service";
 import { formatCurrency } from "@/shared/utils/currency";
 import type { AcordoVenda } from "@/features/financeiro/services/conta.service";
 
@@ -57,6 +58,17 @@ type Props = {
   destacar: boolean;
   onPagar: (valor: number, forma: string) => void | Promise<void>;
   onAtualizar: () => void | Promise<void>;
+  /**
+   * A nota acabou de ser gerada e o servidor ainda está gravando. O painel já
+   * abre para receber — o pagamento espera o id por baixo, ver `Invoice`.
+   */
+  preparando?: boolean;
+  /** O pagamento mudou no clique (recebimento corrigido ou apagado). */
+  onOtimista?: (delta: number) => void;
+  /** Recebimentos lançados agora, ainda subindo — ver `RecebimentosNota`. */
+  recebimentosLocais?: RecebimentoNota[];
+  /** Receber está travado — e por quê. Ver `itensGravados`, na nota. */
+  travaPagamento?: string | null;
 };
 
 const PainelPagamento = ({
@@ -74,6 +86,10 @@ const PainelPagamento = ({
   destacar,
   onPagar,
   onAtualizar,
+  preparando = false,
+  onOtimista,
+  recebimentosLocais,
+  travaPagamento = null,
 }: Props) => {
   const [aba, setAba] = useState<Aba>("receber");
 
@@ -223,7 +239,7 @@ const PainelPagamento = ({
       </nav>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {!pedidoId ? (
+        {!pedidoId && !preparando ? (
           <p className="rounded-xl border border-warning/30 bg-warning/[0.08] px-3.5 py-3 text-[12px] leading-relaxed text-warning">
             Salve a nota antes de registrar pagamentos.
           </p>
@@ -293,6 +309,10 @@ const PainelPagamento = ({
                         {formatCurrency(totalPago)} recebidos. O extrato abaixo diz como.
                       </p>
                     </div>
+                  ) : travaPagamento ? (
+                    /* Itens mudados e não salvos: receber agora gravaria o
+                       pagamento contra uma nota que o servidor não conhece. */
+                    <p className="rounded-xl border border-warning/30 bg-warning/[0.08] px-3.5 py-3 text-[12px] leading-relaxed text-warning">{travaPagamento}</p>
                   ) : (
                     <PagamentoForm
                       total={total}
@@ -319,7 +339,7 @@ const PainelPagamento = ({
                    * `versao={totalPago}` faz a lista reler quando o pagamento
                    * muda por fora (recebimento novo, baixa de parcela).
                    */}
-                  <RecebimentosNota pedidoId={pedidoId} versao={totalPago} onAlterado={onAtualizar} compacto />
+                  <RecebimentosNota pedidoId={pedidoId} versao={totalPago} onAlterado={onAtualizar} onOtimista={onOtimista} locais={recebimentosLocais} compacto />
                 </div>
               )}
 
@@ -328,6 +348,7 @@ const PainelPagamento = ({
                    empilhado embaixo do formulário. Aqui ele é o conteúdo da
                    aba e começa no topo, como qualquer outro. */
                 <div className="-mt-4">
+                  {pedidoId && (
                   <PrazoNota
                     pedidoId={pedidoId}
                     pendente={pendente}
@@ -336,6 +357,7 @@ const PainelPagamento = ({
                     carregando={carregandoAcordo}
                     onAtualizar={onAtualizar}
                   />
+                  )}
 
                   {/* Nota quitada e sem acordo: o `PrazoNota` não renderiza
                       nada (não há saldo a parcelar) e a aba ficaria em branco,

@@ -21,6 +21,8 @@ import { aplicarModoApp, observarModoApp } from "@/shared/pwa/appMode";
 import useMarcaDominio, { vestirAba } from "@/shared/marca/marcaDominio";
 import MovimentoConfig from "@/shared/theme/MovimentoConfig";
 import { aplicarPreferenciasIniciais } from "@/shared/theme/useTheme";
+import AvisosDaFila from "@/shared/fila/AvisosDaFila";
+import { iniciarFila } from "@/shared/fila/filaEnvio";
 
 // Antes de pintar: define se o zoom fica livre (navegador) ou travado (app).
 aplicarModoApp();
@@ -39,6 +41,10 @@ aplicarPreferenciasIniciais();
  */
 void useMarcaDominio.getState().carregar().then(() => vestirAba(useMarcaDominio.getState().marca));
 
+/* A fila de envio: o que ficou para subir antes do F5 sobe agora, e o que
+   cair daqui em diante sobe quando a internet voltar. Ver `filaEnvio`. */
+iniciarFila();
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <MovimentoConfig>
@@ -48,6 +54,8 @@ createRoot(document.getElementById("root")!).render(
         <CamadaTransicao />
         {/* Nova versão, convite de instalação e aviso de offline. */}
         <PwaPrompts />
+        {/* Venda esperando internet e gravação recusada pelo servidor. */}
+        <AvisosDaFila />
       </AlertProvider>
     </MovimentoConfig>
   </StrictMode>,

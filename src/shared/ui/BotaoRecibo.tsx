@@ -15,7 +15,7 @@ import useEnterprise from "@/features/empresa/store/enterprise.store";
  * quitado: numa nota aberta no PDV é um só, e nas listas quem monta o nó é a
  * própria tela, com um alvo de cada vez.
  */
-const BotaoRecibo = ({ dados }: { dados: DadosRecibo }) => {
+const BotaoRecibo = ({ dados, variante = "completo" }: { dados: DadosRecibo; variante?: "completo" | "linha" }) => {
   const refRecibo = useRef<HTMLDivElement>(null);
   const empresa = useEnterprise((s) => s.enterprise);
 
@@ -27,6 +27,7 @@ const BotaoRecibo = ({ dados }: { dados: DadosRecibo }) => {
         prefixo={`recibo-${dados.numero}`}
         titulo="Ver ou baixar o recibo"
         documento="recibo"
+        variante={variante}
       />
 
       <div className="fixed -left-[9999px] top-0" aria-hidden>

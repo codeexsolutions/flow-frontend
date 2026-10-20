@@ -92,6 +92,9 @@ type Linha = {
 
 const finalizado = (l: Linha) => Boolean(l.ordem?.concluido_em);
 
+/** Ordem criada na tela que o servidor ainda está gravando — ver `gerarOrdem`. */
+const ehProvisoria = (o: ItemProducao) => o.id.startsWith("tmp-");
+
 /** A situação do pedido em uma palavra, no mesmo selo da coluna de Vendas. */
 const SituacaoPedido = ({ ordem }: { ordem: ItemProducao | null }) =>
   !ordem ? (
@@ -122,7 +125,6 @@ const PedidosPage = () => {
   const [filtro, setFiltro] = useState<Filtro>("abertos");
   const [abrindo, setAbrindo] = useState<string | null>(null);
   const [modelosOs, setModelosOs] = useState<ModeloOsDisponivel[]>([]);
-  const [trocando, setTrocando] = useState<string | null>(null);
   const [pagina, setPagina] = useState(1);
 
   /** A ordem que acabou de ser gerada aqui — fica destacada até ir para uma planilha. */
@@ -132,11 +134,9 @@ const PedidosPage = () => {
      ordem existir — senão a primeira impressão sai sempre no modelo errado. */
   const [aGerar, setAGerar] = useState<PedidoDeProducao | null>(null);
   const [modeloEscolhido, setModeloEscolhido] = useState("PADRAO");
-  const [gerando, setGerando] = useState<string | null>(null);
 
   /** As planilhas de produção da empresa — para onde a ordem pode ir. */
   const [planilhas, setPlanilhas] = useState<Modelo[]>([]);
-  const [mandando, setMandando] = useState<string | null>(null);
   const [aMandar, setAMandar] = useState<ItemProducao | null>(null);
   const [planilhaEscolhida, setPlanilhaEscolhida] = useState("");
 
@@ -312,29 +312,70 @@ const PedidosPage = () => {
   };
 
   /** Gera a ordem da venda e a destaca aqui mesmo, com a faixa da planilha. */
+  /**
+   * Gera a ordem da venda — OTIMISTA.
+   *
+   * A ordem aparece na linha no instante do clique, destacada, e o servidor
+   * grava por baixo. Quando ele responde, a provisória dá lugar à verdadeira
+   * (com número) e a faixa da planilha aparece. Se ele recusar, a linha volta
+   * a "sem ordem" e o aviso diz por quê.
+   */
   const gerarOrdem = async (v: PedidoDeProducao, osModelo: string) => {
     const id = String(v.pedidoId);
 
-    setGerando(id);
+    const provisoria = {
+      id: `tmp-${id}`,
+      codigo: 0,
+      titulo: v.itens.map((i) => i.nomeProduto).join(", "),
+      descricao: null,
+      cliente_nome: v.nomeCliente,
+      pedido_fk: id,
+      os_modelo: osModelo === "PADRAO" ? null : osModelo,
+      os_dados: null,
+      planilha_registro_fk: null,
+      planilha_modelo_fk: null,
+      planilha_nome: null,
+      etapa_fk: null,
+      etapa_nome: null,
+      etapa_conclui: null,
+      posicao: 0,
+      responsavel_fk: null,
+      responsavel_nome: null,
+      periodo: "DIARIO",
+      prazo: null,
+      prioridade: "NORMAL",
+      quantidade: v.quantidadeItens,
+      concluido_em: null,
+      criado_em: new Date().toISOString(),
+      entrou_na_etapa: null,
+    } as unknown as ItemProducao;
+
     setAGerar(null);
+    setOrdens((lista) => [provisoria, ...lista]);
+    setFiltro((f) => (f === "sem-os" || f === "finalizados" ? "abertos" : f));
+    setNovaOrdem(provisoria.id);
+
+    const desfazer = () => {
+      setOrdens((lista) => lista.filter((o) => o.id !== provisoria.id));
+      setNovaOrdem((atual) => (atual === provisoria.id ? null : atual));
+    };
 
     try {
       const r = await ProducaoService.daVenda(id, osModelo === "PADRAO" ? "" : osModelo);
 
       if (r.criado) {
         await carregarOrdens();
-        setFiltro((f) => (f === "sem-os" || f === "finalizados" ? "abertos" : f));
-        setNovaOrdem(r.id);
+        setNovaOrdem((atual) => (atual === provisoria.id ? r.id : atual));
         return;
       }
 
       /* Nada criado não é erro: a venda já tinha ordem, ou o plano não tem
          produção. A frase é do servidor — ela diz qual das duas é. */
+      desfazer();
       alert.info("Nada a fazer", r.mensagem);
     } catch (err) {
+      desfazer();
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível gerar a ordem."));
-    } finally {
-      setGerando(null);
     }
   };
 
@@ -346,51 +387,53 @@ const PedidosPage = () => {
      modelo, caem no padrão da empresa. Ver `modeloOS`. */
   const modeloDaOrdem = (o: ItemProducao) => modeloOS(o.os_modelo ?? empresa?.osModelo);
 
+  /** Troca o papel da ordem — na tela já, no servidor por baixo. */
   const trocarModelo = async (o: ItemProducao, chave: string) => {
-    setTrocando(o.id);
+    const atualizada = { ...o, os_modelo: chave === "PADRAO" ? null : chave };
 
-    try {
-      await ProducaoService.definirModeloOs(o.id, chave === "PADRAO" ? "" : chave);
-
-      const atualizada = { ...o, os_modelo: chave === "PADRAO" ? null : chave };
-
-      setOrdens((lista) => lista.map((x) => (x.id === o.id ? atualizada : x)));
+    const aplicar = (alvo: ItemProducao) => {
+      setOrdens((lista) => lista.map((x) => (x.id === o.id ? alvo : x)));
 
       /* A ficha da chave nova não entende os campos da antiga: o rascunho da
          tela é reposto. O que já estava gravado continua no servidor. */
       setPreenchendo((atual) => {
         if (!atual || atual.id !== o.id) return atual;
 
-        const modelo = modeloOS(atualizada.os_modelo);
+        const modelo = modeloOS(alvo.os_modelo);
 
-        setRascunho((atualizada.os_dados as Record<string, unknown>) ?? modelo.vazio?.() ?? {});
+        setRascunho((alvo.os_dados as Record<string, unknown>) ?? modelo.vazio?.() ?? {});
         setSalvo(false);
 
-        return atualizada;
+        return alvo;
       });
+    };
+
+    aplicar(atualizada);
+
+    try {
+      await ProducaoService.definirModeloOs(o.id, chave === "PADRAO" ? "" : chave);
     } catch (err) {
+      aplicar(o);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível trocar o modelo."));
-    } finally {
-      setTrocando(null);
     }
   };
 
   /** Manda a ordem para a planilha escolhida — uma vez só por ordem. */
   const mandarParaPlanilha = async (o: ItemProducao, modeloId: string) => {
-    setMandando(o.id);
+    const nome = planilhas.find((m) => m.id === modeloId)?.nome ?? null;
+
+    /* Na tela já: a linha diz para onde foi e a faixa some. O vínculo
+       verdadeiro (a linha criada na planilha) chega com a recarga. */
+    setOrdens((lista) => lista.map((x) => (x.id === o.id ? { ...x, planilha_registro_fk: "tmp", planilha_modelo_fk: modeloId, planilha_nome: nome } : x)));
+    setNovaOrdem((atual) => (atual === o.id ? null : atual));
+    alert.success("Pronto!", nome ? `A ordem foi para ${nome}.` : "A ordem foi para a planilha.");
 
     try {
-      const mensagem = await ProducaoService.mandarParaPlanilha(o.id, modeloId);
-
+      await ProducaoService.mandarParaPlanilha(o.id, modeloId);
       await carregarOrdens();
-
-      setNovaOrdem((atual) => (atual === o.id ? null : atual));
-
-      alert.success("Pronto!", mensagem || "A ordem foi para a planilha.");
     } catch (err) {
+      setOrdens((lista) => lista.map((x) => (x.id === o.id ? o : x)));
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível mandar a ordem para a planilha."));
-    } finally {
-      setMandando(null);
     }
   };
 
@@ -451,7 +494,7 @@ const PedidosPage = () => {
       {/* A FAIXA de quem acabou de gerar a ordem: em qual planilha ela vai
           produzir. Fora do cartão, para não roubar altura das linhas que a
           paginação já contou. Some ao escolher ou ao fechar no X. */}
-      {linhaNova && !linhaNova.planilha_registro_fk && (
+      {linhaNova && !ehProvisoria(linhaNova) && !linhaNova.planilha_registro_fk && (
         <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-xl border border-success/25 bg-success/[0.07] px-4 py-3">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-success/30 bg-success/[0.12] text-success">
             <Check size={14} />
@@ -484,11 +527,10 @@ const PedidosPage = () => {
           ) : (
             <button
               type="button"
-              disabled={mandando === linhaNova.id}
               onClick={() => (sugestao ? void mandarParaPlanilha(linhaNova, sugestao.modelo.id) : abrirMandar(linhaNova))}
               className="focus-ring flex h-[32px] shrink-0 items-center gap-1.5 rounded-lg border border-success/30 bg-success/[0.1] px-3 text-[12px] text-success transition-colors hover:bg-success/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {mandando === linhaNova.id ? <Loader2 size={13} className="animate-spin" /> : <ArrowRight size={13} />}
+              <ArrowRight size={13} />
               {sugestao ? `Mandar para ${sugestao.modelo.nome}` : "Escolher a planilha"}
             </button>
           )}
@@ -600,9 +642,9 @@ const PedidosPage = () => {
                      sem ordem, pergunta o modelo e gera. Os botões ficam FORA
                      do botão da linha — ver `ListaLinha`. */
                   ariaLabel={o ? `Abrir a OS ${o.codigo} de ${l.cliente}` : `Gerar a ordem de serviço de ${l.cliente}`}
-                  onClick={o ? () => preencher(o) : v ? () => pedirGerar(v) : undefined}
+                  onClick={o ? (ehProvisoria(o) ? undefined : () => preencher(o)) : v ? () => pedirGerar(v) : undefined}
                   acoes={
-                    o ? (
+                    o && ehProvisoria(o) ? undefined : o ? (
                       <>
                         {o.planilha_registro_fk ? (
                           <ListaAcao
@@ -615,7 +657,6 @@ const PedidosPage = () => {
                           <ListaAcao
                             icon={<Factory size={14} />}
                             label="Mandar para uma planilha de produção"
-                            ocupado={mandando === o.id}
                             onClick={() => abrirMandar(o)}
                           />
                         )}
@@ -624,7 +665,7 @@ const PedidosPage = () => {
                           variante="linha"
                           titulo="Ver ou imprimir a ordem de serviço"
                           documento="ordem"
-                          ocupado={abrindo === o.id || trocando === o.id}
+                          ocupado={abrindo === o.id}
                           onAbrir={(modo) => void abrirOS(o, modo)}
                         />
                       </>
@@ -633,7 +674,6 @@ const PedidosPage = () => {
                         icon={<ClipboardList size={14} />}
                         label="Gerar ordem de serviço"
                         tom="sucesso"
-                        ocupado={gerando === idVenda}
                         onClick={() => pedirGerar(v)}
                       />
                     ) : undefined
@@ -647,7 +687,7 @@ const PedidosPage = () => {
                       <span className="block truncate text-[12.5px] text-ink">{l.cliente}</span>
                       <span className="flex min-w-0 items-center gap-1.5 text-[10px] text-faint">
                         <span className="truncate">{idVenda ? `#${idVenda.slice(-6).toUpperCase()}` : "Sem venda"}</span>
-                        {o && <span className="shrink-0 text-accent-soft">· OS #{o.codigo}</span>}
+                        {o && <span className="shrink-0 text-accent-soft">· {ehProvisoria(o) ? "OS nova" : `OS #${o.codigo}`}</span>}
                       </span>
                     </span>
                   </span>
@@ -679,10 +719,6 @@ const PedidosPage = () => {
                       <span className="text-faint">—</span>
                     ) : o.planilha_registro_fk ? (
                       <span className="text-success">{o.planilha_nome ?? "Na produção"}</span>
-                    ) : mandando === o.id ? (
-                      <span className="flex items-center gap-1.5 text-faint">
-                        <Loader2 size={13} className="animate-spin text-accent" /> Mandando...
-                      </span>
                     ) : (
                       <span className="text-warning">Sem planilha</span>
                     )}
@@ -818,7 +854,7 @@ const PedidosPage = () => {
                     <button
                       key={m.chave}
                       type="button"
-                      disabled={trocando === preenchendo.id || atual}
+                      disabled={atual}
                       onClick={() => void trocarModelo(preenchendo, m.chave)}
                       title={atual ? "É o modelo desta ordem" : `Usar ${m.nome}`}
                       className={CHIP(atual)}
@@ -828,7 +864,6 @@ const PedidosPage = () => {
                   );
                 })}
 
-                {trocando === preenchendo.id && <Loader2 size={14} className="animate-spin text-accent" />}
 
                 <span className="ml-auto flex items-center gap-2">
                   {/* Só há o que salvar onde há o que preencher. */}

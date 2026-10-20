@@ -164,7 +164,6 @@ const ClienteDetalhe = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showEdit, setShowEdit] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pedidoAberto, setPedidoAberto] = useState<PedidoAberto | null>(null);
 
@@ -207,18 +206,24 @@ const ClienteDetalhe = () => {
     load();
   }, [id]);
 
+  /* Otimista: a ficha já mostra o que foi digitado e o formulário fecha; a
+     gravação corre por baixo. Recusada, a ficha volta e o formulário reabre. */
   const handleUpdate = async (data: ClienteFormData) => {
     if (!client?.id) return;
-    setSaving(true);
+
+    const original = client;
+
+    setClient({ ...original, ...data } as typeof original);
+    setShowEdit(false);
+    alert.success("Cliente atualizado", "As alterações foram salvas com sucesso.");
+
     try {
-      await CustomerService.update(client.id, data);
-      setShowEdit(false);
+      await CustomerService.update(String(original.id), data);
       await load();
-      alert.success("Cliente atualizado", "As alterações foram salvas com sucesso.");
     } catch (err) {
+      setClient(original);
+      setShowEdit(true);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível atualizar o cliente."));
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -645,7 +650,7 @@ const ClienteDetalhe = () => {
       )}
 
       {/* Edição — mesma ficha do cadastro */}
-      {client && <ClienteForm open={showEdit} cliente={client} saving={saving} onClose={() => setShowEdit(false)} onSubmit={handleUpdate} />}
+      {client && <ClienteForm open={showEdit} cliente={client} onClose={() => setShowEdit(false)} onSubmit={handleUpdate} />}
 
       {/* Nota do pedido, igual à do PDV */}
       <Modal open={!!pedidoAberto} onClose={fecharPedido} title="Pedido" subtitle={pedidoAberto?.nome} size="full">

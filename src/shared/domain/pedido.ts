@@ -87,6 +87,8 @@ export type ItemPedidoDto = {
 
 /** POST /pedidos/novo-pedido — o controller lê `itensPedido`. */
 export type NovoPedidoDto = {
+  /** Gerado na tela — o reenvio da fila encontra a nota já gravada. */
+  id?: string;
   clienteId: string | undefined;
   itensPedido: ItemPedidoDto[];
   imagensServico?: string[];
@@ -112,6 +114,23 @@ export type PedidoUpdateDto = {
 /* ─────────────────────────── Regras de negócio ─────────────────────────── */
 
 export const estaAberto = (v: PedidoClienteType): boolean => v.pedido.pedidoStatus === PEDIDO_STATUS.ABERTO;
+
+/**
+ * O status que a nota PASSA a ter com este pagamento — calculado na tela.
+ *
+ * É a mesma regra do servidor (`RECALCULAR_PAGAMENTO_DA_NOTA`, na API): o
+ * pagamento entra e sai da tela no clique, e o status precisa andar junto —
+ * senão a nota continuava "pago" depois de apagar o recebimento, até o
+ * servidor responder. Cancelada não muda por dinheiro; coberta vira PAGO; a
+ * que estava paga e deixou de cobrir volta para ABERTO.
+ */
+export const statusPeloPagamento = (status: string | undefined, total: number, pago: number): string | undefined => {
+  if (!status || status === PEDIDO_STATUS.CANCELADO) return status;
+  if (total > 0 && pago + 0.005 >= total) return PEDIDO_STATUS.PAGO;
+  if (status === PEDIDO_STATUS.PAGO || status === PEDIDO_STATUS.FECHADO) return PEDIDO_STATUS.ABERTO;
+
+  return status;
+};
 
 export const estaPendente = (v: PedidoClienteType): boolean => v.pedido.pedidoStatus === PEDIDO_STATUS.PENDENTE;
 

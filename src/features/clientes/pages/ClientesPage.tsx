@@ -167,7 +167,6 @@ const Clientes = () => {
   /* Cliente em edição pela própria lista — antes era preciso abrir a ficha,
      achar "Editar" e voltar, três telas para corrigir um telefone. */
   const [editando, setEditando] = useState<ClientType | null>(null);
-  const [saving, setSaving] = useState(false);
 
   const { bodyRef, perPage } = useAutoPageSize<HTMLDivElement>();
 
@@ -343,33 +342,52 @@ const Clientes = () => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
+  /*
+   * Cadastrar e editar são OTIMISTAS.
+   *
+   * O formulário fecha no clique e o cliente já aparece (ou muda) na lista;
+   * o servidor grava por baixo e a recarga traz o registro verdadeiro. Se ele
+   * recusar — CPF repetido, por exemplo —, a lista volta como estava e o
+   * formulário reabre com o que foi digitado, para corrigir sem redigitar.
+   */
+  const [prefillFalho, setPrefillFalho] = useState<Partial<ClientType> | null>(null);
+
   const handleCreate = async (data: ClienteFormData) => {
-    setSaving(true);
+    const provisorio = { ...data, id: `tmp-${Date.now()}` } as unknown as ClientType;
+
+    setShowCreate(false);
+    setPrefillFalho(null);
+    useClienteStore.setState((st) => ({ clientes: [provisorio, ...st.clientes] }));
+    alert.success("Cliente cadastrado!", "O cliente foi adicionado com sucesso.");
+
     try {
       await CustomerService.create(data);
-      setShowCreate(false);
       await load();
-      alert.success("Cliente cadastrado!", "O cliente foi adicionado com sucesso.");
     } catch (err) {
+      useClienteStore.setState((st) => ({ clientes: st.clientes.filter((c) => c !== provisorio) }));
+      setPrefillFalho(data as unknown as Partial<ClientType>);
+      setShowCreate(true);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível cadastrar o cliente."));
-    } finally {
-      setSaving(false);
     }
   };
 
   const handleUpdate = async (data: ClienteFormData) => {
     if (!editando?.id) return;
 
-    setSaving(true);
+    const original = editando;
+    const alterado = { ...original, ...data } as ClientType;
+
+    setEditando(null);
+    useClienteStore.setState((st) => ({ clientes: st.clientes.map((c) => (c.id === original.id ? alterado : c)) }));
+    alert.success("Cliente atualizado", "As alterações foram salvas com sucesso.");
+
     try {
-      await CustomerService.update(String(editando.id), data);
-      setEditando(null);
+      await CustomerService.update(String(original.id), data);
       await load();
-      alert.success("Cliente atualizado", "As alterações foram salvas com sucesso.");
     } catch (err) {
+      useClienteStore.setState((st) => ({ clientes: st.clientes.map((c) => (c.id === original.id ? original : c)) }));
+      setEditando(alterado);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível atualizar o cliente."));
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -799,10 +817,10 @@ const Clientes = () => {
         )}
       </TabelaCard>
 
-      {showCreate && <ClienteForm saving={saving} onClose={() => setShowCreate(false)} onSubmit={handleCreate} />}
+      {showCreate && <ClienteForm prefill={prefillFalho} onClose={() => setShowCreate(false)} onSubmit={handleCreate} />}
 
       {/* Edição pela lista: mesma ficha da tela de detalhe, sem sair daqui. */}
-      {editando && <ClienteForm cliente={editando} saving={saving} onClose={() => setEditando(null)} onSubmit={handleUpdate} />}
+      {editando && <ClienteForm cliente={editando} onClose={() => setEditando(null)} onSubmit={handleUpdate} />}
     </PageScreen>
   );
 };

@@ -11,7 +11,21 @@
  * o que muda naquela paleta.
  */
 
-export type ThemeId = "escuro" | "claro" | "meia-noite" | "floresta" | "sepia" | "ardosia" | "onix" | "sistema";
+export type ThemeId =
+    | "escuro"
+    | "claro"
+    | "meia-noite"
+    | "floresta"
+    | "sepia"
+    | "ardosia"
+    | "onix"
+    | "oceano"
+    | "cafe"
+    | "neon"
+    | "lavanda"
+    | "quartzo"
+    | "menta"
+    | "sistema";
 
 export type ThemeInfo = {
     id: ThemeId;
@@ -72,6 +86,51 @@ export const THEMES: ThemeInfo[] = [
         desc: "Preto absoluto",
         dark: true,
         preview: { bg: "#000000", panel: "#0a0a0b", line: "#242427", soft: "#161618" },
+    },
+    /* ── Seis paletas a mais, cada uma com um caráter próprio ──
+       Três escuras e três claras, e nenhuma é a variação de outra: mudam o
+       fundo, as superfícies, o texto, o vidro e a aurora inteiros. */
+    {
+        id: "oceano",
+        label: "Oceano",
+        desc: "Azul-petróleo profundo",
+        dark: true,
+        preview: { bg: "#06161e", panel: "#0a222d", line: "#1a4252", soft: "#0f2e3c" },
+    },
+    {
+        id: "cafe",
+        label: "Café",
+        desc: "Marrom quente",
+        dark: true,
+        preview: { bg: "#18110d", panel: "#241a14", line: "#46362a", soft: "#30231b" },
+    },
+    {
+        id: "neon",
+        label: "Neon",
+        desc: "Roxo elétrico",
+        dark: true,
+        preview: { bg: "#0e061a", panel: "#180c2a", line: "#3c1f60", soft: "#22123a" },
+    },
+    {
+        id: "lavanda",
+        label: "Lavanda",
+        desc: "Claro e lilás",
+        dark: false,
+        preview: { bg: "#f3f0fb", panel: "#fcfaff", line: "#ddd5f0", soft: "#ebe5f8" },
+    },
+    {
+        id: "quartzo",
+        label: "Quartzo",
+        desc: "Claro e rosado",
+        dark: false,
+        preview: { bg: "#fbf1f3", panel: "#fffafb", line: "#f0d8de", soft: "#f8e6ea" },
+    },
+    {
+        id: "menta",
+        label: "Menta",
+        desc: "Claro e verde-água",
+        dark: false,
+        preview: { bg: "#eef8f4", panel: "#fafffd", line: "#cfe8de", soft: "#e2f3ec" },
     },
     {
         id: "sistema",

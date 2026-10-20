@@ -27,8 +27,9 @@ const FinanceiroService = {
   getResumo: () => sysgrafix.get("/financeiro/resumo"),
 
   getNotas: () => sysgrafix.get("/financeiro/notas"),
-  registrarPagamentoNota: (pedidoId: string, valor: number, formaPagamento: string) =>
-    sysgrafix.patch(`/financeiro/notas/${pedidoId}/pagar`, { valor, formaPagamento }),
+  /* `id`: o do recebimento, gerado na tela — reenviar não lança duas vezes. */
+  registrarPagamentoNota: (pedidoId: string, valor: number, formaPagamento: string, id?: string) =>
+    sysgrafix.patch(`/financeiro/notas/${pedidoId}/pagar`, { valor, formaPagamento, id }),
 
   /* ── Extrato da nota ──
      Cada recebimento é uma linha desde a migration 050: é o que permite duas

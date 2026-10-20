@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, ExternalLink, Loader2, Receipt, RefreshCw } from "lucide-react";
+
+import Dica from "@/shared/ui/Dica";
+import Suspenso from "@/shared/ui/Suspenso";
 
 import FiscalService, { type Cupom } from "@/features/fiscal/services/fiscal.service";
 import usePlano from "@/shared/plano/plano.store";
@@ -40,9 +43,14 @@ type Props = {
   pedidoId?: string;
   /** Redesenha quando o pagamento muda — a forma entra no cupom. */
   versao?: number;
+  /**
+   * Um ícone só, para a barra de ações da nota: o estado do cupom vira a cor
+   * e a dica do ícone, e emitir (com o CPF) abre num painel pequeno.
+   */
+  compacto?: boolean;
 };
 
-const BotaoCupomFiscal = ({ pedidoId, versao }: Props) => {
+const BotaoCupomFiscal = ({ pedidoId, versao, compacto = false }: Props) => {
   const alert = useAlert();
   const podeFiscal = usePlano((s) => s.recurso("fiscal"));
 
@@ -50,6 +58,8 @@ const BotaoCupomFiscal = ({ pedidoId, versao }: Props) => {
   const [carregando, setCarregando] = useState(true);
   const [emitindo, setEmitindo] = useState(false);
   const [cpf, setCpf] = useState("");
+  const [painel, setPainel] = useState(false);
+  const ancora = useRef<HTMLButtonElement>(null);
 
   const carregar = async () => {
     if (!pedidoId) return;
@@ -110,6 +120,81 @@ const BotaoCupomFiscal = ({ pedidoId, versao }: Props) => {
   };
 
   if (carregando) return null;
+
+  const abrirDanfe = (id: string) =>
+    void FiscalService.abrirDanfe(id).catch((err) => alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir o DANFE.")));
+
+  /* ─────────────── Compacto: um ícone na barra da nota ─────────────── */
+  if (compacto) {
+    const autorizado = cupom?.situacao === "AUTORIZADA" && !cupom.cancelada_em;
+    const pendente = cupom?.situacao === "PENDENTE";
+    const recusado = cupom?.situacao === "REJEITADA";
+
+    const dica = autorizado
+      ? `Cupom nº ${cupom?.numero} — abrir o DANFE`
+      : pendente
+        ? "Cupom em processamento — consultar a SEFAZ"
+        : recusado
+          ? "A SEFAZ recusou — emitir de novo"
+          : "Emitir o cupom fiscal";
+
+    const cor = autorizado
+      ? "border-success/30 bg-success/[0.08] text-success"
+      : pendente || recusado
+        ? "border-warning/30 bg-warning/[0.08] text-warning"
+        : "border-fg/[0.08] bg-fg/[0.03] text-mist hover:text-accent-soft";
+
+    return (
+      <>
+        <Dica texto={dica}>
+          <button
+            ref={ancora}
+            type="button"
+            aria-label={dica}
+            disabled={emitindo}
+            onClick={() => (autorizado && cupom ? abrirDanfe(cupom.id) : pendente ? void sincronizar() : setPainel((v) => !v))}
+            className={`focus-ring grid h-8 w-8 cursor-pointer place-items-center rounded-lg border transition-colors disabled:opacity-50 ${cor}`}
+          >
+            {emitindo ? <Loader2 size={14} className="animate-spin" /> : autorizado ? <Check size={14} /> : pendente ? <RefreshCw size={14} /> : <Receipt size={14} />}
+          </button>
+        </Dica>
+
+        <Suspenso aberto={painel} onFechar={() => setPainel(false)} ancora={ancora} largura={260} alinhar="fim">
+          <div className="flex flex-col gap-2 p-2">
+            <span className="text-[10px] uppercase tracking-[0.08em] text-faint">Cupom fiscal</span>
+
+            <input
+              value={cpf}
+              onChange={(e) => setCpf(e.target.value.replace(/\D/g, "").slice(0, 14))}
+              inputMode="numeric"
+              placeholder="CPF na nota? (opcional)"
+              aria-label="CPF do consumidor no cupom"
+              className="h-9 rounded-lg border border-fg/[0.1] bg-transparent px-3 text-[12.5px] text-ink outline-none focus:border-accent/50 placeholder:text-faint"
+            />
+
+            <button
+              type="button"
+              onClick={() => {
+                setPainel(false);
+                void emitir();
+              }}
+              className="focus-ring flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent text-[12.5px] text-white transition-all hover:brightness-110"
+            >
+              <Receipt size={14} />
+              {recusado ? "Emitir de novo" : "Emitir cupom"}
+            </button>
+
+            {recusado && cupom?.motivo && (
+              <span className="flex items-start gap-1.5 text-[11px] leading-relaxed text-warning">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                {cupom.motivo}
+              </span>
+            )}
+          </div>
+        </Suspenso>
+      </>
+    );
+  }
 
   /* ─────────────── Autorizado: o documento, e nada a clicar ─────────────── */
   if (cupom?.situacao === "AUTORIZADA" && !cupom.cancelada_em) {

@@ -1,5 +1,5 @@
 import type { MouseEvent } from "react";
-import { Palette, Check, Type, Sparkles, Accessibility, Gauge, Layers, Zap, Brush } from "lucide-react";
+import { Palette, Check, Type, Sparkles, Accessibility, Layers, Zap, Brush } from "lucide-react";
 
 import { SettingsCard } from "@/features/config/components/ConfigUI";
 import { useAlert } from "@/shared/ui/Alert";
@@ -19,6 +19,13 @@ const ACCENTS: { id: AccentId; label: string; color: string }[] = [
   { id: "vinho", label: "Vinho", color: "#dc466e" },
   { id: "dourado", label: "Dourado", color: "#f0be32" },
   { id: "preto", label: "Preto", color: "#3c3c50" },
+  { id: "cinza", label: "Cinza", color: "#8a94a6" },
+  { id: "coral", label: "Coral", color: "#ff806a" },
+  { id: "lima", label: "Lima", color: "#aadc3c" },
+  { id: "indigo", label: "Índigo", color: "#787dff" },
+  { id: "magenta", label: "Magenta", color: "#eb5aeb" },
+  { id: "cobre", label: "Cobre", color: "#e18c5f" },
+  { id: "lavanda", label: "Lavanda", color: "#b9a5ff" },
 ];
 
 const FONT_SCALES: { id: FontScale; label: string; desc: string; sample: string }[] = [
@@ -35,11 +42,11 @@ const MOTIONS: { id: MotionPref; label: string; desc: string; icon: React.ReactN
   { id: "full", label: "Sempre animar", desc: "Ignora a configuração do sistema", icon: <Zap size={15} /> },
 ];
 
+/* Só dois níveis, e o Completo é o padrão: o Flow é desenhado com o vidro e
+   os brilhos inteiros. O Equilibrado alivia o desfoque para quem precisar. */
 const FX_OPTIONS: { id: FxPref; icon: React.ReactNode }[] = [
-  { id: "auto", icon: <Gauge size={15} /> },
   { id: "full", icon: <Layers size={15} /> },
   { id: "balanced", icon: <Sparkles size={15} /> },
-  { id: "lite", icon: <Zap size={15} /> },
 ];
 
 /** Miniatura da paleta: as cores vêm do catálogo, não dos tokens ativos. */
@@ -124,7 +131,7 @@ const AparenciaTab = () => {
   const trocarFx = (id: FxPref) => {
     if (id === fx) return;
     setFx(id);
-    notify(`Efeitos: ${id === "auto" ? "automático" : FX_LABEL[id].toLowerCase()}`);
+    notify(`Efeitos: ${id === "auto" ? FX_LABEL.full.toLowerCase() : FX_LABEL[id].toLowerCase()}`);
   };
 
   const fxLabel = (id: FxPref) => (id === "auto" ? "Automático" : FX_LABEL[id]);
@@ -145,7 +152,7 @@ const AparenciaTab = () => {
       <SettingsCard
         icon={<Palette className="h-4 w-4" />}
         title="Tema"
-        desc="Seis paletas completas. A troca é aplicada na hora."
+        desc="Doze paletas completas. A troca é aplicada na hora."
         className="xl:col-span-2"
       >
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7">

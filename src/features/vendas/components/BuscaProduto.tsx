@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { PackageSearch, PackagePlus, Plus, Loader2, CornerDownLeft, Ban, Layers } from "lucide-react";
 
 import ProductType, { ehVendavel, nivelEstoque } from "@/shared/domain/produto";
+import { pontosDeUso } from "@/features/vendas/services/catalogoLocal";
 import type { Variacao } from "@/shared/domain/estoque";
 import EstoqueService from "@/features/estoque/services/estoque.service";
 import { formatCurrency } from "@/shared/utils/currency";
@@ -62,22 +63,12 @@ type Props = {
   onItemAvulso?: (nome: string) => void;
 };
 
-/**
- * Espera antes de mostrar o resultado.
- *
- * O filtro é local e instantâneo — as opções apareceriam no mesmo quadro da
- * tecla. Sem uma pausa curta, a lista pisca e se reordena a cada letra, e o
- * olho não acompanha. Este intervalo dá tempo de a pessoa terminar a palavra e
- * transforma a busca num movimento só: digita, carrega, aparece.
- */
-const ESPERA_MS = 180;
 
 /** Item sem saldo não pode entrar na nota — a menos que o produto libere. */
 const bloqueado = (p: ProductType) => nivelEstoque(p) === "esgotado" && !p.permiteVendaSemEstoque;
 
 const BuscaProduto = ({ produtos, carregando = false, onAdicionar, onCadastrar, onItemAvulso }: Props) => {
   const [busca, setBusca] = useState("");
-  const [procurando, setProcurando] = useState(false);
   /* Qual sugestão está sob o cursor do teclado. */
   const [indice, setIndice] = useState(0);
 
@@ -93,10 +84,20 @@ const BuscaProduto = ({ produtos, carregando = false, onAdicionar, onCadastrar, 
 
   const termo = busca.trim().toLowerCase();
 
-  /* Enquanto `procurando`, a lista não é calculada: é o que faz a animação de
-     carregamento aparecer em vez de o resultado saltar pronto. */
+  /*
+   * A busca FILTRA a cada tecla — não "procura".
+   *
+   * Havia uma espera de 180ms com animação de carregamento entre a tecla e o
+   * resultado, para a lista não piscar. Mas a lista já está aqui (guardada no
+   * aparelho, ver `catalogoLocal`): esperar era fingir que se buscava algo
+   * longe. Agora o resultado acompanha a digitação, e os itens que mais saem
+   * no balcão vêm primeiro.
+   *
+   * Custo de memória: um `filter` sobre a lista que já está carregada e oito
+   * itens no fim — nada é copiado além do resultado.
+   */
   const sugestoes = useMemo(() => {
-    if (!termo || procurando) return [];
+    if (!termo) return [];
 
     /*
      * Insumo fica FORA da busca do balcão.
@@ -117,22 +118,9 @@ const BuscaProduto = ({ produtos, carregando = false, onAdicionar, onCadastrar, 
         p.sku?.toLowerCase().includes(termo) ||
         p.codigoBarras?.toLowerCase() === termo,
       )
+      .sort((a, b) => pontosDeUso(b.id) - pontosDeUso(a.id))
       .slice(0, 8);
-  }, [produtos, termo, procurando]);
-
-  /* Cada tecla reinicia a espera — só para de "procurar" quando a digitação
-     para. */
-  useEffect(() => {
-    if (!termo) {
-      setProcurando(false);
-      return;
-    }
-
-    setProcurando(true);
-    const t = setTimeout(() => setProcurando(false), ESPERA_MS);
-
-    return () => clearTimeout(t);
-  }, [termo]);
+  }, [produtos, termo]);
 
   /* Termo novo, cursor de volta ao topo: manter o índice antigo deixaria o
      destaque num item que não existe mais na lista. */
@@ -223,8 +211,8 @@ const BuscaProduto = ({ produtos, carregando = false, onAdicionar, onCadastrar, 
     }
   };
 
-  const mostrarLista = Boolean(termo) && !procurando && !carregando && sugestoes.length > 0;
-  const semResultado = Boolean(termo) && !procurando && !carregando && sugestoes.length === 0;
+  const mostrarLista = Boolean(termo) && !carregando && sugestoes.length > 0;
+  const semResultado = Boolean(termo) && !carregando && sugestoes.length === 0;
 
   return (
     <div className="relative">
@@ -234,7 +222,7 @@ const BuscaProduto = ({ produtos, carregando = false, onAdicionar, onCadastrar, 
             largura. */}
         <span className="grid h-4 w-4 shrink-0 place-items-center">
           <AnimatePresence mode="wait" initial={false}>
-            {procurando || carregando ? (
+            {carregando ? (
               <motion.span key="load" initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} transition={{ duration: 0.12 }}>
                 <Loader2 size={15} className="animate-spin text-accent-soft" />
               </motion.span>
@@ -297,7 +285,7 @@ const BuscaProduto = ({ produtos, carregando = false, onAdicionar, onCadastrar, 
 
       {/* Barra de progresso fina sob o campo — o "puxando os produtos". */}
       <AnimatePresence>
-        {(procurando || carregando) && (
+        {carregando && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

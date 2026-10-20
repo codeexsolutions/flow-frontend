@@ -287,15 +287,23 @@ const Estoque = () => {
    * tela por item. O formulário se limpa sozinho (`resetarAoSalvar`) e o
    * cursor volta para o nome; quem terminou fecha pelo Cancelar ou pelo X.
    */
-  const handleCreateProduct = async (data: ProductFormData) => {
+  /*
+   * Otimista: o formulário não espera o servidor — o aviso sai e ele já fica
+   * limpo para o próximo; o cadastro corre por baixo e a lista se atualiza
+   * quando ele volta. Recusado, o aviso de erro diz qual e por quê.
+   */
+  const handleCreateProduct = (data: ProductFormData) => {
     setError(null);
-    try {
-      await ProductService.create(data);
-      await load();
-      alert.success(`${TIPO_ITEM[data.tipo].singular} cadastrado!`, "Já pode cadastrar o próximo.");
-    } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível cadastrar o produto."));
-    }
+    alert.success(`${TIPO_ITEM[data.tipo].singular} cadastrado!`, "Já pode cadastrar o próximo.");
+
+    void (async () => {
+      try {
+        await ProductService.create(data);
+        await load();
+      } catch (err) {
+        alert.error(getErrorTitle(err), extractErrorMessage(err, `Não foi possível cadastrar “${data.nome}”.`));
+      }
+    })();
   };
 
   /*

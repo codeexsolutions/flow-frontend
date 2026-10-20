@@ -214,12 +214,10 @@ const EstoquePainel = ({
      perguntar "quantas eu tenho", e o extrato é a resposta do "por quê" que
      só se procura depois de estranhar o número. */
   const [aba, setAba] = useState<"itens" | "movimentos">("itens");
-  const [apagandoMov, setApagandoMov] = useState<string | null>(null);
 
   const [rascunho, setRascunho] = useState<Rascunho | null>(null);
   const [movimento, setMovimento] = useState<TipoMov | null>(null);
   const [editandoItem, setEditandoItem] = useState(false);
-  const [salvando, setSalvando] = useState(false);
   const [gerando, setGerando] = useState(false);
 
   /* Campos da movimentação — fora do `rascunho` porque são outro formulário. */
@@ -283,16 +281,19 @@ const EstoquePainel = ({
       return;
     }
 
-    setSalvando(true);
+    /* Otimista: passou nas regras, fecha e confirma; grava por baixo. Se o
+       servidor recusar, o rascunho volta aberto com o que foi digitado. */
+    const rascunhoAtual = rascunho;
+
+    setRascunho(null);
+    alert.success("Variação salva!", "");
+
     try {
       await EstoqueService.salvarVariacao(produtoId, payload);
       await onMudou();
-      setRascunho(null);
-      alert.success("Variação salva!", "");
     } catch (err) {
+      setRascunho(rascunhoAtual);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível salvar a variação."));
-    } finally {
-      setSalvando(false);
     }
   };
 
@@ -410,19 +411,11 @@ const EstoquePainel = ({
       return;
     }
 
-    setSalvando(true);
-    try {
-      await EstoqueService.movimentar({
-        produtoId,
-        variacaoId: variacaoMov || null,
-        tipo: movimento,
-        quantidade: quanto,
-        motivo: motivoMov.trim() || undefined,
-        custoUnitario: movimento === "ENTRADA" && custoMov > 0 ? custoMov : null,
-      });
+    /* Otimista: confirma e vai para o extrato já; a gravação corre por baixo
+       e o extrato se atualiza quando ela termina. */
+    const tipoMov = movimento;
 
-      await onMudou();
-      setMovimento(null);
+    setMovimento(null);
 
       /*
        * Depois de lançar, a tela vai para o extrato.
@@ -432,13 +425,24 @@ const EstoquePainel = ({
        * itens, a pessoa via só o número do saldo mudar e tinha de procurar a
        * aba para conferir o que foi lançado.
        */
-      setAba("movimentos");
+    setAba("movimentos");
 
-      alert.success("Estoque atualizado!", "");
+    alert.success("Estoque atualizado!", "");
+
+    try {
+      await EstoqueService.movimentar({
+        produtoId,
+        variacaoId: variacaoMov || null,
+        tipo: tipoMov,
+        quantidade: quanto,
+        motivo: motivoMov.trim() || undefined,
+        custoUnitario: tipoMov === "ENTRADA" && custoMov > 0 ? custoMov : null,
+      });
+
+      await onMudou();
     } catch (err) {
+      setMovimento(tipoMov);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível movimentar o estoque."));
-    } finally {
-      setSalvando(false);
     }
   };
 
@@ -460,18 +464,14 @@ const EstoquePainel = ({
 
     if (!confirmed) return;
 
-    setApagandoMov(mov.id);
+    /* Confirmado, está feito: o aviso sai já e a exclusão corre por baixo. */
+    alert.toast("success", "Lançamento apagado", "O saldo foi desfeito.", { position: "bottom-right", timer: 3000 });
 
     try {
       await EstoqueService.excluirMovimento(mov.id);
-
       await onMudou();
-
-      alert.toast("success", "Lançamento apagado", "O saldo foi desfeito.", { position: "bottom-right", timer: 3000 });
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível apagar a movimentação."));
-    } finally {
-      setApagandoMov(null);
     }
   };
 
@@ -500,7 +500,10 @@ const EstoquePainel = ({
       return;
     }
 
-    setSalvando(true);
+    /* Otimista: fecha a edição e confirma; grava por baixo. */
+    setEditandoItem(false);
+    alert.success("Estoque atualizado!", "");
+
     try {
       const minimo = minimoItem.trim() === "" ? null : Number(minimoItem);
 
@@ -519,12 +522,9 @@ const EstoquePainel = ({
         });
 
       await onMudou();
-      setEditandoItem(false);
-      alert.success("Estoque atualizado!", "");
     } catch (err) {
+      setEditandoItem(true);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível salvar o estoque."));
-    } finally {
-      setSalvando(false);
     }
   };
 
@@ -806,13 +806,12 @@ const EstoquePainel = ({
                       {podeMovimentar && ["ENTRADA", "SAIDA", "AJUSTE"].includes(mov.tipo) && (
                         <button
                           type="button"
-                          disabled={apagandoMov === mov.id}
                           onClick={() => void apagarMovimento(mov)}
                           title="Apagar este lançamento e desfazer o saldo"
                           aria-label="Apagar lançamento"
                           className="focus-ring cursor-pointer rounded-lg p-1 text-faint transition-colors hover:bg-danger/20 hover:text-danger disabled:opacity-40"
                         >
-                          {apagandoMov === mov.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                          <Trash2 size={13} />
                         </button>
                       )}
                     </span>
@@ -936,7 +935,7 @@ const EstoquePainel = ({
               />
             )}
 
-            <FormActions onCancel={() => setRascunho(null)} saving={salvando} submitText="Salvar variação" />
+            <FormActions onCancel={() => setRascunho(null)} submitText="Salvar variação" />
           </Form>
         )}
       </Modal>
@@ -972,7 +971,7 @@ const EstoquePainel = ({
             />
           </FormGrid>
 
-          <FormActions onCancel={() => setEditandoItem(false)} saving={salvando} submitText="Salvar estoque" />
+          <FormActions onCancel={() => setEditandoItem(false)} submitText="Salvar estoque" />
         </Form>
       </Modal>
 
@@ -1058,7 +1057,7 @@ const EstoquePainel = ({
             onChange={(e) => setMotivoMov(e.target.value)}
           />
 
-          <FormActions onCancel={() => setMovimento(null)} saving={salvando} submitText="Lançar" />
+          <FormActions onCancel={() => setMovimento(null)} submitText="Lançar" />
         </Form>
       </Modal>
     </div>

@@ -7,13 +7,10 @@ import { comecou, terminou, tituloPadrao } from "@/shared/api/carregamento";
 declare module "axios" {
   export interface AxiosRequestConfig {
     /**
-     * O aviso de "estou salvando" desta requisição.
+     * O aviso bloqueante de "estou salvando" desta requisição.
      *
-     *   • ausente — o padrão: gravação mostra o aviso genérico, leitura não
-     *     mostra nada;
-     *   • `string` — o aviso aparece com esta frase ("Cadastrando produto…");
-     *   • `false` — não mostra. Ver `SEM_CARREGAMENTO` sobre quando isso é o
-     *     certo a fazer.
+     * Desligado por padrão — o sistema é otimista, ver `deveAvisar`. `true`
+     * liga; uma `string` é a frase usada quando o aviso acende (o login).
      */
     carregamento?: boolean | string;
   }
@@ -23,44 +20,30 @@ const sysgrafix = axios.create({
   baseURL: API_URL,
 });
 
-/** Leitura não acende o aviso: a lista já tem o esqueleto dela. */
-const METODOS_QUE_GRAVAM = ["post", "put", "patch", "delete"];
-
-/**
- * Rotas que GRAVAM pelo método, mas não são gravação para quem usa.
+/*
+ * O aviso bloqueante de "salvando" NÃO acende nas gravações.
  *
- * Todas são POST por precisarem mandar corpo, não por mudarem algo — e uma
- * caixa bloqueando a tela em cima delas seria pior do que não avisar nada:
+ * Ele acendia em todo POST/PATCH/DELETE: a tela já tinha dito "nota criada",
+ * "pagamento removido" — e em seguida uma caixa cobria tudo até o servidor
+ * responder. O sistema é otimista: a tela confirma no clique e a gravação
+ * corre por baixo (ver `Invoice`, `RecebimentosNota`, `fila/filaEnvio`). Um
+ * aviso de espera por cima disso só desmente o que a tela acabou de dizer.
  *
- *   • `disponibilidade` é a pergunta que o PDV faz ANTES de fechar a nota,
- *     enquanto a pessoa ainda monta o carrinho;
- *   • `calcular-frete` é uma cotação, e a tela já mostra o próprio "…";
- *   • `upload` tem barra de progresso dentro do campo, e um modal por cima
- *     roubaria o foco do formulário que está sendo preenchido;
- *   • `mover` é o arrastar do quadro de produção — um modal por cartão
- *     arrastado tornaria o quadro inutilizável;
- *   • `quem` é a consulta do CPF antes de bater o ponto.
+ * Fica para quem não tem o que fazer antes da resposta: o LOGIN — sem ele
+ * não há tela para onde ir — e quem pedir explicitamente `carregamento: true`.
  */
-const SEM_CARREGAMENTO = [
-  "/estoque/disponibilidade",
-  "/correios/calcular-frete",
-  "/upload/",
-  "/mover",
-  "/quem",
-];
+const SEMPRE_AVISAR = ["/login/token"];
 
 /** Marca posta no config para o aviso ser contado uma vez por requisição. */
 type ConfigInterna = InternalAxiosRequestConfig & { _avisando?: boolean };
 
 const deveAvisar = (config: AxiosRequestConfig): boolean => {
   if (config.carregamento === false) return false;
-  if (typeof config.carregamento === "string") return true;
-
-  if (!METODOS_QUE_GRAVAM.includes((config.method ?? "get").toLowerCase())) return false;
+  if (config.carregamento === true) return true;
 
   const url = config.url ?? "";
 
-  return !SEM_CARREGAMENTO.some((rota) => url.includes(rota));
+  return SEMPRE_AVISAR.some((rota) => url.includes(rota));
 };
 
 sysgrafix.interceptors.request.use((config) => {

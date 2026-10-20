@@ -57,7 +57,6 @@ const ListaContas = ({ tipo, contas, carregando = false, onRecarregar, onNova, e
   const [pagando, setPagando] = useState<{ conta: Conta; parcela: Parcela } | null>(null);
   const [valorPago, setValorPago] = useState("");
   const [forma, setForma] = useState("PIX");
-  const [salvando, setSalvando] = useState(false);
   const [recibo, setRecibo] = useState<Recibo | null>(null);
   const [aberta, setAberta] = useState<string | null>(null);
 
@@ -155,20 +154,24 @@ const ListaContas = ({ tipo, contas, carregando = false, onRecarregar, onNova, e
       return;
     }
 
-    setSalvando(true);
+    /* Otimista: o modal fecha e o aviso sai já; a baixa é gravada por baixo.
+       O recibo abre quando ela volta — ele leva o número que só o servidor
+       dá. Recusada, o modal reabre na mesma parcela. */
+    const alvo = pagando;
+
+    setPagando(null);
+    alert.success("Pagamento registrado!", "A parcela foi baixada.");
 
     try {
-      const gerado = await ContaService.pagar(pagando.parcela.id, { valor, formaPagamento: forma });
+      const gerado = await ContaService.pagar(alvo.parcela.id, { valor, formaPagamento: forma });
 
-      setPagando(null);
       /* O recibo abre sozinho: quem acabou de receber é quem precisa dele na
          mão, e procurar o botão depois é o passo que ninguém dá. */
       setRecibo(gerado);
       onRecarregar();
     } catch (err) {
+      setPagando(alvo);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível registrar o pagamento."));
-    } finally {
-      setSalvando(false);
     }
   };
 
@@ -339,7 +342,7 @@ const ListaContas = ({ tipo, contas, carregando = false, onRecarregar, onNova, e
       {/* ---------- Registrar pagamento ---------- */}
       <Modal
         open={!!pagando}
-        onClose={() => !salvando && setPagando(null)}
+        onClose={() => setPagando(null)}
         title={aPagar ? "Registrar pagamento" : "Registrar recebimento"}
         subtitle={pagando ? `${pagando.conta.descricao} · parcela ${pagando.parcela.numero}` : ""}
         size="sm"
@@ -381,16 +384,15 @@ const ListaContas = ({ tipo, contas, carregando = false, onRecarregar, onNova, e
             </p>
 
             <div className="flex justify-end gap-2 border-t border-fg/[0.07] pt-3.5">
-              <button type="button" onClick={() => setPagando(null)} disabled={salvando} className="focus-ring min-h-[38px] cursor-pointer rounded-lg px-3 text-[12.5px] text-mist hover:bg-fg/[0.05] hover:text-ink disabled:opacity-50">
+              <button type="button" onClick={() => setPagando(null)} className="focus-ring min-h-[38px] cursor-pointer rounded-lg px-3 text-[12.5px] text-mist hover:bg-fg/[0.05] hover:text-ink disabled:opacity-50">
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={() => void confirmarPagamento()}
-                disabled={salvando}
                 className="focus-ring inline-flex min-h-[38px] cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-br from-accent-soft to-accent px-4 text-[12.5px] text-white shadow-glow transition-all hover:brightness-110 disabled:opacity-50"
               >
-                {salvando ? <Loader2 size={14} className="animate-spin" /> : <Wallet size={14} />}
+                <Wallet size={14} />
                 Confirmar
               </button>
             </div>

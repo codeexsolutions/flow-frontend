@@ -131,7 +131,7 @@
 /* ══════════════════════════════════════════════════════════════════════
    PALETAS — cada tema troca só os neutros, o vidro e a aurora.
    O accent continua vindo de [data-accent], que é aplicado depois: são
-   duas dimensões independentes (6 paletas × 9 destaques).
+   duas dimensões independentes (12 paletas × 16 destaques).
    As paletas escuras herdam de `.dark` tudo que não sobrescrevem aqui.
    ══════════════════════════════════════════════════════════════════════ */
 
@@ -245,6 +245,134 @@
 
   /* Aurora bem contida: brilho forte sobre preto vira mancha. */
   --aurora-alpha: 0.1;
+}
+
+/* ---------- Oceano — azul-petróleo profundo ---------- */
+.dark[data-theme="oceano"] {
+  --canvas: 6 22 30;
+  --surface: 10 34 45;
+  --surface-raised: 15 46 60;
+
+  --ink: 225 245 248;
+  --mist: 140 182 192;
+  --faint: 98 140 152;
+  --muted: 66 104 116;
+
+  --glass-bg: 14 48 62;
+  --glass-alpha: 0.58;
+
+  --aurora-1: 0 170 190;
+  --aurora-2: 40 120 220;
+}
+
+/* ---------- Café — marrom quente ---------- */
+.dark[data-theme="cafe"] {
+  --canvas: 24 17 13;
+  --surface: 36 26 20;
+  --surface-raised: 48 35 27;
+
+  --ink: 245 236 226;
+  --mist: 190 168 148;
+  --faint: 146 124 106;
+  --muted: 108 90 76;
+
+  --glass-bg: 50 37 28;
+  --glass-alpha: 0.6;
+
+  --aurora-1: 196 130 70;
+  --aurora-2: 150 90 60;
+  --aurora-alpha: 0.13;
+}
+
+/* ---------- Neon — roxo elétrico, brilho magenta e ciano ---------- */
+.dark[data-theme="neon"] {
+  --canvas: 14 6 26;
+  --surface: 24 12 42;
+  --surface-raised: 34 18 58;
+
+  --ink: 250 240 255;
+  --mist: 196 160 230;
+  --faint: 150 116 186;
+  --muted: 110 80 144;
+
+  --glass-bg: 36 18 62;
+  --glass-alpha: 0.55;
+  --glass-border-alpha: 0.12;
+
+  /* A aurora é o tema: magenta de um lado, ciano do outro, mais fortes que
+     nas outras paletas. */
+  --aurora-1: 255 60 200;
+  --aurora-2: 0 220 255;
+  --aurora-alpha: 0.2;
+}
+
+/* ---------- Lavanda — claro e lilás ---------- */
+:root[data-theme="lavanda"] {
+  --canvas: 243 240 251;
+  --surface: 252 250 255;
+  --surface-raised: 247 244 253;
+
+  --ink: 40 30 66;
+  --mist: 100 88 134;
+  --faint: 140 128 172;
+  --muted: 176 166 204;
+  --fg: 40 30 66;
+
+  --glass-bg: 252 250 255;
+  --glass-alpha: 0.74;
+  --glass-border: 40 30 66;
+
+  --shadow-color: 70 50 120;
+
+  --aurora-1: 150 120 230;
+  --aurora-2: 200 150 230;
+  --aurora-alpha: 0.14;
+}
+
+/* ---------- Quartzo — claro e rosado ---------- */
+:root[data-theme="quartzo"] {
+  --canvas: 251 241 243;
+  --surface: 255 250 251;
+  --surface-raised: 253 245 247;
+
+  --ink: 64 28 40;
+  --mist: 128 84 98;
+  --faint: 168 124 138;
+  --muted: 204 166 178;
+  --fg: 64 28 40;
+
+  --glass-bg: 255 250 251;
+  --glass-alpha: 0.74;
+  --glass-border: 64 28 40;
+
+  --shadow-color: 120 50 70;
+
+  --aurora-1: 236 120 150;
+  --aurora-2: 250 170 140;
+  --aurora-alpha: 0.13;
+}
+
+/* ---------- Menta — claro e verde-água ---------- */
+:root[data-theme="menta"] {
+  --canvas: 238 248 244;
+  --surface: 250 255 253;
+  --surface-raised: 244 252 249;
+
+  --ink: 18 52 44;
+  --mist: 70 112 100;
+  --faint: 110 150 138;
+  --muted: 150 186 175;
+  --fg: 18 52 44;
+
+  --glass-bg: 250 255 253;
+  --glass-alpha: 0.74;
+  --glass-border: 18 52 44;
+
+  --shadow-color: 30 90 70;
+
+  --aurora-1: 60 200 160;
+  --aurora-2: 80 180 220;
+  --aurora-alpha: 0.13;
 }
 
 /* ---------- Accents ---------- */
@@ -369,6 +497,103 @@
   --accent-soft: 225 225 240;
   --accent-strong: 240 240 250;
   --aurora-1: 200 200 220;
+}
+
+/* Cinza: o neutro de verdade — ardósia azulada, e não o grafite do Preto. É
+   o destaque de quem quer o sistema sóbrio, sem cor puxando o olho. */
+:root[data-accent="cinza"] {
+  --accent: 92 102 120;
+  --accent-soft: 112 122 140;
+  --accent-strong: 72 80 96;
+  --aurora-1: 110 120 138;
+}
+.dark[data-accent="cinza"] {
+  --accent: 160 170 188;
+  --accent-soft: 190 198 214;
+  --accent-strong: 220 226 238;
+  --aurora-1: 160 170 188;
+}
+
+/* ── Seis destaques a mais ──
+   Cada um com a versão do claro (mais fechada, para servir de texto sobre
+   branco) e a do escuro (mais aberta, para brilhar sobre fundo escuro). */
+
+:root[data-accent="coral"] {
+  --accent: 220 84 62;
+  --accent-soft: 238 108 86;
+  --accent-strong: 190 64 46;
+  --aurora-1: 230 96 74;
+}
+.dark[data-accent="coral"] {
+  --accent: 255 128 106;
+  --accent-soft: 255 165 148;
+  --accent-strong: 255 205 195;
+  --aurora-1: 255 128 106;
+}
+
+:root[data-accent="lima"] {
+  --accent: 96 146 18;
+  --accent-soft: 114 166 28;
+  --accent-strong: 78 124 12;
+  --aurora-1: 110 160 26;
+}
+.dark[data-accent="lima"] {
+  --accent: 170 220 60;
+  --accent-soft: 200 236 120;
+  --accent-strong: 225 248 175;
+  --aurora-1: 170 220 60;
+}
+
+:root[data-accent="indigo"] {
+  --accent: 70 70 200;
+  --accent-soft: 92 92 222;
+  --accent-strong: 52 52 170;
+  --aurora-1: 80 80 210;
+}
+.dark[data-accent="indigo"] {
+  --accent: 120 125 255;
+  --accent-soft: 160 165 255;
+  --accent-strong: 200 205 255;
+  --aurora-1: 120 125 255;
+}
+
+:root[data-accent="magenta"] {
+  --accent: 184 36 184;
+  --accent-soft: 206 58 206;
+  --accent-strong: 154 26 154;
+  --aurora-1: 196 46 196;
+}
+.dark[data-accent="magenta"] {
+  --accent: 235 90 235;
+  --accent-soft: 245 140 245;
+  --accent-strong: 252 190 252;
+  --aurora-1: 235 90 235;
+}
+
+:root[data-accent="cobre"] {
+  --accent: 172 90 48;
+  --accent-soft: 194 108 62;
+  --accent-strong: 146 72 36;
+  --aurora-1: 184 100 56;
+}
+.dark[data-accent="cobre"] {
+  --accent: 225 140 95;
+  --accent-soft: 238 170 130;
+  --accent-strong: 248 205 180;
+  --aurora-1: 225 140 95;
+}
+
+:root[data-accent="lavanda"] {
+  --accent: 124 96 204;
+  --accent-soft: 146 118 222;
+  --accent-strong: 102 76 178;
+  --aurora-1: 134 106 214;
+}
+.dark[data-accent="lavanda"] {
+  --accent: 185 165 255;
+  --accent-soft: 210 195 255;
+  --accent-strong: 230 222 255;
+  --aurora-1: 185 165 255;
 }
 
 /* ══════════════════════════════════════════════════════════════════════

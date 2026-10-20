@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Dica from "@/shared/ui/Dica";
 import HeaderInterprise from "@/shared/ui/HeaderInterprise";
 
 import { formatDate } from "@/shared/utils/date";
@@ -7,11 +8,11 @@ import { formatCurrency } from "@/shared/utils/currency";
 import ProductType from "@/shared/domain/produto";
 import type { Indisponibilidade, Variacao } from "@/shared/domain/estoque";
 import { extrairFaltas } from "@/shared/domain/estoque";
-import type { PedidoClienteType, ItemPedidoType, NovoPedidoDto, PedidoUpdateDto } from "@/shared/domain/pedido";
+import type { PedidoClienteType, ItemPedidoType } from "@/shared/domain/pedido";
+import { statusPeloPagamento } from "@/shared/domain/pedido";
 
 import NoteService from "@/features/vendas/services/note.service";
 import ProductService from "@/features/estoque/services/product.service";
-import FinanceiroService from "@/features/financeiro/services/financeiro.service";
 
 import MoneyInput from "@/shared/ui/inputs/MoneyInput";
 import { Modal } from "@/shared/ui/Modal";
@@ -45,10 +46,14 @@ import PrazoNota from "@/features/vendas/components/PrazoNota";
 import PainelPagamento from "@/features/vendas/components/PainelPagamento";
 import PagamentoForm from "@/shared/ui/PagamentoForm";
 import RecebimentosNota from "@/features/financeiro/components/RecebimentosNota";
+import type { RecebimentoNota } from "@/features/financeiro/services/financeiro.service";
 import ContaService, { type AcordoVenda } from "@/features/financeiro/services/conta.service";
 import NotaResumo from "@/features/vendas/components/NotaResumo";
 import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
 import BotaoCupomFiscal from "@/features/fiscal/components/BotaoCupomFiscal";
+import { aguardar, enfileirar, novoId } from "@/shared/fila/filaEnvio";
+import { catalogoGuardado, guardarCatalogo, registrarUso } from "@/features/vendas/services/catalogoLocal";
+import type { AlteracaoNaFila, LinhaNaFila, NotaNaFila, PagamentoNaFila } from "@/features/vendas/services/filaVendas";
 
 const gerarUID = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -235,6 +240,24 @@ const emDias = (dias: number): string => {
 /** Valor gravado → texto do campo "Cobrar" ("2000,00"); vazio quando não há. */
 const paraCampoCobranca = (v: number | null | undefined) => (v && v > 0 ? v.toFixed(2).replace(".", ",") : "");
 
+/**
+ * Uma ação da barra de cima da nota: o ícone e, no celular, o nome embaixo.
+ *
+ * No computador o nome está na dica de cada botão (pairar); no celular não há
+ * pairar, então ele vai escrito — curto, em letra pequena, para a fileira de
+ * ícones continuar sendo uma fileira.
+ */
+/** Os itens como o servidor os grava — o que a trava do pagamento compara. */
+const assinaturaDosItens = (lista: ItemPedidoType[]) =>
+  JSON.stringify(lista.map((l) => [String(l.produto.produtoId ?? ""), l.variacaoId ?? null, Number(l.quantidadeItem) || 0, Number(l.valorVendaItem) || 0]));
+
+const AcaoDaNota = ({ rotulo, children }: { rotulo: string; children: ReactNode }) => (
+  <div className="flex flex-col items-center gap-1">
+    {children}
+    <span className="text-[10px] leading-none text-faint sm:hidden">{rotulo}</span>
+  </div>
+);
+
 const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = false, itensIniciais, orcamentoId, contatoInicial, validadeInicial, converterOrcamentoId, conversaId, orcamentoBase }: InvoiceProps) => {
   const alert = useAlert();
   const notaRef = useRef<HTMLDivElement>(null);
@@ -329,15 +352,51 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
    * continuar de onde a venda parou, em vez de pedir para digitar de novo.
    */
   const [novoProduto, setNovoProduto] = useState<string | null>(null);
-  const [salvandoProduto, setSalvandoProduto] = useState(false);
 
   /* ─── Loading states ─── */
-  const [loadingProdutos, setLoadingProdutos] = useState(true);
+  /* Só "carrega" na primeira vez da vida do aparelho: daí em diante a nota
+     abre com o catálogo guardado — ver `catalogoLocal`. */
+  const [loadingProdutos, setLoadingProdutos] = useState(() => catalogoGuardado().length === 0);
   const [loadingPedido, setLoadingPedido] = useState(!!idInicial);
-  const [savingNote, setSavingNote] = useState(false);
+
+  /*
+   * A nota nova é OTIMISTA: aparece criada no instante do clique.
+   *
+   * Era "Salvando..." com o botão girando até o servidor responder — e só
+   * então o painel de pagamento abria. A venda quase nunca é recusada, então
+   * a espera era por uma confirmação que já se sabia qual seria. Agora a tela
+   * vai direto para "receber" e a gravação corre por baixo; `idPendente` é a
+   * promessa do id verdadeiro, que o pagamento espera se for lançado antes.
+   * Se o servidor recusar (falta de estoque, por exemplo), a tela volta ao
+   * rascunho e diz o motivo.
+   */
+  const [criandoNota, setCriandoNota] = useState(false);
+  /* A nota nova que ainda está subindo: o id (gerado aqui) e a tarefa da fila
+     que a leva — o pagamento lançado antes de ela chegar entra DEPOIS dela. */
+  const notaNova = useRef<{ id: string; tarefa: string } | null>(null);
+  /* A nota nova foi recusada: o pagamento que dependia dela some calado — o
+     aviso da recusa já disse o que aconteceu. */
+  const notaRecusada = useRef(false);
+
+  /* Recebimentos lançados aqui que o servidor ainda não devolveu: aparecem na
+     lista no clique, sem recarregar nada. Ver `RecebimentosNota.locais`. */
+  const [recebimentosLocais, setRecebimentosLocais] = useState<RecebimentoNota[]>([]);
+
+  /*
+   * A TRAVA do pagamento: os itens que o servidor tem, numa assinatura.
+   *
+   * Sem ela, dava para mexer nos itens (somar um produto), receber e fechar
+   * sem salvar — e o pagamento era gravado contra uma nota que o servidor
+   * não conhece: o cliente pagava por um item que nunca entrou. Enquanto os
+   * itens da tela forem diferentes dos gravados, receber fica travado até
+   * salvar. `null` = ainda não há o que comparar (nota nova, ou carregando).
+   */
+  const [itensGravados, setItensGravados] = useState<string | null>(null);
+  /* Trava de clique duplo sem trocar o botão por um "Salvando...". */
+  const salvandoAgora = useRef(false);
 
   /* ─── Dados ─── */
-  const [products, setProducts] = useState<ProductType[]>([]);
+  const [products, setProducts] = useState<ProductType[]>(() => catalogoGuardado());
   const [pedido, setPedido] = useState<PedidoClienteType | null>(null);
 
   /* Nota nova pode nascer com itens (veio de um orçamento). Nota existente
@@ -352,7 +411,6 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   const dataEmissao = formatDate(pedido?.pedido?.dataPedido ?? new Date());
 
   const [valorPagoAnterior, setValorPagoAnterior] = useState(0);
-  const [confirmandoPagamento, setConfirmandoPagamento] = useState(false);
 
   /* ─── Venda a prazo ───
      O acordo é a conta a receber que nasceu desta nota: as parcelas e seus
@@ -402,8 +460,10 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   const [pixCopiado, setPixCopiado] = useState(false);
   const [modalCancelar, setModalCancelar] = useState(false);
   const [modalApagar, setModalApagar] = useState(false);
-  const [apagando, setApagando] = useState(false);
-  const [cancelando, setCancelando] = useState(false);
+  /* A proposta aberta: a que veio por `orcamentoId` ou a que acabou de ser
+     gerada aqui — salvar de novo reescreve esta, sem fechar a tela. */
+  const [orcamentoAtual, setOrcamentoAtual] = useState<string | undefined>(orcamentoId);
+  const salvandoOrcamento = useRef(false);
 
   /* ─── PIX ───
      A configuração é da EMPRESA e vem do servidor. A nota só lê: quem
@@ -418,10 +478,20 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   }, []);
 
   /* ─── Carrega produtos ─── */
+  /* A lista do servidor chega POR BAIXO: a busca já funciona com a guardada,
+     e a nova só a substitui (e atualiza o que fica guardado). Falhar aqui só
+     avisa se não havia nada guardado — senão a nota segue com o que tem. */
   useEffect(() => {
     ProductService.getAll()
-      .then(({ data }) => setProducts(data.data ?? []))
-      .catch((err) => alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível carregar os produtos.")))
+      .then(({ data }) => {
+        const lista: ProductType[] = data.data ?? [];
+
+        setProducts(lista);
+        guardarCatalogo(lista);
+      })
+      .catch((err) => {
+        if (catalogoGuardado().length === 0) alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível carregar os produtos."));
+      })
       .finally(() => setLoadingProdutos(false));
   }, []);
 
@@ -443,7 +513,10 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
         cobrancaGravada.current = pedidoData.pedido.valorQr ?? null;
 
         const itensOriginais = pedidoData.pedido.itensPedido ?? [];
-        setItens(itensOriginais.map((item: ItemPedidoType) => ({ ...item })));
+        const carregados = itensOriginais.map((item: ItemPedidoType) => ({ ...item }));
+
+        setItens(carregados);
+        setItensGravados(assinaturaDosItens(carregados));
       })
       .catch((err) => alert.error(getErrorTitle(err), extractErrorMessage(err, "Erro ao carregar o pedido.")))
       .finally(() => setLoadingPedido(false));
@@ -508,7 +581,13 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
     /* O preço da variação manda quando ela tem um; senão herda o do produto.
        Ver a nota do campo em `shared/domain/estoque.ts` sobre por que zero não
        serve como "herda". */
-    const preco = variacao?.valorVendaEfetivo ?? variacao?.valorVenda ?? produtoHandle.valorVenda;
+    /* `Number()` não é enfeite: o Postgres devolve numérico como TEXTO
+       ("219.00"), e a linha nascia com a string — o campo de valor só aplica a
+       máscara de real a número, então o primeiro item aparecia cru. */
+    const preco = Number(variacao?.valorVendaEfetivo ?? variacao?.valorVenda ?? produtoHandle.valorVenda) || 0;
+
+    /* O que sai no balcão sobe na busca e fica guardado no aparelho. */
+    registrarUso(String(produtoHandle.id));
 
     setItens((prev) => {
       // Mesma linha já está na nota → soma a quantidade em vez de criar uma
@@ -596,7 +675,23 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
    * sozinho: é para isso que se cadastrou agora, e não depois.
    */
   const handleNovoProduto = async (dados: ProductFormData) => {
-    setSalvandoProduto(true);
+    /*
+     * Otimista: a linha entra na nota já, com o nome e o preço digitados, e o
+     * cadastro corre por baixo. Enquanto ele não volta, a linha é um avulso —
+     * se a nota for salva nesse meio-tempo, `materializarAvulsos` a liga ao
+     * produto pelo nome. Quando o cadastro volta, a linha passa a apontar
+     * para ele.
+     */
+    const uid = gerarUID();
+    const preco = Number(dados.valorVenda) || 0;
+    const nomeItem = dados.nome.trim();
+
+    setNovoProduto(null);
+    setItens((prev) => [
+      ...prev,
+      { itemPedidoId: uid, quantidadeItem: 1, valorVendaItem: preco, variacaoId: null, produto: { nomeProduto: nomeItem, produtoId: "", valorProduto: preco } },
+    ]);
+    alert.success("Produto cadastrado!", "Ele já entrou na nota.");
 
     try {
       await ProductService.create(dados);
@@ -607,17 +702,14 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
       const lista: ProductType[] = data.data ?? [];
 
       setProducts(lista);
-      setNovoProduto(null);
 
-      const criado = lista.find((p) => p.nome?.trim().toLowerCase() === dados.nome.trim().toLowerCase());
+      const criado = lista.find((p) => p.nome?.trim().toLowerCase() === nomeItem.toLowerCase());
 
-      if (criado) adicionarProduto(criado, undefined, false);
-
-      alert.success("Produto cadastrado!", criado ? "Ele já entrou na nota." : "Ele já pode ser lançado na busca.");
+      if (criado) setItens((prev) => prev.map((l) => (l.itemPedidoId === uid && ehAvulso(l) ? { ...l, produto: { ...l.produto, produtoId: criado.id } } : l)));
     } catch (err) {
+      setItens((prev) => prev.filter((l) => l.itemPedidoId !== uid));
+      setNovoProduto(nomeItem);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível cadastrar o produto."));
-    } finally {
-      setSalvandoProduto(false);
     }
   };
 
@@ -827,7 +919,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
    */
   const propostaDoDocumento = useMemo<Orcamento>(
     () => ({
-      id: orcamentoId ?? orcamentoBase?.id ?? "",
+      id: orcamentoAtual ?? orcamentoBase?.id ?? "",
       /* Número e emissão são do servidor — a tela não os inventa. */
       codigo: orcamentoBase?.codigo ?? 0,
       criadoEm: orcamentoBase?.criadoEm ?? new Date().toISOString(),
@@ -850,7 +942,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
         valorProduto: Number(l.produto?.valorProduto ?? 0) || null,
       })),
     }),
-    [orcamentoId, orcamentoBase, nome, clienteId, contatoOrcamento, validadeOrcamento, total, itens],
+    [orcamentoAtual, orcamentoBase, nome, clienteId, contatoOrcamento, validadeOrcamento, total, itens],
   );
 
 
@@ -891,15 +983,6 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   };
 
   /* ─── Nota CRUD ─── */
-  const montarItens = (lista: ItemPedidoType[] = itens) =>
-    lista.map((item) => ({
-      produtoId: item.produto.produtoId,
-      quantidade: item.quantidadeItem,
-      valorVenda: item.valorVendaItem,
-      /* Qual peça saiu. Sem isto o servidor baixaria o estoque do produto
-         inteiro e a nota reimpressa não diria se o cliente levou a P ou a G. */
-      variacaoId: item.variacaoId ?? null,
-    }));
 
   const handleGerarOrcamento = async () => {
     const nomeCliente = (nome ?? "").trim();
@@ -914,7 +997,19 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
       return;
     }
 
-    setSavingNote(true);
+    /*
+     * Otimista e SEM FECHAR: passou nas regras, o aviso sai e a proposta
+     * continua aberta — a gravação corre por baixo. A lista se atualiza quando
+     * a proposta for fechada.
+     */
+    if (salvandoOrcamento.current) return;
+
+    salvandoOrcamento.current = true;
+
+    alert.success(
+      orcamentoAtual ? "Orçamento atualizado!" : "Orçamento gerado!",
+      orcamentoAtual ? "A proposta foi reescrita e continua aguardando resposta." : "Ele está na aba Orçamentos, aguardando a resposta do cliente.",
+    );
 
     try {
       const proposta = {
@@ -933,99 +1028,22 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
       /* Editando: salva por cima. Sem isso, corrigir a quantidade de um item
          deixaria duas propostas quase idênticas na lista, e o cliente com
          duas versões do mesmo orçamento. */
-      if (orcamentoId) {
-        await OrcamentoService.atualizar(orcamentoId, proposta);
-        alert.success("Orçamento atualizado!", "A proposta foi reescrita e continua aguardando resposta.");
-      } else {
-        await OrcamentoService.criar(proposta);
-        alert.success("Orçamento gerado!", "Ele está na aba Orçamentos, aguardando a resposta do cliente.");
+      if (orcamentoAtual) await OrcamentoService.atualizar(orcamentoAtual, proposta);
+      else {
+        /* A proposta nova ganha id: o próximo "Salvar" reescreve ESTA, em vez
+           de criar uma segunda igual. */
+        const novo = await OrcamentoService.criar(proposta);
+        if (novo) setOrcamentoAtual(novo);
       }
-
-      onSaved?.();
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível gerar o orçamento."));
     } finally {
-      setSavingNote(false);
+      salvandoOrcamento.current = false;
     }
   };
 
-  /**
-   * Dá existência aos itens avulsos, no instante em que a venda vai nascer.
-   *
-   * Nota de venda aponta para produto: é dele que sai a baixa de estoque, é
-   * nele que o relatório soma o que foi vendido, e o servidor não aceita um
-   * item sem esse vínculo. O orçamento pode viver com uma linha de texto —
-   * a venda não pode.
-   *
-   * Então o produto é criado AQUI, e não lá atrás: proposta recusada não
-   * deixa nada no catálogo, e só o que foi de fato vendido vira cadastro.
-   *
-   * Nasce como SERVIÇO, e sem controle de estoque.
-   *
-   * O tipo não é detalhe de cadastro: um "banner 2x1" criado neste segundo
-   * teria saldo zero, e a própria venda que o criou seria recusada por falta de
-   * estoque — o item existiria só para bloquear a si mesmo. `SERVICO` não tem o
-   * que estocar (ver `Produto.Tipo`), o que resolve isso e diz a verdade sobre
-   * a linha: quem digita "conserto da placa" ou "arte + 200 cartões" está
-   * vendendo trabalho, não tirando peça da prateleira.
-   *
-   * E é esse tipo que faz a venda virar produção: o quadro recebe a nota que
-   * tem serviço, e não a que só entrega estoque pronto. Ver
-   * `ProducaoAutomaticaService` na API.
-   *
-   * Antes de criar, procura pelo nome: orçar "banner 2x1" para dez clientes
-   * não pode render dez produtos iguais no estoque.
-   */
-  const materializarAvulsos = async (lista: ItemPedidoType[]): Promise<ItemPedidoType[]> => {
-    const avulsos = lista.filter(ehAvulso);
-
-    if (avulsos.length === 0) return lista;
-
-    let catalogo = products;
-
-    const acharPorNome = (nomeItem: string) =>
-      catalogo.find((p) => p.nome?.trim().toLowerCase() === nomeItem.trim().toLowerCase());
-
-    /* Nomes distintos, para não criar dois produtos quando a mesma linha
-       aparece duas vezes na nota. */
-    const pendentes = [...new Set(avulsos.map((l) => l.produto.nomeProduto.trim()))].filter((n) => n && !acharPorNome(n));
-
-    for (const nomeItem of pendentes) {
-      const preco = avulsos.find((l) => l.produto.nomeProduto.trim() === nomeItem)?.valorVendaItem ?? 0;
-
-      await ProductService.create({
-        nome: nomeItem,
-        tipo: "SERVICO",
-        valorCompra: 0,
-        valorVenda: preco,
-        quantidade: 0,
-        /* Sem contagem, a venda que acabou de criar o item não esbarra no
-           saldo zero dele. Explícito e não herdado do tipo: é a garantia que
-           não depende de o cadastro decidir o que fazer com serviço. */
-        controlaEstoque: false,
-        permiteVendaSemEstoque: false,
-        estoqueMinimo: null,
-        observacoes: "Criado a partir de um item avulso lançado na nota.",
-      });
-    }
-
-    if (pendentes.length > 0) {
-      /* Relê o catálogo uma vez só, depois de criar todos: é dele que saem os
-         ids, e uma leitura por item seria N requisições para a mesma lista. */
-      const { data } = await ProductService.getAll();
-
-      catalogo = (data.data ?? []) as ProductType[];
-      setProducts(catalogo);
-    }
-
-    return lista.map((l) => {
-      if (!ehAvulso(l)) return l;
-
-      const achado = acharPorNome(l.produto.nomeProduto);
-
-      return achado ? { ...l, produto: { ...l.produto, produtoId: achado.id } } : l;
-    });
-  };
+  /* Os itens avulsos viram produto na FILA, antes da nota — ver
+     `materializar`, em `filaVendas`. */
 
   /**
    * Manda a nota para o cliente, pela conversa.
@@ -1097,91 +1115,15 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
        configurar (é do usuário master). Ele ficava preso sem saída. Sem chave,
        a nota simplesmente sai sem QR. */
 
+    if (salvandoAgora.current) return;
+
     /* Marcação da tentativa anterior sai antes desta: mantida, ela apontaria
        para um problema que a pessoa acabou de corrigir. */
     setFaltas([]);
 
-    setSavingNote(true);
-    try {
-      /*
-       * Os itens avulsos viram produto ANTES de qualquer coisa ir para o
-       * servidor: dali em diante a nota é uma nota comum, e nenhuma das duas
-       * ramificações abaixo precisa saber que essa distinção existiu.
-       */
-      const itensDaNota = await materializarAvulsos(itens);
-
-      /* A tela passa a mostrar as linhas já vinculadas — sem isto, o selo de
-         "item avulso" continuaria numa linha que não é mais avulsa, e um
-         segundo salvamento tentaria criar o produto de novo. */
-      if (itensDaNota !== itens) setItens(itensDaNota);
-
-      const semVinculo = itensDaNota.find(ehAvulso);
-
-      if (semVinculo) {
-        alert.error("Não foi possível preparar a nota", `O item “${semVinculo.produto.nomeProduto}” não pôde virar produto. Cadastre-o em Estoque e tente de novo.`);
-        return;
-      }
-
-      if (id) {
-        // UPDATE — usa PedidoUpdateDto. Atenção: esse endpoint lê `produtosPedido`,
-        // não `itensPedido`.
-        const payload: PedidoUpdateDto = { clienteId, produtosPedido: montarItens(itensDaNota), imagensServico, mostrarQr, valorQr: cobrancaDefinida };
-        await NoteService.update(payload, id);
-        cobrancaGravada.current = cobrancaDefinida;
-
-        // Não há pagamento pendente a gravar junto: registrar já grava direto
-        // no servidor, então salvar a nota cuida só dos itens.
-        alert.success("Nota alterada!", "As alterações foram salvas com sucesso.");
-      } else {
-        // CREATE — usa NovoPedidoDto. A nota criada NÃO fecha a tela: quem
-        // paga "depois de salvar" precisa da nota aberta para registrar o
-        // pagamento na sequência. O id novo mantém a nota em modo edição.
-        const payload: NovoPedidoDto = { clienteId, itensPedido: montarItens(itensDaNota), imagensServico, mostrarQr, valorQr: cobrancaDefinida };
-        const criada = await NoteService.create(payload);
-        /* Gravado junto da nota: daqui em diante o campo salva sozinho. */
-        cobrancaGravada.current = cobrancaDefinida;
-
-        const novoId = criada?.data?.data?.[0] as string | undefined;
-
-        if (novoId) setPedidoId(novoId);
-        setFocarPagamento(true);
-        alert.success("Nota criada!", "A venda foi registrada. Agora registre o pagamento.");
-
-        /* Nasceu dentro de uma conversa: o documento tem para onde ir agora
-           mesmo — ver `enviarNotaWhatsapp`. */
-        if (conversaId) setPerguntarEnvio(true);
-
-        /*
-         * A proposta some agora que a venda existe.
-         *
-         * Depois do `novoId`, e não antes: a ordem é o que garante que nunca
-         * se apague um orçamento sem a venda no lugar dele. Se a exclusão
-         * falhar, o orçamento continua na lista — visível, e resolvível pelo
-         * botão de apagar. É a falha certa das duas possíveis.
-         */
-        if (novoId && converterOrcamentoId) {
-          try {
-            await OrcamentoService.excluir(converterOrcamentoId);
-          } catch {
-            /* A venda é o que importa e já está gravada. */
-          }
-        }
-      }
-
-      // Pagamentos acumulados seguem gravados (update) ou prontos (create).
-      // Só fecha a tela quando o usuário decide fechar — não ao salvar.
-      if (id) onSaved?.();
-    } catch (err) {
-      /*
-       * Falta de estoque não é "erro ao salvar".
-       *
-       * O servidor recusa com 409 e manda a lista item a item. Tratada como
-       * erro genérico, a pessoa lê "Erro ao salvar a nota. Tente novamente." —
-       * e tentar de novo dá exatamente o mesmo resultado, porque o problema
-       * não é a nota, é o estoque. Aqui a mensagem nomeia cada item, diz
-       * quanto foi pedido e quanto existe, e as linhas ficam marcadas na
-       * tabela para não ser preciso conferir uma a uma.
-       */
+    /* A recusa do servidor, dita do jeito certo — falta de estoque nomeia cada
+       item e marca as linhas; o resto vira a mensagem do servidor. */
+    const avisarRecusa = (err: unknown) => {
       const faltas = extrairFaltas(err);
 
       if (faltas.length > 0) {
@@ -1202,8 +1144,92 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
       }
 
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Erro ao salvar a nota. Tente novamente."));
+    };
+
+    /*
+     * A nota vai pela FILA DE ENVIO — ver `shared/fila/filaEnvio`.
+     *
+     * A tela confirma no clique; a fila leva a nota ao servidor e, se a
+     * internet cair, guarda no aparelho e reenvia sozinha quando voltar. Os
+     * itens avulsos viram produto lá dentro, antes da nota (`filaVendas`).
+     */
+    const linhas: LinhaNaFila[] = itens.map((l) => ({
+      produtoId: String(l.produto.produtoId ?? "").trim(),
+      nomeProduto: l.produto.nomeProduto,
+      quantidade: l.quantidadeItem,
+      valorVenda: l.valorVendaItem,
+      variacaoId: l.variacaoId ?? null,
+    }));
+    const quem = pedido?.nomeCliente || nome || "cliente";
+
+    if (id) {
+      /* Alteração: confirma e fecha já; a fila grava. */
+      const alteracao: AlteracaoNaFila = { pedidoId: id, clienteId, itens: linhas, imagensServico, mostrarQr, valorQr: cobrancaDefinida };
+      const tarefa = enfileirar("nota.alterar", alteracao, `A alteração da nota de ${quem}`);
+      const gravadosAntes = itensGravados;
+
+      /* Salvo, destrava o pagamento — já, como o resto da tela. */
+      setItensGravados(assinaturaDosItens(itens));
+
+      /* Não fecha: quem salvou continua na nota — receber, imprimir,
+         mexer de novo. A lista se atualiza quando a nota for fechada. */
+      alert.success("Nota alterada!", "As alterações foram salvas com sucesso.");
+      cobrancaGravada.current = cobrancaDefinida;
+
+      try {
+        await aguardar(tarefa);
+      } catch (err) {
+        setItensGravados(gravadosAntes);
+        avisarRecusa(err);
+      }
+
+      return;
+    }
+
+    /*
+     * Criação: a nota aparece pronta e o pagamento abre JÁ. A nota criada não
+     * fecha a tela — quem paga "depois de salvar" precisa dela aberta.
+     */
+    salvandoAgora.current = true;
+    notaRecusada.current = false;
+
+    const nota: NotaNaFila = {
+      id: novoId(),
+      clienteId,
+      itens: linhas,
+      imagensServico,
+      mostrarQr,
+      valorQr: cobrancaDefinida,
+      converterOrcamentoId: converterOrcamentoId ?? null,
+    };
+    const tarefa = enfileirar("nota.criar", nota, `A venda de ${quem}`);
+
+    notaNova.current = { id: nota.id, tarefa };
+    setItensGravados(assinaturaDosItens(itens));
+    setCriandoNota(true);
+    setFocarPagamento(true);
+    alert.success("Nota criada!", "A venda foi registrada. Agora registre o pagamento.");
+
+    try {
+      await aguardar(tarefa);
+
+      /* Gravado junto da nota: daqui em diante o campo salva sozinho. */
+      cobrancaGravada.current = cobrancaDefinida;
+      setPedidoId(nota.id);
+
+      /* Nasceu dentro de uma conversa: o documento tem para onde ir — e só
+         agora, gravado, ele é o documento de verdade. */
+      if (conversaId) setPerguntarEnvio(true);
+    } catch (err) {
+      /* Recusada: a tela volta a ser o rascunho, com o motivo à vista. */
+      notaRecusada.current = true;
+      setValorPagoAnterior(0);
+      setFocarPagamento(false);
+      avisarRecusa(err);
     } finally {
-      setSavingNote(false);
+      notaNova.current = null;
+      setCriandoNota(false);
+      salvandoAgora.current = false;
     }
   };
 
@@ -1228,39 +1254,33 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
   const handleApagar = async () => {
     if (!id) return;
 
-    setApagando(true);
+    /* Confirmado no modal, está feito: o aviso sai e a nota fecha já — ela
+       não existe mais —, e a exclusão corre por baixo. Recusada, o aviso diz
+       por quê e a nota continua na lista. */
+    setModalApagar(false);
+    alert.success("Nota apagada", "Ela saiu do histórico para sempre.");
+    onSaved?.();
 
     try {
       await NoteService.excluir(id);
-
-      setModalApagar(false);
-      alert.success("Nota apagada", "Ela saiu do histórico para sempre.");
-
-      /* `onSaved` é o mesmo caminho do cancelar: fecha o modal e recarrega a
-         lista. A nota não existe mais — deixar a tela aberta nela mostraria
-         um documento que o servidor já não conhece. */
-      onSaved?.();
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível apagar a nota."));
-    } finally {
-      setApagando(false);
     }
   };
 
   const handleCancelar = async () => {
     if (!id) return;
 
-    setCancelando(true);
+    /* Mesmo caminho: confirma no modal, o aviso sai e a nota fecha — ela sai
+       das notas ativas; o cancelamento corre por baixo. */
+    setModalCancelar(false);
+    alert.success("Nota cancelada!", "Ela sai das notas ativas, mas continua no histórico.");
+    onSaved?.();
 
     try {
       await NoteService.cancelar(id);
-      setModalCancelar(false);
-      alert.success("Nota cancelada!", "Ela sai das notas ativas, mas continua no histórico.");
-      onSaved?.();
     } catch (err) {
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível cancelar a nota."));
-    } finally {
-      setCancelando(false);
     }
   };
 
@@ -1285,38 +1305,88 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
     const tipoFinal = formaRecebida ?? tipoPagamento;
 
     if (!tipoFinal || valorFinal <= 0) return;
-    if (!id) {
+
+    if (itensPendentes) {
+      alert.warning("Salve a nota primeiro", "Os itens mudaram e ainda não foram salvos. Salve a nota para o pagamento valer sobre ela.");
+      return;
+    }
+
+    const pedidoAlvo = id ?? notaNova.current?.id;
+
+    if (!pedidoAlvo) {
       alert.warning("Salve a nota primeiro", "A nota precisa ser salva antes de registrar pagamentos.");
       return;
     }
 
-    setConfirmandoPagamento(true);
+    /*
+     * Otimista e pela FILA: o valor entra na tela agora — o "falta receber" e
+     * a barra já andam — e o recebimento sobe pela fila de envio, depois da
+     * nota se ela ainda estiver subindo. Sem internet, ele espera junto dela.
+     * O id do recebimento nasce aqui: reenviar não lança duas vezes.
+     */
+    setValorPagoAnterior((v) => v + valorFinal);
+    setTipoPagamento("");
+    setValorPagamento(0);
+    /* O destaque "nota salva — registre o pagamento" já cumpriu o papel. */
+    setFocarPagamento(false);
+    alert.success("Pagamento registrado!", "O valor foi somado ao pagamento da nota.");
+
+    const recebimento: PagamentoNaFila = { id: novoId(), pedidoId: pedidoAlvo, valor: valorFinal, formaPagamento: tipoFinal };
+
+    /* A linha entra na lista já — o mesmo id que vai ao servidor, então a
+       linha verdadeira toma o lugar desta sem piscar. Até lá, não se edita
+       nem se apaga o que ainda não existe lá. */
+    setRecebimentosLocais((ls) => [
+      ...ls,
+      {
+        id: recebimento.id,
+        valor: valorFinal,
+        formaPagamento: tipoFinal,
+        pagoEm: new Date().toISOString(),
+        observacao: null,
+        origem: "AVULSO",
+        parcelaNumero: null,
+        usuarioNome: null,
+        editavel: false,
+      },
+    ]);
+    const tarefa = enfileirar(
+      "nota.pagar",
+      recebimento,
+      `O pagamento de ${formatCurrency(valorFinal)} da nota de ${pedido?.nomeCliente || nome || "cliente"}`,
+      id ? undefined : notaNova.current?.tarefa,
+    );
 
     try {
-      await FinanceiroService.registrarPagamentoNota(id, valorFinal, tipoFinal);
+      await aguardar(tarefa);
 
-      const pedidoAtualizado = await NoteService.getById(id);
+      /* Gravado: a linha passa a ser editável como as outras. */
+      setRecebimentosLocais((ls) => ls.map((l) => (l.id === recebimento.id ? { ...l, editavel: true } : l)));
 
-      if (pedidoAtualizado) {
-        setPedido(pedidoAtualizado);
-        setValorPagoAnterior(Number(pedidoAtualizado.pedido.valorPago ?? 0));
+      /*
+       * Só o STATUS vem do servidor, por baixo — "pago", "parcial". Nada
+       * recarrega: o total já está certo na tela desde o clique, e trocar a
+       * nota inteira pela do servidor redesenharia tudo à toa.
+       */
+      const atualizado = await NoteService.getById(pedidoAlvo).catch(() => null);
+
+      if (atualizado) {
+        setPedido((p) => (p ? { ...p, pedido: { ...p.pedido, pedidoStatus: atualizado.pedido.pedidoStatus, valorPago: atualizado.pedido.valorPago } } : atualizado));
       }
-
-      setTipoPagamento("");
-      setValorPagamento(0);
-      /* O destaque "nota salva — registre o pagamento" já cumpriu o papel. */
-      setFocarPagamento(false);
-
-      alert.success("Pagamento registrado!", "O valor foi somado ao pagamento da nota.");
-
     } catch (err) {
-      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível registrar o pagamento."));
-    } finally {
-      setConfirmandoPagamento(false);
+      setRecebimentosLocais((ls) => ls.filter((l) => l.id !== recebimento.id));
+      setValorPagoAnterior((v) => Math.max(0, v - valorFinal));
+
+      /* Recusado porque a nota foi recusada: o aviso dela já basta. */
+      if (!notaRecusada.current) alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível registrar o pagamento."));
     }
   };
 
-  const statusPedido = pedido?.pedido?.pedidoStatus;
+  /* Pela regra do servidor, mas com o pagamento da TELA: muda no clique. */
+  /* Itens da tela diferentes dos gravados: o pagamento espera o "Salvar". */
+  const itensPendentes = itensGravados !== null && assinaturaDosItens(itens) !== itensGravados;
+
+  const statusPedido = statusPeloPagamento(pedido?.pedido?.pedidoStatus, total, totalPago);
 
   /*
    * O que trava o botão muda conforme o documento.
@@ -1366,7 +1436,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                vale na montagem. */
             key={novoProduto}
             defaultValues={novoProduto ? { nome: novoProduto } : undefined}
-            submitText={salvandoProduto ? "Salvando..." : "Cadastrar produto"}
+            submitText="Cadastrar produto"
             onCancel={() => setNovoProduto(null)}
             onSubmit={handleNovoProduto}
           />
@@ -1396,11 +1466,9 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
               Voltar
             </button>
             <button
-              disabled={apagando}
               onClick={handleApagar}
               className="flex h-10 items-center gap-2 rounded-xl bg-danger px-4 text-sm text-white transition-colors hover:brightness-110 disabled:opacity-50"
             >
-              {apagando && <Loader2 size={14} className="animate-spin" />}
               Apagar para sempre
             </button>
           </div>
@@ -1417,10 +1485,8 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
           </button>
           <button
             onClick={handleCancelar}
-            disabled={cancelando}
             className="flex h-10 items-center gap-2 rounded-xl bg-danger px-4 text-sm text-white transition-colors hover:brightness-110 disabled:opacity-50"
           >
-            {cancelando && <Loader2 size={15} className="animate-spin" />}
             Cancelar nota
           </button>
         </div>
@@ -1446,19 +1512,70 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
             )}
           </div>
 
-          {/* Cancelar fica no canto oposto ao status: são as duas pontas da
-              vida da nota — em que pé ela está, e como encerrá-la. Longe do
-              "Salvar" do rodapé, também, para não errar o alvo com pressa. */}
-          {!modoOrcamento && id && statusPedido !== "CANCELADO" && (
-            <button
-              title="Cancelar nota"
-              aria-label="Cancelar nota"
-              onClick={() => setModalCancelar(true)}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-faint transition-colors hover:bg-danger/20 hover:text-danger"
-            >
-              <Trash2 size={15} />
-            </button>
-          )}
+          {/*
+           * As AÇÕES da nota, na barra de cima.
+           *
+           * Moravam no rodapé, ao lado do total e do "Gerar Nota" — e lá
+           * disputavam a mesma faixa com o botão principal: ver a nota, o
+           * cupom, o recibo e salvar, quatro coisas de pesos diferentes
+           * espremidas lado a lado. Aqui ficam juntas, como ícones: no
+           * computador cada uma diz o que é na dica ao pairar; no celular, que
+           * não tem "pairar", o nome vai escrito embaixo do ícone.
+           *
+           * Cancelar fica na ponta, longe dos documentos e do "Salvar" do
+           * rodapé — para não errar o alvo com pressa.
+           */}
+          <div className="flex items-start gap-2">
+            {(modoOrcamento ? Boolean(orcamentoAtual) : Boolean(id)) && (
+              <AcaoDaNota rotulo={modoOrcamento ? "Orçamento" : "Nota"}>
+                <BotaoVerDocumento
+                  variante="linha"
+                  refNota={refDocumento}
+                  nomeEmpresa={enterprise?.nomeFantasia ?? "nota"}
+                  prefixo={modoOrcamento ? "orcamento" : "nota"}
+                  titulo={modoOrcamento ? "Ver ou baixar o orçamento" : "Ver ou baixar a nota"}
+                  documento={modoOrcamento ? "orçamento" : "nota"}
+                />
+              </AcaoDaNota>
+            )}
+
+            {/* O cupom fiscal — outro documento, não outra via da nota. Só na
+                venda e só depois de gravada: cupom de rascunho não existe. */}
+            {!modoOrcamento && id && (
+              <AcaoDaNota rotulo="Cupom">
+                <BotaoCupomFiscal pedidoId={id} versao={totalPago} compacto />
+              </AcaoDaNota>
+            )}
+
+            {/* Recibo: só depois de quitada — antes disso não há o que provar. */}
+            {quitada && !modoOrcamento && (
+              <AcaoDaNota rotulo="Recibo">
+                <BotaoRecibo
+                  variante="linha"
+                  dados={{
+                    numero: String(pedido?.pedido?.pedidoId ?? id ?? "").slice(0, 8),
+                    clienteNome: nome ?? "",
+                    valor: totalPago,
+                    formaPagamento,
+                    pagoEm: pedido?.pedido?.dataPedido ? String(pedido.pedido.dataPedido) : null,
+                  }}
+                />
+              </AcaoDaNota>
+            )}
+
+            {!modoOrcamento && id && statusPedido !== "CANCELADO" && (
+              <AcaoDaNota rotulo="Cancelar">
+                <Dica texto="Cancelar a nota">
+                  <button
+                    aria-label="Cancelar nota"
+                    onClick={() => setModalCancelar(true)}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-faint transition-colors hover:bg-danger/20 hover:text-danger"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </Dica>
+              </AcaoDaNota>
+            )}
 
           {/*
             Apagar de vez só existe DEPOIS de cancelada, e só para o gestor.
@@ -1477,6 +1594,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
               <span className="hidden sm:inline">Apagar</span>
             </button>
           )}
+          </div>
         </div>
 
         {/* Conteúdo da nota — é ESTE que rola. Nada aqui é fotografado: o
@@ -2053,7 +2171,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                 existir) um botão de "desquitar".
 
                 `data-sem-foto`: ferramenta de quem atende, fora do PNG. */}
-            {!modoOrcamento && id && (
+            {!modoOrcamento && (id || criandoNota) && (
               <div data-sem-foto className="px-5 pb-3 lg:hidden">
                 <div className="rounded-2xl border border-fg/[0.08] bg-fg/[0.02] p-4">
                   <div className="mb-3 flex items-baseline justify-between gap-2">
@@ -2066,18 +2184,21 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                   {/* Nota quitada não pede valor: o formulário só ofereceria
                       receber de novo o que já foi recebido. O extrato abaixo
                       continua, porque é lá que se desfaz o que foi errado. */}
-                  {pendente > 0 && (
+                  {pendente > 0 && itensPendentes && (
+                    <p className="rounded-xl border border-warning/30 bg-warning/[0.08] px-3.5 py-3 text-[12px] leading-relaxed text-warning">Salve a nota antes de receber: os itens mudaram e ainda não foram salvos.</p>
+                  )}
+
+                  {pendente > 0 && !itensPendentes && (
                     <PagamentoForm
                       total={total}
                       jaPago={totalPago}
                       compacto
-                      salvando={confirmandoPagamento}
                       textoConfirmar="Registrar pagamento"
                       onConfirmar={(valor, forma) => void handleAdicionarPagamento(valor, forma)}
                     />
                   )}
 
-                  <RecebimentosNota pedidoId={id} versao={totalPago} onAlterado={recarregarNotaEPrazo} compacto />
+                  <RecebimentosNota pedidoId={id} versao={totalPago} onAlterado={recarregarNotaEPrazo} onOtimista={(d) => setValorPagoAnterior((v) => Math.max(0, v + d))} locais={recebimentosLocais} compacto />
                 </div>
               </div>
             )}
@@ -2126,45 +2247,6 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
           </div>
 
           <div className="flex items-center gap-2">
-            {/*
-             * Baixar só DEPOIS que o documento existe.
-             *
-             * O botão vinha desde a nota em branco, e o arquivo que ele
-             * entregava era uma foto do rascunho: sem número, sem data
-             * gravada, com o que estava na tela naquele segundo. Mandado ao
-             * cliente, virava um documento que o sistema não conhece — não dá
-             * para achar pelo número, não consta em lugar nenhum, e o que ele
-             * promete não está registrado. Pior no orçamento, onde o preço do
-             * papel passa a valer sem que exista proposta.
-             *
-             * Gerada a nota (ou a proposta), o botão aparece no mesmo lugar,
-             * sem fechar nada — e o que ele baixa é o documento de verdade.
-             */}
-            {(modoOrcamento ? Boolean(orcamentoId) : Boolean(id)) && (
-              <BotaoVerDocumento refNota={refDocumento} nomeEmpresa={enterprise?.nomeFantasia ?? "nota"} prefixo={modoOrcamento ? "orcamento" : "nota"} titulo={modoOrcamento ? "Ver ou baixar o orçamento" : "Ver ou baixar a nota"} documento={modoOrcamento ? "orçamento" : "nota"} />
-            )}
-
-            {/* O CUPOM FISCAL — outro documento, não outra via da nota.
-                O PNG acima é comprovante comercial; este é o cupom com chave,
-                protocolo e QR da SEFAZ. Só na venda (a proposta não vende
-                nada) e só depois de gravada: cupom de rascunho não existe. */}
-            {!modoOrcamento && id && <BotaoCupomFiscal pedidoId={id} versao={totalPago} />}
-
-            {/* Recibo: só depois de quitada. Antes disso não há o que
-                comprovar, e um "recibo" de nota em aberto é um documento que
-                afirma o que não aconteceu. */}
-            {quitada && !modoOrcamento && (
-              <BotaoRecibo
-                dados={{
-                  numero: String(pedido?.pedido?.pedidoId ?? id ?? "").slice(0, 8),
-                  clienteNome: nome ?? "",
-                  valor: totalPago,
-                  formaPagamento,
-                  pagoEm: pedido?.pedido?.dataPedido ? String(pedido.pedido.dataPedido) : null,
-                }}
-              />
-            )}
-
             {/* Sem X aqui: o modal que envolve a nota já tem o próprio fechar
                 no topo, e dois botões de fechar na mesma tela só criavam a
                 dúvida de qual deles descarta a venda. Cancelar a nota mudou
@@ -2173,20 +2255,22 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
             {modoOrcamento ? (
               <button
                 onClick={handleGerarOrcamento}
-                disabled={salvarDesabilitado || savingNote || loadingPedido}
+                disabled={salvarDesabilitado || loadingPedido}
                 className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-warning px-5 text-sm text-white transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-40 sm:flex-none"
               >
-                {savingNote ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
-                {savingNote ? "Salvando..." : orcamentoId ? "Salvar orçamento" : "Gerar orçamento"}
+                <FileText size={18} />
+                {orcamentoAtual ? "Salvar orçamento" : "Gerar orçamento"}
               </button>
             ) : (
+              /* Sem "Salvando...": a nota já aparece salva no clique e a
+                 gravação corre por baixo — ver `handleSalvar`. */
               <button
                 onClick={handleSalvar}
-                disabled={salvarDesabilitado || savingNote || loadingPedido}
+                disabled={salvarDesabilitado || loadingPedido}
                 className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-accent px-5 text-sm text-white transition-all hover:bg-accent-soft active:scale-[0.98] disabled:opacity-40 sm:flex-none"
               >
-                {savingNote ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                {savingNote ? "Salvando..." : !id ? "Gerar Nota" : "Salvar"}
+                <Save size={18} />
+                {!id && !criandoNota ? "Gerar Nota" : "Salvar"}
               </button>
             )}
           </div>
@@ -2221,7 +2305,11 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
             clienteNome={pedido?.nomeCliente || nome}
             acordo={acordo}
             carregandoAcordo={carregandoAcordo}
-            salvandoPagamento={confirmandoPagamento}
+            salvandoPagamento={false}
+            preparando={criandoNota}
+            onOtimista={(d) => setValorPagoAnterior((v) => Math.max(0, v + d))}
+            recebimentosLocais={recebimentosLocais}
+            travaPagamento={itensPendentes ? "Salve a nota antes de receber: os itens mudaram e ainda não foram salvos." : null}
             destacar={focarPagamento}
             onPagar={(valor, forma) => void handleAdicionarPagamento(valor, forma)}
             onAtualizar={recarregarNotaEPrazo}

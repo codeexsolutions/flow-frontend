@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Loader2, Pencil, Trash2, Undo2, X } from "lucide-react";
+import { Check, Pencil, Trash2, Undo2, X } from "lucide-react";
 
 import MoneyInput from "@/shared/ui/inputs/MoneyInput";
 import { FORMAS } from "@/shared/ui/PagamentoForm";
@@ -48,6 +48,21 @@ type Props = {
   onAlterado?: () => void | Promise<void>;
   /** Encolhe tipografia e espaçamentos para a coluna de 320px da nota. */
   compacto?: boolean;
+  /**
+   * Quanto o pagamento da nota mudou, NA HORA do clique — antes do servidor.
+   * Quem mostra o "falta receber" soma isto para o número andar junto com a
+   * linha que some ou muda. Negativo = saiu dinheiro.
+   */
+  onOtimista?: (delta: number) => void;
+  /**
+   * Recebimentos lançados NESTA tela que o servidor ainda não devolveu.
+   *
+   * Entram na lista no clique — quem recebeu vê a linha na hora, sem a lista
+   * piscar nem recarregar. Quando a lista do servidor chega com o mesmo id
+   * (ele nasce na tela), a linha local some e fica a verdadeira, no mesmo
+   * lugar.
+   */
+  locais?: RecebimentoNota[];
 };
 
 /** O dia de um instante, no formato do `<input type="date">` (local, não UTC). */
@@ -80,7 +95,7 @@ const comDia = (iso: string, dia: string): string => {
 
 type Edicao = { valor: number; forma: string; dia: string };
 
-const RecebimentosNota = ({ pedidoId, versao, onAlterado, compacto = false }: Props) => {
+const RecebimentosNota = ({ pedidoId, versao, onAlterado, compacto = false, onOtimista, locais }: Props) => {
   const alert = useAlert();
 
   const [recebimentos, setRecebimentos] = useState<RecebimentoNota[]>([]);
@@ -88,7 +103,17 @@ const RecebimentosNota = ({ pedidoId, versao, onAlterado, compacto = false }: Pr
   const [editando, setEditando] = useState<string | null>(null);
   const [edicao, setEdicao] = useState<Edicao>({ valor: 0, forma: "", dia: "" });
   const [apagando, setApagando] = useState<string | null>(null);
-  const [salvando, setSalvando] = useState(false);
+
+  /*
+   * Alterações desta lista ainda subindo para o servidor.
+   *
+   * Enquanto houver alguma, a releitura não mexe na lista: o total da nota
+   * muda no clique (`onOtimista`), isso muda a `versao`, e uma releitura
+   * naquele instante traria do servidor a linha que acabou de ser apagada —
+   * ela sumia, voltava e sumia de novo. A lista do servidor entra quando a
+   * última alteração terminar.
+   */
+  const emVoo = useRef(0);
 
   const carregar = useCallback(async () => {
     if (!pedidoId) {
@@ -97,7 +122,9 @@ const RecebimentosNota = ({ pedidoId, versao, onAlterado, compacto = false }: Pr
     }
 
     try {
-      setRecebimentos(await FinanceiroService.listarRecebimentos(pedidoId));
+      const lista = await FinanceiroService.listarRecebimentos(pedidoId);
+
+      if (emVoo.current === 0) setRecebimentos(lista);
     } catch {
       /* Silencioso de propósito: o extrato é o detalhe da coluna, e um alerta
          vermelho por causa dele assustaria quem só quer receber. O topo do
@@ -118,54 +145,69 @@ const RecebimentosNota = ({ pedidoId, versao, onAlterado, compacto = false }: Pr
     setEdicao({ valor: r.valor, forma: r.formaPagamento ?? FORMAS[0].id, dia: diaDe(r.pagoEm) });
   };
 
+  /*
+   * Corrigir e apagar são OTIMISTAS: a linha muda (ou some) no clique e o
+   * aviso sai já; o servidor grava por baixo e a nota é recalculada quando
+   * ele volta. Recusado, a lista volta como estava.
+   */
   const salvar = async (r: RecebimentoNota) => {
-    setSalvando(true);
+    const antes = recebimentos;
+    const dados = { valor: edicao.valor, formaPagamento: edicao.forma, pagoEm: edicao.dia ? comDia(r.pagoEm, edicao.dia) : undefined };
+
+    const delta = dados.valor - r.valor;
+
+    emVoo.current += 1;
+    setRecebimentos((lista) => lista.map((x) => (x.id === r.id ? { ...x, valor: dados.valor, formaPagamento: dados.formaPagamento, pagoEm: dados.pagoEm ?? x.pagoEm } : x)));
+    setEditando(null);
+    onOtimista?.(delta);
+    alert.success("Recebimento corrigido!", "A nota foi recalculada com o novo valor.");
 
     try {
-      await FinanceiroService.alterarRecebimento(r.id, {
-        valor: edicao.valor,
-        formaPagamento: edicao.forma,
-        pagoEm: edicao.dia ? comDia(r.pagoEm, edicao.dia) : undefined,
-      });
-
-      setEditando(null);
+      await FinanceiroService.alterarRecebimento(r.id, dados);
+      emVoo.current -= 1;
       await carregar();
       await onAlterado?.();
-
-      alert.success("Recebimento corrigido!", "A nota foi recalculada com o novo valor.");
     } catch (err) {
+      emVoo.current -= 1;
+      setRecebimentos(antes);
+      onOtimista?.(-delta);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível corrigir o recebimento."));
-    } finally {
-      setSalvando(false);
     }
   };
 
   const apagar = async (r: RecebimentoNota) => {
-    setSalvando(true);
+    const antes = recebimentos;
+
+    emVoo.current += 1;
+    setRecebimentos((lista) => lista.filter((x) => x.id !== r.id));
+    setApagando(null);
+    onOtimista?.(-r.valor);
+    alert.success("Recebimento removido!", `${formatCurrency(r.valor)} saíram do pagamento da nota.`);
 
     try {
       await FinanceiroService.excluirRecebimento(r.id);
-
-      setApagando(null);
+      emVoo.current -= 1;
       await carregar();
       await onAlterado?.();
-
-      alert.success("Recebimento removido!", `${formatCurrency(r.valor)} saíram do pagamento da nota.`);
     } catch (err) {
+      emVoo.current -= 1;
+      setRecebimentos(antes);
+      onOtimista?.(r.valor);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível remover o recebimento."));
-    } finally {
-      setSalvando(false);
     }
   };
 
-  if (!pedidoId) return null;
+  if (!pedidoId && !locais?.length) return null;
 
-  if (carregando) return <div className="h-16 animate-pulse rounded-xl bg-fg/[0.05]" />;
+  /* As do servidor, mais as lançadas aqui que ele ainda não devolveu. */
+  const lista = [...recebimentos, ...(locais ?? []).filter((l) => !recebimentos.some((r) => r.id === l.id))];
+
+  if (carregando && lista.length === 0) return <div className="h-16 animate-pulse rounded-xl bg-fg/[0.05]" />;
 
   /* Nota sem recebimento não mostra caixa vazia: o formulário logo acima já
      diz que não entrou nada, e um quadro com "nenhum recebimento" seria a
      mesma frase ocupando altura numa coluna que não sobra. */
-  if (recebimentos.length === 0) return null;
+  if (lista.length === 0) return null;
 
   const total = recebimentos.reduce((soma, r) => soma + r.valor, 0);
   const texto = compacto ? "text-[11.5px]" : "text-[12.5px]";
@@ -182,7 +224,7 @@ const RecebimentosNota = ({ pedidoId, versao, onAlterado, compacto = false }: Pr
       </header>
 
       <ul className="mt-2.5 flex flex-col gap-1.5">
-        {recebimentos.map((r) => {
+        {lista.map((r) => {
           const emEdicao = editando === r.id;
           const emConfirmacao = apagando === r.id;
 
@@ -285,7 +327,6 @@ const RecebimentosNota = ({ pedidoId, versao, onAlterado, compacto = false }: Pr
                         <button
                           type="button"
                           onClick={() => setEditando(null)}
-                          disabled={salvando}
                           className="focus-ring flex items-center gap-1 rounded-lg border border-fg/[0.1] px-2.5 py-1.5 text-[11.5px] text-mist transition-colors hover:text-ink disabled:opacity-40"
                         >
                           <X size={12} /> Cancelar
@@ -294,10 +335,10 @@ const RecebimentosNota = ({ pedidoId, versao, onAlterado, compacto = false }: Pr
                         <button
                           type="button"
                           onClick={() => void salvar(r)}
-                          disabled={salvando || !(edicao.valor > 0)}
+                          disabled={!(edicao.valor > 0)}
                           className="focus-ring flex items-center gap-1 rounded-lg bg-accent px-2.5 py-1.5 text-[11.5px] text-white transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-40"
                         >
-                          {salvando ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Salvar
+                          <Check size={12} /> Salvar
                         </button>
                       </div>
                     </div>
@@ -321,14 +362,12 @@ const RecebimentosNota = ({ pedidoId, versao, onAlterado, compacto = false }: Pr
                     <div className="border-l-2 border-danger/60 px-2.5 py-2.5">
                       <p className="text-[11.5px] leading-relaxed text-mist">
                         Apagar <span className="tabular-nums text-ink">{formatCurrency(r.valor)}</span> em {(r.formaPagamento || "forma não informada").toLowerCase()}?
-                        <span className="block text-[10.5px] text-faint">O valor sai do pagamento da nota — se ela estava quitada, volta a ficar em aberto.</span>
                       </p>
 
                       <div className="mt-2 flex justify-end gap-1.5">
                         <button
                           type="button"
                           onClick={() => setApagando(null)}
-                          disabled={salvando}
                           className="focus-ring flex items-center gap-1 rounded-lg border border-fg/[0.1] px-2.5 py-1.5 text-[11.5px] text-mist transition-colors hover:text-ink disabled:opacity-40"
                         >
                           <Undo2 size={12} /> Manter
@@ -337,10 +376,9 @@ const RecebimentosNota = ({ pedidoId, versao, onAlterado, compacto = false }: Pr
                         <button
                           type="button"
                           onClick={() => void apagar(r)}
-                          disabled={salvando}
                           className="focus-ring flex items-center gap-1 rounded-lg bg-danger px-2.5 py-1.5 text-[11.5px] text-white transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-40"
                         >
-                          {salvando ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Apagar
+                          <Trash2 size={12} /> Apagar
                         </button>
                       </div>
                     </div>

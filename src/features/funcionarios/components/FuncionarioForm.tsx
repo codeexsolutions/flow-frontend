@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotionConfig } from "framer-motion";
 import {
-  User, Percent, ShieldCheck, Check, Loader2, KeyRound, Power,
+  User, Percent, ShieldCheck, Check, KeyRound, Power,
   Trash2, UserPlus, IdCard, Cake, Briefcase, AlertTriangle, Wallet,
 } from "lucide-react";
 
@@ -74,7 +74,6 @@ const FuncionarioForm = ({ funcionario, areas, ehRoot, podeCriarAcesso, onCancel
   const novo = !funcionario;
 
   const [aba, setAba] = useState<Aba>("dados");
-  const [salvando, setSalvando] = useState(false);
 
   /* ── A pessoa ─────────────────────────────────────────────────────────── */
 
@@ -177,18 +176,23 @@ const FuncionarioForm = ({ funcionario, areas, ehRoot, podeCriarAcesso, onCancel
 
   /* ── Ações ────────────────────────────────────────────────────────────── */
 
+  /*
+   * Toda ação desta ficha é OTIMISTA: passou nas regras da tela, o aviso de
+   * pronto sai já (e a ficha fecha, quando é o caso); a gravação corre por
+   * baixo e a lista se atualiza quando ela volta. Recusada, o aviso de erro
+   * diz por quê.
+   */
   const executar = async (acao: () => Promise<unknown>, sucesso: string, fechar = false): Promise<boolean> => {
-    setSalvando(true);
+    alert.success(sucesso, "");
+    if (fechar) onCancel();
+
     try {
       await acao();
       await onMudou(fechar);
-      alert.success(sucesso, "");
       return true;
     } catch (e) {
       alert.error("Não foi possível salvar", (e as Error).message);
       return false;
-    } finally {
-      setSalvando(false);
     }
   };
 
@@ -573,7 +577,6 @@ const FuncionarioForm = ({ funcionario, areas, ehRoot, podeCriarAcesso, onCancel
                         <button
                           type="button"
                           onClick={() => void alternarStatusAcesso()}
-                          disabled={salvando}
                           title={acesso.status === "ATIVO" ? "Desativar acesso" : "Reativar acesso"}
                           className={`focus-ring flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border transition disabled:opacity-50 ${
                             acesso.status === "ATIVO" ? "border-fg/[0.08] text-mist hover:bg-danger/10 hover:text-danger" : "border-success/30 text-success hover:bg-success/10"
@@ -584,7 +587,6 @@ const FuncionarioForm = ({ funcionario, areas, ehRoot, podeCriarAcesso, onCancel
                         <button
                           type="button"
                           onClick={() => void removerAcesso()}
-                          disabled={salvando}
                           title="Remover o acesso (o funcionário continua na equipe)"
                           className="focus-ring flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border border-fg/[0.08] text-mist transition hover:bg-danger/10 hover:text-danger disabled:opacity-50"
                         >
@@ -601,10 +603,10 @@ const FuncionarioForm = ({ funcionario, areas, ehRoot, podeCriarAcesso, onCancel
                     <button
                       type="button"
                       onClick={() => void criarAcesso()}
-                      disabled={salvando || !podeCriarAcesso || !email.trim() || senha.length < 6}
+                      disabled={!podeCriarAcesso || !email.trim() || senha.length < 6}
                       className="focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-accent px-3 py-2 text-[12.5px] text-white transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {salvando ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+                      <UserPlus size={14} />
                       Criar acesso
                     </button>
                   ) : (
@@ -623,7 +625,7 @@ const FuncionarioForm = ({ funcionario, areas, ehRoot, podeCriarAcesso, onCancel
                         <button
                           type="button"
                           onClick={() => void redefinirSenha()}
-                          disabled={salvando || novaSenha.length < 6}
+                          disabled={novaSenha.length < 6}
                           title="Redefinir senha"
                           className="focus-ring flex h-[34px] w-[34px] shrink-0 cursor-pointer items-center justify-center rounded-lg border border-fg/[0.09] text-mist transition-colors hover:text-ink disabled:opacity-40"
                         >
@@ -698,10 +700,9 @@ const FuncionarioForm = ({ funcionario, areas, ehRoot, podeCriarAcesso, onCancel
                     <button
                       type="button"
                       onClick={() => void salvarPermissoes()}
-                      disabled={salvando}
                       className="focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-accent px-3 py-2 text-[12.5px] text-white transition-all hover:brightness-110 disabled:opacity-50"
                     >
-                      {salvando ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                      <ShieldCheck size={14} />
                       Salvar permissões
                     </button>
                   </div>
@@ -717,7 +718,6 @@ const FuncionarioForm = ({ funcionario, areas, ehRoot, podeCriarAcesso, onCancel
           nota do cabeçalho sobre por que os dois não se misturam. */}
       <FormActions
         onCancel={onCancel}
-        saving={salvando}
         submitText={novo ? "Cadastrar funcionário" : "Salvar alterações"}
       />
     </Form>

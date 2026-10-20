@@ -6,7 +6,23 @@ import type { ThemeId } from "./theme.catalog";
 
 /** O tema é a paleta inteira; o catálogo em `theme.catalog.ts` é quem manda. */
 export type ThemeMode = ThemeId;
-export type AccentId = "roxo" | "azul" | "verde" | "rosa" | "laranja" | "cinza" | "preto" | "teal" | "vinho" | "dourado";
+export type AccentId =
+  | "roxo"
+  | "azul"
+  | "verde"
+  | "rosa"
+  | "laranja"
+  | "cinza"
+  | "preto"
+  | "teal"
+  | "vinho"
+  | "dourado"
+  | "coral"
+  | "lima"
+  | "indigo"
+  | "magenta"
+  | "cobre"
+  | "lavanda";
 export type FontScale = "sm" | "md" | "lg";
 /** "full" anima sempre, mesmo com o sistema pedindo menos movimento. */
 export type MotionPref = "auto" | "reduce" | "full";
@@ -45,14 +61,30 @@ const useThemeStore = create<ThemeState>()(
       accent: "verde",
       fontScale: "md",
       motion: "auto",
-      fx: "auto",
+      /* Efeitos COMPLETOS por padrão: vidro, aurora e brilhos inteiros. O
+         nível continua escolhível em Aparência para quem precisar aliviar. */
+      fx: "full",
       setMode: (mode) => set({ mode }),
       setAccent: (accent) => set({ accent }),
       setFontScale: (fontScale) => set({ fontScale }),
       setMotion: (motion) => set({ motion }),
       setFx: (fx) => set({ fx }),
     }),
-    { name: "codex-flow-theme", version: 3 },
+    {
+      name: "codex-flow-theme",
+      version: 5,
+      /*
+       * Efeitos: só Completo e Equilibrado, e Completo por padrão.
+       *
+       * Da 3 para a 4, todo mundo passou para o Completo. Da 4 para a 5 os
+       * níveis "Automático" e "Leve" deixaram de existir: quem ainda estiver
+       * em um deles vai para o Completo. Quem escolheu Equilibrado continua.
+       */
+      migrate: (salvo) => {
+        const anterior = salvo as Partial<ThemeState>;
+        return { ...anterior, fx: anterior.fx === "balanced" ? "balanced" : "full" } as ThemeState;
+      },
+    },
   ),
 );
 

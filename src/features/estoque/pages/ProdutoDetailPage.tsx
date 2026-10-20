@@ -130,15 +130,21 @@ const ProdutoDetalhe = () => {
   const salvarEdicao = async (dados: ProductFormData) => {
     if (!produtoId) return;
 
-    try {
-      const campos: ProdutoUpdateDto = { id: produtoId, ...dados };
-      delete campos.quantidade;
+    /* Otimista: fecha e confirma já; grava por baixo e a ficha se atualiza
+       quando a gravação volta. Recusada, o formulário reabre. */
+    const campos: ProdutoUpdateDto = { id: produtoId, ...dados };
+    delete campos.quantidade;
 
+    const aberto = modal;
+
+    setModal(null);
+    alert.success("Produto atualizado!", "As alterações foram salvas.");
+
+    try {
       await ProductService.update(campos);
-      setModal(null);
       await carregar();
-      alert.success("Produto atualizado!", "As alterações foram salvas.");
     } catch (err) {
+      setModal(aberto);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível salvar as alterações."));
     }
   };

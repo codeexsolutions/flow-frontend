@@ -12,6 +12,7 @@ import SeletorDia from "@/shared/ui/SeletorDia";
 import OrcamentoService, { type Orcamento } from "@/features/orcamentos/services/orcamento.service";
 
 import useVendaStore from "@/features/vendas/store/venda.store";
+import type ClienteDoCadastro from "@/shared/domain/cliente";
 import useClienteStore from "@/features/clientes/store/cliente.store";
 import { eStatus } from "@/shared/domain/cliente";
 import useSincronizacao from "@/shared/realtime/useSincronizacao";
@@ -288,43 +289,46 @@ const PontoDeVenda = () => {
      só de nome do cliente e a nota abre com título "ORÇAMENTO", sem pagamento. */
   const [orcamentoOpen, setOrcamentoOpen] = useState(false);
   const [nomeOrcamento, setNomeOrcamento] = useState("");
-  const [salvandoCadastro, setSalvandoCadastro] = useState(false);
 
   const alert = useAlert();
   const criarCliente = useClienteStore((s) => s.criarCliente);
 
   /** Cadastra e já abre a venda para o cliente novo — é o motivo de ter cadastrado. */
+  /*
+   * Cadastros do balcão — OTIMISTAS: o formulário fecha e o aviso sai no
+   * clique; o cadastro corre por baixo. Se o servidor recusar, o formulário
+   * reabre com o que foi digitado.
+   */
+  const [clienteFalho, setClienteFalho] = useState<Partial<ClienteDoCadastro> | null>(null);
+
   const handleNovoCliente = async (dados: ClienteFormData) => {
-    setSalvandoCadastro(true);
+    setNovoClienteOpen(false);
+    setClienteFalho(null);
+    alert.success("Cliente cadastrado!", "Agora é só lançar os produtos.");
 
     try {
       await criarCliente(dados);
       await fetchClientes(true);
 
-      setNovoClienteOpen(false);
-      alert.success("Cliente cadastrado!", "Agora é só lançar os produtos.");
-
+      /* A nota abre assim que o cadastro tem id — é dele que ela depende. */
       const criado = useClienteStore.getState().clientes.find((c) => c.nome === dados.nome);
       if (criado?.id) abrirNota({ clienteId: String(criado.id), nome: criado.nome });
     } catch (err) {
+      setClienteFalho(dados as unknown as Partial<ClienteDoCadastro>);
+      setNovoClienteOpen(true);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível cadastrar o cliente."));
-    } finally {
-      setSalvandoCadastro(false);
     }
   };
 
   const handleNovoProduto = async (dados: ProductFormData) => {
-    setSalvandoCadastro(true);
+    setNovoProdutoOpen(false);
+    alert.success("Produto cadastrado!", "Ele já pode ser lançado na nota.");
 
     try {
       await ProductService.create(dados);
-
-      setNovoProdutoOpen(false);
-      alert.success("Produto cadastrado!", "Ele já pode ser lançado na nota.");
     } catch (err) {
+      setNovoProdutoOpen(true);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível cadastrar o produto."));
-    } finally {
-      setSalvandoCadastro(false);
     }
   };
 
@@ -1334,10 +1338,10 @@ const PontoDeVenda = () => {
         {/* Sem `Modal` em volta: o `ClienteForm` já abre no `Modal` do sistema.
             Envolvê-lo empilhava dois fundos escuros e dois cartões, que era o
             "bugado" — a caixa aparecia dentro de outra caixa. */}
-        {novoClienteOpen && <ClienteForm saving={salvandoCadastro} onClose={() => setNovoClienteOpen(false)} onSubmit={handleNovoCliente} />}
+        {novoClienteOpen && <ClienteForm prefill={clienteFalho} onClose={() => setNovoClienteOpen(false)} onSubmit={handleNovoCliente} />}
 
         <Modal open={novoProdutoOpen} onClose={() => setNovoProdutoOpen(false)} title="Novo produto" subtitle="Ele fica disponível na nota na hora">
-          <ProdutoForm submitText={salvandoCadastro ? "Salvando..." : "Cadastrar produto"} onCancel={() => setNovoProdutoOpen(false)} onSubmit={handleNovoProduto} />
+          <ProdutoForm submitText="Cadastrar produto" onCancel={() => setNovoProdutoOpen(false)} onSubmit={handleNovoProduto} />
         </Modal>
 
         {/* Leitura da proposta — o mesmo documento que o cliente recebeu. */}

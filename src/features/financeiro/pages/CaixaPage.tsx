@@ -178,9 +178,7 @@ export default function CaixaPage({ abaInicial = "entradas" }: { abaInicial?: Ab
      ainda vai passar) — ver a nota da tabela lá embaixo. */
   const [aba, setAba] = useState<AbaFinanceiro>(abaInicial);
   const [novaConta, setNovaConta] = useState<TipoConta | null>(null);
-  const [salvandoConta, setSalvandoConta] = useState(false);
   const [showNovaMovimentacao, setShowNovaMovimentacao] = useState(false);
-  const [salvando, setSalvando] = useState(false);
   /*
    * O detalhe é guardado por ID, não por cópia da linha.
    *
@@ -328,18 +326,21 @@ export default function CaixaPage({ abaInicial = "entradas" }: { abaInicial?: Ab
     setShowNovaMovimentacao(true);
   };
 
+  /* Otimista: o formulário fecha e o aviso sai já; a conta é gravada por
+     baixo e a lista se atualiza quando ela volta. Recusada, o formulário
+     reabre no mesmo tipo. */
   const criarConta = async (dados: NovaConta) => {
-    setSalvandoConta(true);
+    const tipo = novaConta;
+
+    setNovaConta(null);
+    alert.success("Conta criada!", dados.parcelas && dados.parcelas > 1 ? `${dados.parcelas} parcelas geradas com os vencimentos.` : "O vencimento já está na lista.");
 
     try {
       await ContaService.criar(dados);
-      setNovaConta(null);
       await fetchContas(true);
-      alert.success("Conta criada!", dados.parcelas && dados.parcelas > 1 ? `${dados.parcelas} parcelas geradas com os vencimentos.` : "O vencimento já está na lista.");
     } catch (err) {
+      setNovaConta(tipo);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a conta."));
-    } finally {
-      setSalvandoConta(false);
     }
   };
 
@@ -349,17 +350,20 @@ export default function CaixaPage({ abaInicial = "entradas" }: { abaInicial?: Ab
       return;
     }
 
-    setSalvando(true);
+    /* Otimista: fecha e confirma já; o lançamento é gravado por baixo.
+       Recusado, o formulário reabre com o que foi digitado. */
+    const lancamento = novaMovimentacao;
+
+    alert.success("Movimentação registrada!", "O lançamento foi adicionado ao caixa.");
+    setShowNovaMovimentacao(false);
+    setNovaMovimentacao({ tipo: "ENTRADA", categoria: "", descricao: "", valor: 0, dataMovimentacao: "" });
 
     try {
-      await criarMovimentacaoStore(novaMovimentacao);
-      alert.success("Movimentação registrada!", "O lançamento foi adicionado ao caixa.");
-      setShowNovaMovimentacao(false);
-      setNovaMovimentacao({ tipo: "ENTRADA", categoria: "", descricao: "", valor: 0, dataMovimentacao: "" });
+      await criarMovimentacaoStore(lancamento);
     } catch (err) {
+      setNovaMovimentacao(lancamento);
+      setShowNovaMovimentacao(true);
       alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível registrar a movimentação."));
-    } finally {
-      setSalvando(false);
     }
   };
 
@@ -459,7 +463,7 @@ export default function CaixaPage({ abaInicial = "entradas" }: { abaInicial?: Ab
       {novaConta && (
         <ContaForm
           tipo={novaConta}
-          salvando={salvandoConta}
+          salvando={false}
           onFechar={() => setNovaConta(null)}
           onSalvar={criarConta}
         />
@@ -495,7 +499,7 @@ export default function CaixaPage({ abaInicial = "entradas" }: { abaInicial?: Ab
             </FormGrid>
           </FormSection>
 
-          <FormActions onCancel={() => setShowNovaMovimentacao(false)} saving={salvando} submitText="Registrar" />
+          <FormActions onCancel={() => setShowNovaMovimentacao(false)} submitText="Registrar" />
         </Form>
       </Modal>
 
