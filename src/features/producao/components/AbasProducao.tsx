@@ -1,9 +1,9 @@
-import { ClipboardList, Factory, KanbanSquare, Link2, Receipt } from "lucide-react";
+import { KanbanSquare, Link2, Receipt } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { AbasTabela } from "@/shared/ui/AbasTabela";
 
-type Aba = "pedidos" | "os" | "quadro" | "kanban" | "links";
+type Aba = "pedidos" | "kanban" | "links";
 
 /**
  * As três telas de Produção, na barra da própria tabela.
@@ -11,14 +11,8 @@ type Aba = "pedidos" | "os" | "quadro" | "kanban" | "links";
  * ---------------------------------------------------------------------------
  * Quem responde qual pergunta
  * ---------------------------------------------------------------------------
- *   • PEDIDOS — "o que entrou?". Toda venda aparece aqui, e a ação da linha
- *     gera a ordem de serviço daquela venda. É uma tela de LEITURA sobre as
- *     vendas: não guarda nada.
- *   • ORDEM DE SERVIÇO — "o que levo impresso para a bancada?". As ordens
- *     geradas, cada uma com o documento que anda junto com a peça.
- *   • QUADRO — "em que etapa está cada ORDEM?". As mesmas ordens da aba ao
- *     lado, em colunas de etapa, para arrastar conforme o trabalho anda. Sem
- *     ele a ordem nasceria na primeira etapa e não teria como sair dela.
+ *   • PEDIDOS — cada venda com a ordem de serviço dela, numa lista só: gerar
+ *     a ordem, preencher a ficha, imprimir e mandar para a planilha.
  *   • KANBAN — "onde está cada pedido?". É a PLANILHA de produção, em grade ou
  *     em quadro, com o histórico e as colunas que a empresa montou.
  *   • LINKS — "quem acompanha o próprio pedido?". Os links de cliente que a
@@ -31,9 +25,14 @@ type Aba = "pedidos" | "os" | "quadro" | "kanban" | "links";
  * Houve uma tentativa de trocar esta aba por um quadro novo, sobre outra
  * tabela. Foi revertida: a produção da loja está na planilha, com registros e
  * gente treinada nela — e um quadro vazio no lugar dela não é uma versão nova,
- * é a perda do que já funcionava. Pedidos, Ordem de Serviço e Quadro entraram
- * como ADIÇÃO, ao lado dela, sem tirar nada: quem trabalha na planilha continua
- * na planilha, e quem trabalha por ordem tem onde movê-las.
+ * é a perda do que já funcionava. Pedidos e Ordem de Serviço entraram como
+ * ADIÇÃO, ao lado dela, sem tirar nada.
+ *
+ * Existiu também uma aba QUADRO, com as ordens de serviço em colunas de etapa
+ * sobre outra tabela (`producao_etapas`). Saiu: a etapa da ordem passou a
+ * viver na planilha (ver `PedidosPage`), e o quadro virou um segundo
+ * lugar para mover a mesma peça, sem mexer no primeiro. `/producao/quadro`
+ * redireciona para o Kanban.
  *
  * ---------------------------------------------------------------------------
  * Por que aqui, e não no cabeçalho da página
@@ -55,12 +54,8 @@ const AbasProducao = () => {
   const atual: Aba = pathname.startsWith("/producao/links")
     ? "links"
     : pathname.startsWith("/producao/kanban")
-    ? "kanban"
-    : pathname.startsWith("/producao/quadro")
-      ? "quadro"
-      : pathname.startsWith("/producao/os")
-        ? "os"
-        : "pedidos";
+      ? "kanban"
+      : "pedidos";
 
   return (
     <AbasTabela<Aba>
@@ -69,8 +64,6 @@ const AbasProducao = () => {
       onValor={(id) => navigate(id === "pedidos" ? "/producao" : `/producao/${id}`)}
       abas={[
         { id: "pedidos", label: "Pedidos", icone: <Receipt size={14} /> },
-        { id: "os", label: "Ordem de Serviço", icone: <ClipboardList size={14} /> },
-        { id: "quadro", label: "Quadro", icone: <Factory size={14} /> },
         { id: "kanban", label: "Kanban", icone: <KanbanSquare size={14} /> },
         { id: "links", label: "Links", icone: <Link2 size={14} /> },
       ]}

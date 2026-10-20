@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotionConfig } from "framer-motion";
 import { AreaChart, Area, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 import { BALAO } from "@/shared/ui/Rosca";
@@ -219,7 +219,7 @@ export const Ranking = ({
   /** A variável do tema SEM o `rgb()` — ex.: `var(--warning)`. */
   cor?: string;
 }) => {
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
   const maior = Math.max(...itens.map((i) => i.valor), 0);
 
   return (

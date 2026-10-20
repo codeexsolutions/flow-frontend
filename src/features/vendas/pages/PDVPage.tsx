@@ -129,7 +129,7 @@ const Kpi = ({ icon, label, value, tone = "neutral" }: { icon: ReactNode; label:
 /* Verde pago, azul parcial, amarelo em aberto, vermelho cancelado — as mesmas
    cores do selo de pedido no resto do sistema. */
 const TOM_PAGAMENTO = { PAGA: "sucesso", PARCIAL: "info", ABERTA: "alerta", CANCELADA: "perigo" } as const;
-const ROTULO_PAGAMENTO = { PAGA: "Pago", PARCIAL: "Parcial", ABERTA: "Em aberto", CANCELADA: "Cancelado" } as const;
+const ROTULO_PAGAMENTO = { PAGA: "Pago", PARCIAL: "Parcial", ABERTA: "Pendente", CANCELADA: "Cancelado" } as const;
 
 const StatusBadge = ({ status }: { status: keyof typeof TOM_PAGAMENTO }) => (
   <Selo tom={TOM_PAGAMENTO[status]}>{ROTULO_PAGAMENTO[status]}</Selo>

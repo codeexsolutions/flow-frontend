@@ -1,24 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Users, ShieldCheck, UserPlus, Crown, AlertTriangle,
-  UserCog, Trash2, Percent, Clock, ListFilter, Receipt, SlidersHorizontal,
+  UserCog, Trash2, Percent, Clock, ListFilter, Receipt, SlidersHorizontal, LayoutDashboard,
 } from "lucide-react";
 
 import { TabelaCard, TabelaHead, TabelaRow, TabelaVazia, type Coluna } from "@/shared/ui/DataTable";
 import { AbasTabela } from "@/shared/ui/AbasTabela";
-import { KpiFaixa } from "@/shared/ui/Painel";
 import { Modal } from "@/shared/ui/Modal";
 import { useAlert } from "@/shared/ui/Alert";
 import Select from "@/shared/ui/Select";
 import BuscaSugestoes from "@/shared/ui/BuscaSugestoes";
-import { SkeletonTableRows, SkeletonIdentityCell, Skeleton } from "@/shared/ui/skeleton";
+import { SkeletonTableRows, SkeletonIdentityCell, Skeleton, SkeletonKpis, SkeletonGrafico } from "@/shared/ui/skeleton";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import useAuth from "@/features/auth/store/auth.store";
 import FuncionarioService from "@/features/funcionarios/services/funcionario.service";
 import FuncionarioForm from "@/features/funcionarios/components/FuncionarioForm";
 import ReciboSalarioModal from "@/features/funcionarios/components/ReciboSalarioModal";
+import FuncionariosVisaoGeral from "@/features/funcionarios/components/FuncionariosVisaoGeral";
 import PontoConfigPainel from "@/features/ponto/components/PontoConfigPainel";
 import useEquipeStore from "@/features/funcionarios/store/equipe.store";
 import { PageScreen } from "@/shared/ui/PageShell";
@@ -33,6 +32,8 @@ const COLS = "grid-cols-[1.5fr_150px_130px_96px]";
 const ALTURA_LINHA = 56;
 
 type Situacao = "todas" | "trabalhando" | "desligados";
+/** Visão geral (os números da equipe), a lista e as regras do ponto. */
+type Aba = "visao-geral" | "equipe" | "config";
 type FiltroAcesso = "todos" | "com" | "sem" | "admin";
 type FiltroPonto = "todos" | "bate" | "nao";
 
@@ -110,28 +111,6 @@ const ControlesFantasma = () => (
   </>
 );
 
-/** Card de destaque numérico — o mesmo visual da fichaIndividual, em formato compacto. */
-const KpiCard = ({ icon, label, value, hint, tom }: { icon: ReactNode; label: string; value: string; hint?: string; tom?: "danger" | "warning" | "success" }) => (
-  <div className="card glass-sheen flex items-center gap-2.5 rounded-xl px-3 py-2.5">
-    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${
-      tom === "danger" ? "bg-danger/[0.14] text-danger ring-danger/20"
-        : tom === "warning" ? "bg-warning/[0.14] text-warning ring-warning/20"
-        : tom === "success" ? "bg-success/[0.14] text-success ring-success/20"
-        : "bg-accent/[0.14] text-accent-soft ring-accent/20"
-    }`}>
-      {icon}
-    </span>
-    <div className="flex min-w-0 flex-1 flex-col">
-      <p className="truncate text-[10px] uppercase tracking-[0.09em] text-faint">{label}</p>
-      {/* O número não trunca — ele quebra. "R$ 190.87…" não é um número,
-          é um enigma; a dica embaixo continua truncando, porque explicação
-          sobrevive cortada. */}
-        <p className="text-[15px] leading-[19px] tabular-nums tracking-tight text-ink [overflow-wrap:anywhere]">{value}</p>
-      {hint && <p className="truncate text-[10px] leading-[13px] text-faint">{hint}</p>}
-    </div>
-  </div>
-);
-
 const LinhasFantasma = ({ count }: { count: number }) => (
   <SkeletonTableRows count={count} cols={COLS} rowHeight={ALTURA_LINHA}>
     <SkeletonIdentityCell />
@@ -180,7 +159,7 @@ const FuncionariosPage = () => {
    * E, como painel, ele deixa de ser uma janela sobre a lista: dá para ajustar
    * o horário e voltar para conferir quem bateu sem fechar nada.
    */
-  const [aba, setAba] = useState<"equipe" | "config">("equipe");
+  const [aba, setAba] = useState<Aba>("equipe");
 
   const naEquipe = aba === "equipe";
 
@@ -538,46 +517,28 @@ const FuncionariosPage = () => {
          * onde ele decide alguma coisa: a aba "Acesso" da ficha.
          */}
 
-        {/* KPIs da equipe */}
-        <KpiFaixa className="shrink-0 sm:grid-cols-4">
-          <KpiCard
-            icon={<Users size={14} />}
-            label="Total"
-            value={carregando ? "—" : formatNumber(funcionarios.length)}
-            hint={funcionarios.length === 1 ? "pessoa" : "pessoas"}
-          />
-          <KpiCard
-            icon={<UserCog size={14} />}
-            label="Ativos"
-            value={carregando ? "—" : formatNumber(funcionarios.filter((f) => f.ativo).length)}
-            hint={funcionarios.filter((f) => f.ativo).length === 1 ? "trabalhando" : "trabalham"}
-            tom={funcionarios.length > 0 && funcionarios.filter((f) => f.ativo).length === 0 ? "danger" : undefined}
-          />
-          <KpiCard
-            icon={<ShieldCheck size={14} />}
-            label="Com acesso"
-            value={carregando ? "—" : formatNumber(funcionarios.filter((f) => f.acesso).length)}
-            hint="usuários cadastrados"
-          />
-          <KpiCard
-            icon={<Percent size={14} />}
-            label="Comissão"
-            value={carregando ? "—" : formatNumber(funcionarios.filter((f) => f.ganhaComissao).length)}
-            hint="recebem comissão"
-          />
-        </KpiFaixa>
-
         <TabelaCard
-          title={naEquipe ? "Equipe" : "Configurações da equipe"}
-          icon={naEquipe ? <Users size={15} /> : <SlidersHorizontal size={15} />}
+          title={aba === "visao-geral" ? "Visão geral" : naEquipe ? "Equipe" : "Configurações da equipe"}
+          icon={aba === "visao-geral" ? <LayoutDashboard size={15} /> : naEquipe ? <Users size={15} /> : <SlidersHorizontal size={15} />}
           count={naEquipe && !carregando ? filtrados.length : undefined}
           countLabel={filtrados.length === 1 ? "pessoa" : "pessoas"}
           navegacao={
-            <AbasTabela<"equipe" | "config">
+            /*
+             * A visão geral virou ABA, como em Estoque e Clientes.
+             *
+             * Os quatro KPIs moravam numa faixa acima da tabela e cobravam a
+             * altura deles de quem estava lendo a LISTA — que é o que se abre
+             * nesta tela quase sempre. Como aba, os números ganham a tela toda
+             * e companhia (folha, acesso, cargos, pendências), e a lista fica
+             * com a altura inteira quando é ela que está aberta. A lista
+             * continua sendo a aba inicial.
+             */
+            <AbasTabela<Aba>
               grupo="abas-funcionarios"
               valor={aba}
               onValor={setAba}
               abas={[
+                { id: "visao-geral", label: "Visão geral", icone: <LayoutDashboard size={13} /> },
                 { id: "equipe", label: "Funcionários", icone: <UserCog size={14} />, contagem: carregando ? undefined : funcionarios.length },
                 { id: "config", label: "Configurações", icone: <SlidersHorizontal size={14} /> },
               ]}
@@ -598,8 +559,22 @@ const FuncionariosPage = () => {
              grade de colunas da tabela, e imporiam rolagem lateral a um painel
              que cabe na tela. */
           minWidth={naEquipe ? 720 : 0}
+          /* No celular os painéis empurram o cartão em vez de rolar dentro
+             dele — mesmo arranjo de Clientes. */
+          corpoLivre={aba === "visao-geral"}
         >
-          {!naEquipe ? (
+          {aba === "visao-geral" ? (
+            <div className="p-3">
+              {carregando || !equipe ? (
+                <div className="flex flex-col gap-3">
+                  <SkeletonKpis cards={6} />
+                  <SkeletonGrafico altura={200} />
+                </div>
+              ) : (
+                <FuncionariosVisaoGeral equipe={equipe} />
+              )}
+            </div>
+          ) : !naEquipe ? (
             <div className="p-4">
               <PontoConfigPainel />
             </div>

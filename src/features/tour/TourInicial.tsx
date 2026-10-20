@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotionConfig } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { ShoppingCart, Package, Users, Wallet, Bell, Palette, ArrowRight, X } from "lucide-react";
 
@@ -16,7 +16,7 @@ type Passo = { icon: React.ReactNode; titulo: string; texto: string; rota?: stri
 const TourInicial = () => {
   const navigate = useNavigate();
   const mobile = useIsMobile();
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
   const { user } = useAuth();
 
   const [passo, setPasso] = useState(0);

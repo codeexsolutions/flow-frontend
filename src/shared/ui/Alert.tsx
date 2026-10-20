@@ -131,10 +131,6 @@ const CSS = `
  -webkit-backdrop-filter: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
- .aa-ring, .aa-mark { animation: none !important; stroke-dashoffset: 0 !important; }
- .aa-halo { animation: none !important; }
-}
 [data-motion="reduce"] .aa-ring,
 [data-motion="reduce"] .aa-mark { animation: none !important; stroke-dashoffset: 0 !important; }
 [data-motion="reduce"] .aa-halo { animation: none !important; }
@@ -147,8 +143,7 @@ const CSS = `
  * aparência de um sistema quebrado. Três segundos por volta é lento o
  * bastante para não incomodar quem pediu menos movimento.
  */
-@media (prefers-reduced-motion: reduce) { .aa-spin { animation-duration: 3s !important; } }
-[data-motion="reduce"] .aa-spin { animation-duration: 3s !important; }
+[data-motion="reduce"] .aa-spin { animation-duration: 3s !important; animation-iteration-count: infinite !important; }
 `;
 
 function useInjectStyles() {

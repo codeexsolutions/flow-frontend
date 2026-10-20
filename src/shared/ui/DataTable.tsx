@@ -379,7 +379,7 @@ export const ListaLinha = ({
    *
    * `sucesso` não é aviso: é "olhe AQUI" — a linha que acabou de nascer e
    * ainda espera uma decisão de quem chegou. Ver a ordem recém-gerada em
-   * `OrdensServicoPage`.
+   * `PedidosPage`.
    */
   destaque?: "danger" | "warning" | "sucesso";
   /**

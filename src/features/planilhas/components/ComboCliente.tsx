@@ -122,8 +122,8 @@ const ComboCliente = ({ valor, opcoes, colunaId, onEscolher }: Props) => {
             setAberto(false);
           }
         }}
-        placeholder="—"
-        className="h-full w-full bg-transparent px-3 py-2 text-[12.5px] text-ink outline-none placeholder:text-faint"
+        placeholder=""
+        className="h-full w-full bg-transparent px-4 py-[18px] text-[14px] text-ink outline-none placeholder:text-faint"
       />
 
       <AnimatePresence>
@@ -146,7 +146,7 @@ const ComboCliente = ({ valor, opcoes, colunaId, onEscolher }: Props) => {
                   escolher(nome);
                 }}
                 onMouseEnter={() => setAtivo(i)}
-                className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
+                className={`flex w-full items-center gap-2 px-2.5 py-2 text-left text-[13px] transition-colors ${
                   i === ativo ? "bg-fg/[0.06] text-ink" : "text-mist"
                 }`}
               >

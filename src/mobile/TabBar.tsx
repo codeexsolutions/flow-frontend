@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotionConfig } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
 import { LayoutDashboard, ShoppingCart, DollarSign, Package, Users, Wallet, BarChart3, MoreHorizontal, Settings, LogOut, UserCircle, Truck, Lock, Factory, MessageCircle, Bell, RefreshCw } from "lucide-react";
 
@@ -87,7 +87,7 @@ const TabBar = () => {
 
   const [maisAberto, setMaisAberto] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
 
   const gestor = ehGestor(user);
 

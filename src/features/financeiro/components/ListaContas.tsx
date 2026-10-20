@@ -24,7 +24,7 @@ import ContaService, { type Conta, type Pagamento, type Parcela, type Recibo, ty
  */
 
 const SITUACAO: Record<SituacaoParcela, { label: string; tom: TomSelo }> = {
-  ABERTA: { label: "Em aberto", tom: "alerta" },
+  ABERTA: { label: "Pendente", tom: "alerta" },
   PARCIAL: { label: "Parcial", tom: "info" },
   PAGA: { label: "Paga", tom: "sucesso" },
   VENCIDA: { label: "Vencida", tom: "perigo" },

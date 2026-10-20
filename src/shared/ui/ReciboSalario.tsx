@@ -53,8 +53,8 @@ const Campo = ({ rotulo, valor }: { rotulo: string; valor: string }) => (
 /** Uma linha da conta. `destaque` é a do total. */
 const LinhaConta = ({ rotulo, valor, sinal, destaque }: { rotulo: string; valor: number; sinal?: "+" | "−"; destaque?: boolean }) => (
   <div className={`flex items-center justify-between gap-4 py-2.5 ${destaque ? "border-t-2 border-neutral-900" : "border-t border-neutral-200"}`}>
-    <span className={destaque ? "text-[13px] font-semibold text-neutral-900" : "text-[13px] text-neutral-700"}>{rotulo}</span>
-    <span className={`tabular-nums ${destaque ? "text-[17px] font-semibold text-neutral-900" : "text-[13px] text-neutral-900"}`}>
+    <span className={destaque ? "text-[13px] text-neutral-900" : "text-[13px] text-neutral-700"}>{rotulo}</span>
+    <span className={`tabular-nums ${destaque ? "text-[17px] text-neutral-900" : "text-[13px] text-neutral-900"}`}>
       {sinal ? `${sinal} ` : ""}
       {formatCurrency(valor)}
     </span>
@@ -76,12 +76,12 @@ const ReciboSalario = ({ dados, refRecibo }: { dados: DadosReciboSalario; refRec
   ].filter(Boolean).join(" · ");
 
   return (
-    <div ref={refRecibo} className="w-[900px] bg-white p-12 text-neutral-900" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+    <div ref={refRecibo} className="w-[900px] bg-white p-12 text-neutral-900"style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
 
       {/* ---------- Cabeçalho: quem paga ---------- */}
       <div className="flex items-start justify-between gap-6 border-b-2 border-neutral-900 pb-5">
         <div className="flex min-w-0 items-center gap-4">
-          {empresa?.urlLogo && <img src={empresa.urlLogo} alt="" crossOrigin="anonymous" className="h-16 w-16 rounded-lg object-cover" />}
+          {empresa?.urlLogo && <img src={empresa.urlLogo} alt=""crossOrigin="anonymous"className="h-16 w-16 rounded-lg object-cover" />}
 
           <div className="min-w-0">
             <p className="text-[20px] leading-tight text-neutral-900">{dados.empregadorNome || "—"}</p>
@@ -90,7 +90,7 @@ const ReciboSalario = ({ dados, refRecibo }: { dados: DadosReciboSalario; refRec
         </div>
 
         <div className="shrink-0 text-right">
-          <p className="text-[22px] font-semibold leading-none tracking-[0.14em] text-neutral-900">RECIBO DE SALÁRIO</p>
+          <p className="text-[22px] leading-none tracking-[0.14em] text-neutral-900">RECIBO DE SALÁRIO</p>
           <p className="mt-1.5 text-[12px] text-neutral-600">Competência {dados.competencia}</p>
         </div>
       </div>
@@ -102,7 +102,7 @@ const ReciboSalario = ({ dados, refRecibo }: { dados: DadosReciboSalario; refRec
       <div className="mt-8 flex items-end justify-between gap-6 rounded-xl border border-neutral-300 bg-neutral-50 px-6 py-5">
         <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Salário líquido</p>
-          <p className="mt-1 text-[34px] font-semibold leading-none text-neutral-900">{formatCurrency(liquido)}</p>
+          <p className="mt-1 text-[34px] leading-none text-neutral-900">{formatCurrency(liquido)}</p>
         </div>
 
         <p className="shrink-0 text-right text-[11px] uppercase tracking-[0.12em] text-neutral-400">Quitado</p>
@@ -110,17 +110,17 @@ const ReciboSalario = ({ dados, refRecibo }: { dados: DadosReciboSalario; refRec
 
       {/* ---------- A declaração ---------- */}
       <p className="mt-8 text-[14px] leading-[1.9] text-neutral-900">
-        Recebi de <strong className="font-semibold">{dados.empregadorNome || "—"}</strong>
+        Recebi de <strong className="">{dados.empregadorNome || "—"}</strong>
         {documentosEmpregador ? `, ${documentosEmpregador},` : ","} a importância de{" "}
-        <strong className="font-semibold">{formatCurrency(liquido)}</strong> ({valorPorExtenso(liquido)}), referente ao
+        <strong className="">{formatCurrency(liquido)}</strong> ({valorPorExtenso(liquido)}), referente ao
         pagamento de salário da competência {dados.competencia}, dando plena e geral quitação do valor aqui declarado.
       </p>
 
       {/* ---------- Quem recebeu ---------- */}
       <div className="mt-8 grid grid-cols-3 gap-6 border-t border-neutral-200 pt-5">
-        <Campo rotulo="Funcionário" valor={dados.funcionarioNome} />
-        <Campo rotulo="CPF" valor={dados.funcionarioCpf ? formatDocument(dados.funcionarioCpf) : ""} />
-        <Campo rotulo="Cargo" valor={dados.funcionarioCargo} />
+        <Campo rotulo="Funcionário"valor={dados.funcionarioNome} />
+        <Campo rotulo="CPF"valor={dados.funcionarioCpf ? formatDocument(dados.funcionarioCpf) : ""} />
+        <Campo rotulo="Cargo"valor={dados.funcionarioCargo} />
       </div>
 
       {/* ---------- A conta ----------
@@ -130,10 +130,10 @@ const ReciboSalario = ({ dados, refRecibo }: { dados: DadosReciboSalario; refRec
       <div className="mt-8">
         <p className="mb-1 text-[10px] uppercase tracking-[0.12em] text-neutral-500">Composição</p>
 
-        <LinhaConta rotulo="Salário bruto" valor={dados.salarioBruto} />
-        {dados.adicionais > 0 && <LinhaConta rotulo="Adicionais" valor={dados.adicionais} sinal="+" />}
-        {dados.descontos > 0 && <LinhaConta rotulo="Descontos" valor={dados.descontos} sinal="−" />}
-        <LinhaConta rotulo="Salário líquido" valor={liquido} destaque />
+        <LinhaConta rotulo="Salário bruto"valor={dados.salarioBruto} />
+        {dados.adicionais > 0 && <LinhaConta rotulo="Adicionais"valor={dados.adicionais} sinal="+" />}
+        {dados.descontos > 0 && <LinhaConta rotulo="Descontos"valor={dados.descontos} sinal="−" />}
+        <LinhaConta rotulo="Salário líquido"valor={liquido} destaque />
       </div>
 
       {/* ---------- Assinatura ---------- */}
@@ -141,7 +141,7 @@ const ReciboSalario = ({ dados, refRecibo }: { dados: DadosReciboSalario; refRec
         {/* A imagem pousa ACIMA da linha, encostada nela — é onde a caneta
             encostaria. Sem assinatura a linha sai limpa, para assinar no papel. */}
         <div className="flex h-[70px] w-[340px] items-end justify-center">
-          {dados.assinatura && <img src={dados.assinatura} alt="" className="max-h-[70px] max-w-full object-contain" />}
+          {dados.assinatura && <img src={dados.assinatura} alt=""className="max-h-[70px] max-w-full object-contain" />}
         </div>
 
         <div className="w-[340px] border-t border-neutral-400" />

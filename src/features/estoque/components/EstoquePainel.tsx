@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotionConfig } from "framer-motion";
 import {
   Plus, Trash2, Loader2, Layers, PackageX, Pencil, Wand2, Boxes, Package,
   ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, History, Sliders,
@@ -208,7 +208,7 @@ const EstoquePainel = ({
   podeMovimentar, permiteVariacoes, onAbrirAtributos, onMudou,
 }: Props) => {
   const alert = useAlert();
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
 
   /* Abre no que existe, não no que aconteceu: quem entra na ficha vem
      perguntar "quantas eu tenho", e o extrato é a resposta do "por quê" que

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotionConfig } from "framer-motion";
 import {
   User, Users, Building2, Factory, Store, Wrench, Globe, Package,
   Check, Loader2, ArrowLeft, RefreshCw, Sparkles, ChevronDown,
@@ -61,7 +61,7 @@ const VARIANTES = {
 
 const DiagnosticoPlano = ({ onSelecionar, onRespostas, selecionado, onComparar }: Props) => {
 
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
 
   const [passo, setPasso] = useState(0);
   const [respostas, setRespostas] = useState<Partial<RespostasDiagnostico>>({});
@@ -122,7 +122,7 @@ const DiagnosticoPlano = ({ onSelecionar, onRespostas, selecionado, onComparar }
 
     return (
       <div className="flex flex-col gap-3">
-        <AnimatePresence mode="wait" initial={false}>
+        <AnimatePresence mode="wait"initial={false}>
           <motion.div
             key={pergunta.chave}
             variants={reduzir ? undefined : VARIANTES}
@@ -171,7 +171,7 @@ const DiagnosticoPlano = ({ onSelecionar, onRespostas, selecionado, onComparar }
 
         <div className="flex items-center justify-between gap-3">
           {passo > 0 ? (
-            <button type="button" onClick={voltar} className="flex items-center gap-1.5 text-[11.5px] text-mist transition-colors hover:text-ink">
+            <button type="button"onClick={voltar} className="flex items-center gap-1.5 text-[11.5px] text-mist transition-colors hover:text-ink">
               <ArrowLeft size={12} />
               Pergunta anterior
             </button>
@@ -180,7 +180,7 @@ const DiagnosticoPlano = ({ onSelecionar, onRespostas, selecionado, onComparar }
           )}
 
           {onComparar && (
-            <button type="button" onClick={onComparar} className="text-[11.5px] text-accent transition-colors hover:text-accent-soft">
+            <button type="button"onClick={onComparar} className="text-[11.5px] text-accent transition-colors hover:text-accent-soft">
               Prefiro ver todos os planos
             </button>
           )}
@@ -206,7 +206,7 @@ const DiagnosticoPlano = ({ onSelecionar, onRespostas, selecionado, onComparar }
     return (
       <div className="flex flex-col items-center gap-3 py-10 text-center">
         <p className="text-[13px] text-danger">{erro || "Não foi possível recomendar um plano."}</p>
-        <button type="button" onClick={refazer} className="flex items-center gap-1.5 rounded-lg border border-fg/[0.12] px-3 py-2 text-[12.5px] text-ink transition hover:border-fg/[0.24]">
+        <button type="button"onClick={refazer} className="flex items-center gap-1.5 rounded-lg border border-fg/[0.12] px-3 py-2 text-[12.5px] text-ink transition hover:border-fg/[0.24]">
           <RefreshCw size={13} />
           Tentar de novo
         </button>
@@ -279,13 +279,13 @@ const DiagnosticoPlano = ({ onSelecionar, onRespostas, selecionado, onComparar }
       )}
 
       <div className="flex items-center justify-between gap-3">
-        <button type="button" onClick={refazer} className="flex items-center gap-1.5 text-[11.5px] text-mist transition-colors hover:text-ink">
+        <button type="button"onClick={refazer} className="flex items-center gap-1.5 text-[11.5px] text-mist transition-colors hover:text-ink">
           <RefreshCw size={12} />
           Refazer as perguntas
         </button>
 
         {onComparar && (
-          <button type="button" onClick={onComparar} className="text-[11.5px] text-accent transition-colors hover:text-accent-soft">
+          <button type="button"onClick={onComparar} className="text-[11.5px] text-accent transition-colors hover:text-accent-soft">
             Comparar todos
           </button>
         )}
@@ -361,7 +361,7 @@ const CartaoPlano = ({
       </p>
     </div>
 
-    <p className="mt-2 text-[12px] font-light leading-relaxed text-mist">{plano.descricao}</p>
+    <p className="mt-2 text-[12px] leading-relaxed text-mist">{plano.descricao}</p>
 
     <div className="mt-3 flex flex-wrap gap-1.5 border-t border-fg/[0.06] pt-3">
       {limitesDoPlano(plano).map((linha) => (

@@ -29,7 +29,10 @@ const FONT_SCALES: { id: FontScale; label: string; desc: string; sample: string 
 
 const MOTIONS: { id: MotionPref; label: string; desc: string; icon: React.ReactNode }[] = [
   { id: "auto", label: "Automático", desc: "Segue as preferências do sistema", icon: <Sparkles size={15} /> },
-  { id: "reduce", label: "Reduzidas", desc: "Menos animações e transições", icon: <Accessibility size={15} /> },
+  { id: "reduce", label: "Reduzidas", desc: "Só esmaecer, sem deslizar", icon: <Accessibility size={15} /> },
+  /* Para quem tem os efeitos de animação do Windows desligados sem ter
+     pedido — comum em máquina de escritório e acesso remoto. */
+  { id: "full", label: "Sempre animar", desc: "Ignora a configuração do sistema", icon: <Zap size={15} /> },
 ];
 
 const FX_OPTIONS: { id: FxPref; icon: React.ReactNode }[] = [
@@ -221,7 +224,7 @@ const AparenciaTab = () => {
 
       {/* Animações */}
       <SettingsCard icon={<Sparkles className="h-4 w-4" />} title="Animações" desc="“Automático” segue a configuração de acessibilidade do seu sistema.">
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
           {MOTIONS.map((m) => {
             const active = m.id === motion;
             return (

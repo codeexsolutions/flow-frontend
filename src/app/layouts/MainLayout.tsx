@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotionConfig } from "framer-motion";
 import { Outlet, useLocation } from "react-router-dom";
 
 import useTransicao from "@/shared/session/transicao.store";
@@ -19,7 +19,13 @@ const Main = () => {
   useSwipeAbas();
 
   const saindo = useTransicao((s) => s.modo) === "saida";
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
+
+  /* Na máquina fraca a moldura só esmaece. Escalar o app inteiro obriga o
+     navegador a redesenhar cada vidro da tela a cada quadro — era o
+     congelamento na entrada e na saída do sistema. */
+  const leve = document.documentElement.dataset.fx === "lite";
+  const recuo = leve ? 1 : 0.97;
 
   const [abriu, setAbriu] = useState(false);
 
@@ -31,11 +37,13 @@ const Main = () => {
   return (
     <motion.div
       className="aurora flex h-[100dvh] w-screen overflow-hidden bg-canvas"
-      initial={{ opacity: 0, scale: 0.94 }}
-      animate={saindo ? { opacity: 0, scale: 0.94, filter: "blur(6px)" } : { opacity: 1, scale: 1, filter: "blur(0px)" }}
-      transition={{ duration: 0.55, ease: [0.22, 0.61, 0.36, 1] }}
+      /* Sem `filter: blur` na moldura: desfocar o app inteiro, com vidro por
+         dentro, era o quadro mais caro do sistema — e travava justo na saída. */
+      initial={{ opacity: 0, scale: recuo }}
+      animate={saindo ? { opacity: 0, scale: recuo } : { opacity: 1, scale: 1 }}
+      transition={{ duration: 0.45, ease: [0.22, 0.61, 0.36, 1] }}
       onAnimationComplete={() => !saindo && setAbriu(true)}
-      style={abriu && !saindo ? { transform: "none", filter: "none" } : undefined}
+      style={abriu && !saindo ? { transform: "none" } : undefined}
     >
       <Sidebar />
 

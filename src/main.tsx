@@ -19,10 +19,15 @@ import PwaPrompts from "@/shared/pwa/PwaPrompts";
 import CamadaTransicao from "@/shared/session/CamadaTransicao";
 import { aplicarModoApp, observarModoApp } from "@/shared/pwa/appMode";
 import useMarcaDominio, { vestirAba } from "@/shared/marca/marcaDominio";
+import MovimentoConfig from "@/shared/theme/MovimentoConfig";
+import { aplicarPreferenciasIniciais } from "@/shared/theme/useTheme";
 
 // Antes de pintar: define se o zoom fica livre (navegador) ou travado (app).
 aplicarModoApp();
 observarModoApp();
+
+// Movimento e nível de efeito antes da primeira pintura — ver a função.
+aplicarPreferenciasIniciais();
 
 /*
  * Quem mora neste endereço.
@@ -36,12 +41,14 @@ void useMarcaDominio.getState().carregar().then(() => vestirAba(useMarcaDominio.
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <AlertProvider>
-      <AppRoutes />
-      {/* Entrada e saída da sessão — acima do roteador, para sobreviver à troca de rota. */}
-      <CamadaTransicao />
-      {/* Nova versão, convite de instalação e aviso de offline. */}
-      <PwaPrompts />
-    </AlertProvider>
+    <MovimentoConfig>
+      <AlertProvider>
+        <AppRoutes />
+        {/* Entrada e saída da sessão — acima do roteador, para sobreviver à troca de rota. */}
+        <CamadaTransicao />
+        {/* Nova versão, convite de instalação e aviso de offline. */}
+        <PwaPrompts />
+      </AlertProvider>
+    </MovimentoConfig>
   </StrictMode>,
 );

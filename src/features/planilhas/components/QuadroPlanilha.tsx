@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { CalendarDays, Plus, Trash2, User } from "lucide-react";
 
-import type { Coluna, Registro } from "@/features/planilhas/services/planilha.service";
+import { corDaOpcao, type Coluna, type Registro } from "@/features/planilhas/services/planilha.service";
 import { formatCurrency } from "@/shared/utils/currency";
 
 type Props = {
@@ -121,7 +121,7 @@ const QuadroPlanilha = ({ colunas, registros, etapa, colunaPrazoId, podeMover, o
       porValor.get(porValor.has(v) ? v : "")!.push(r);
     }
 
-    const lista = opcoes.map((o) => ({ valor: o.valor, rotulo: o.valor, cor: o.cor, itens: porValor.get(o.valor) ?? [] }));
+    const lista = opcoes.map((o) => ({ valor: o.valor, rotulo: o.valor, cor: corDaOpcao(o), itens: porValor.get(o.valor) ?? [] }));
     const semEtapa = porValor.get("") ?? [];
 
     return semEtapa.length > 0

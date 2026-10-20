@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotionConfig } from "framer-motion";
 
 import { formatNumber } from "@/shared/utils/format";
 
@@ -54,7 +54,7 @@ export function AbasTabela<T extends string>({
   /** `layoutId` da pílula — único por barra na página. */
   grupo: string;
 }) {
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
 
   return (
     <>

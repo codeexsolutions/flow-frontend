@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotionConfig } from "framer-motion";
 import {
   Hash, ShoppingBag, Tag, Barcode, Ruler, MapPin, Layers, Bookmark,
   AlertTriangle, Check, Package,
@@ -136,7 +136,7 @@ const temTexto = (valor: unknown) => String(valor ?? "").trim() !== "";
 
 export function ProdutoForm({ defaultValues, onSubmit, onCancel, onDelete, submitText, resetarAoSalvar, semQuantidade, categorias = [] }: Props) {
   const alert = useAlert();
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
 
   const [etapa, setEtapa] = useState(0);
 

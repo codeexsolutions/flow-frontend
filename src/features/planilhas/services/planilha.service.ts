@@ -41,6 +41,18 @@ export type Modelo = {
 
 export type Opcao = { valor: string; cor?: string };
 
+/**
+ * A cor com que a alternativa aparece na planilha e no quadro.
+ *
+ * "Não iniciado" é sempre VERMELHO, seja qual for a cor gravada: é o estado
+ * que pede ação, e no cinza dos modelos prontos ele se confundia com célula
+ * vazia — justamente o que mais precisa saltar ao correr o olho pela grade.
+ */
+export const corDaOpcao = (o: Opcao): string | undefined => {
+  const nome = o.valor.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+  return nome === "nao iniciado" ? "#ef4444" : o.cor ?? undefined;
+};
+
 export type Coluna = {
   id: string;
   nome: string;

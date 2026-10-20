@@ -50,11 +50,11 @@ const PASSOS = [
 /* ---------------------------------------------------------------- */
 
 const Kicker = ({ children }: { children: React.ReactNode }) => (
-  <span className="mb-4 inline-block rounded-full border border-accent/30 px-3 py-1 text-[11.5px] font-semibold uppercase tracking-[0.16em] text-accent-soft">{children}</span>
+  <span className="mb-4 inline-block rounded-full border border-accent/30 px-3 py-1 text-[11.5px] uppercase tracking-[0.16em] text-accent-soft">{children}</span>
 );
 
 const Titulo = ({ children }: { children: React.ReactNode }) => (
-  <h2 className="text-[clamp(1.8rem,5.4vw,3rem)] font-bold leading-[1.06] tracking-tight text-ink">{children}</h2>
+  <h2 className="text-[clamp(1.8rem,5.4vw,3rem)] leading-[1.06] tracking-tight text-ink">{children}</h2>
 );
 
 /** Gradiente de destaque no texto — o mesmo em toda a página. */
@@ -124,15 +124,15 @@ const LandingPage = () => {
   })();
 
   return (
-    /* `vitrine` fixa a identidade da marca aqui dentro: o tema que o cliente
+    /* `vitrine`fixa a identidade da marca aqui dentro: o tema que o cliente
        escolheu em Aparência vale no produto, não na propaganda dele. */
     <div className="vitrine relative min-h-[100dvh] overflow-x-hidden bg-canvas text-ink">
       <RedeAnimada />
 
       {/* Brilhos de ambiente */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 z-0" style={{ opacity: "var(--fx-aurora, 1)" }}>
+      <div aria-hidden className="pointer-events-none fixed inset-0 z-0"style={{ opacity: "var(--fx-aurora, 1)" }}>
         <div className="absolute -right-32 -top-40 h-[520px] w-[520px] rounded-full bg-accent opacity-[0.14] blur-[140px]" />
-        <div className="absolute -bottom-40 -left-32 h-[520px] w-[520px] rounded-full opacity-[0.12] blur-[140px]" style={{ background: "rgb(var(--aurora-2))" }} />
+        <div className="absolute -bottom-40 -left-32 h-[520px] w-[520px] rounded-full opacity-[0.12] blur-[140px]"style={{ background: "rgb(var(--aurora-2))" }} />
       </div>
 
       {/* ===================== HEADER ===================== */}
@@ -141,14 +141,14 @@ const LandingPage = () => {
           grudado ? "border-b border-fg/[0.08] bg-canvas/70 backdrop-blur-xl" : "border-b border-transparent"
         }`}
       >
-        <a href="#topo" className="mr-auto flex items-center gap-2.5">
-          <img src="/logo.png" alt="" width={36} height={36} className="h-9 w-9 rounded-xl" />
-          <span className="text-[17px] font-bold tracking-tight">
+        <a href="#topo"className="mr-auto flex items-center gap-2.5">
+          <img src="/logo.png"alt=""width={36} height={36} className="h-9 w-9 rounded-xl" />
+          <span className="text-[17px] tracking-tight">
             CodeEx <span className="text-accent-soft">Flow</span>
           </span>
         </a>
 
-        <nav aria-label="Seções" className="hidden gap-7 text-[13.5px] text-mist md:flex">
+        <nav aria-label="Seções"className="hidden gap-7 text-[13.5px] text-mist md:flex">
           {[
             ["#recursos", "Recursos"],
             ["#planos", "Planos"],
@@ -160,7 +160,7 @@ const LandingPage = () => {
           ))}
         </nav>
 
-        <button type="button" onClick={() => navigate("/login")} className="focus-ring hidden rounded-xl px-3.5 py-2 text-[13px] text-mist transition-colors hover:text-ink sm:block">
+        <button type="button"onClick={() => navigate("/login")} className="focus-ring hidden rounded-xl px-3.5 py-2 text-[13px] text-mist transition-colors hover:text-ink sm:block">
           Entrar
         </button>
 
@@ -173,7 +173,7 @@ const LandingPage = () => {
         </button>
       </header>
 
-      <main id="topo" className="relative z-10">
+      <main id="topo"className="relative z-10">
         {/* ===================== HERO ===================== */}
         <section className="mx-auto max-w-4xl px-[clamp(18px,5vw,44px)] pb-[clamp(30px,6vw,60px)] pt-[clamp(50px,10vw,110px)] text-center">
           <span data-reveal className="mb-6 inline-flex items-center gap-2 rounded-full border border-fg/[0.09] bg-fg/[0.03] px-4 py-1.5 text-[12.5px] text-mist">
@@ -181,14 +181,14 @@ const LandingPage = () => {
             CodEx Solutions · Sistema de gestão
           </span>
 
-          <h1 data-reveal className="text-[clamp(2.4rem,8.5vw,4.4rem)] font-extrabold leading-[1.02] tracking-tight">
+          <h1 data-reveal className="text-[clamp(2.4rem,8.5vw,4.4rem)] leading-[1.02] tracking-tight">
             Sua loja inteira
             <br />
             <Grad>na palma da mão.</Grad>
           </h1>
 
-          <p data-reveal className="mx-auto mt-6 max-w-[54ch] text-[clamp(1rem,2.6vw,1.18rem)] font-light leading-relaxed text-mist">
-            <b className="font-medium text-ink">PDV, estoque, clientes e financeiro</b> num sistema só — que abre no celular como
+          <p data-reveal className="mx-auto mt-6 max-w-[54ch] text-[clamp(1rem,2.6vw,1.18rem)] leading-relaxed text-mist">
+            <b className="text-ink">PDV, estoque, clientes e financeiro</b> num sistema só — que abre no celular como
             aplicativo, funciona sem internet e coloca sua equipe pra vender com login próprio.
           </p>
 
@@ -214,7 +214,7 @@ const LandingPage = () => {
 
           {menorPreco !== null && (
             <p data-reveal className="mt-6 text-[13.5px] text-faint">
-              Planos a partir de <b className="font-semibold text-accent-soft">{formatCurrencyFromCents(menorPreco)}/mês</b> · sem fidelidade
+              Planos a partir de <b className="text-accent-soft">{formatCurrencyFromCents(menorPreco)}/mês</b> · sem fidelidade
             </p>
           )}
         </section>
@@ -224,14 +224,14 @@ const LandingPage = () => {
           {DIFERENCIAIS.map((d) => (
             <div key={d.titulo} data-reveal className="rounded-2xl border border-fg/[0.08] bg-fg/[0.02] p-5 backdrop-blur-sm">
               <span className="mb-3 inline-grid h-10 w-10 place-items-center rounded-xl border border-accent/20 bg-accent/[0.08] text-accent-soft">{d.icon}</span>
-              <h3 className="text-[15px] font-semibold text-ink">{d.titulo}</h3>
-              <p className="mt-1 text-[12.5px] font-light leading-relaxed text-mist">{d.texto}</p>
+              <h3 className="text-[15px] text-ink">{d.titulo}</h3>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-mist">{d.texto}</p>
             </div>
           ))}
         </section>
 
         {/* ===================== RECURSOS ===================== */}
-        <section id="recursos" className="mx-auto max-w-6xl px-[clamp(18px,5vw,44px)] py-[clamp(56px,9vw,100px)]">
+        <section id="recursos"className="mx-auto max-w-6xl px-[clamp(18px,5vw,44px)] py-[clamp(56px,9vw,100px)]">
           <header className="mx-auto mb-[clamp(32px,5vw,52px)] max-w-[620px] text-center">
             <div data-reveal>
               <Kicker>O que tem dentro</Kicker>
@@ -241,7 +241,7 @@ const LandingPage = () => {
                 Tudo que a sua loja faz, <Grad>num lugar só</Grad>
               </Titulo>
             </div>
-            <p data-reveal className="mt-3 text-[clamp(1rem,2.4vw,1.1rem)] font-light text-mist">
+            <p data-reveal className="mt-3 text-[clamp(1rem,2.4vw,1.1rem)] text-mist">
               Sem integrar cinco sistemas. Sem planilha paralela.
             </p>
           </header>
@@ -250,15 +250,15 @@ const LandingPage = () => {
             {MODULOS.map((m) => (
               <article key={m.titulo} data-reveal className="rounded-2xl border border-fg/[0.08] bg-fg/[0.02] p-5 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-accent/30">
                 <span className="mb-3.5 inline-grid h-11 w-11 place-items-center rounded-xl border border-accent/20 bg-accent/[0.08] text-accent-soft">{m.icon}</span>
-                <h3 className="text-[15.5px] font-semibold text-ink">{m.titulo}</h3>
-                <p className="mt-1.5 text-[13px] font-light leading-relaxed text-mist">{m.texto}</p>
+                <h3 className="text-[15.5px] text-ink">{m.titulo}</h3>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-mist">{m.texto}</p>
               </article>
             ))}
           </div>
         </section>
 
         {/* ===================== PLANOS ===================== */}
-        <section id="planos" className="mx-auto max-w-6xl px-[clamp(18px,5vw,44px)] py-[clamp(56px,9vw,100px)]">
+        <section id="planos"className="mx-auto max-w-6xl px-[clamp(18px,5vw,44px)] py-[clamp(56px,9vw,100px)]">
           <header className="mx-auto mb-[clamp(32px,5vw,52px)] max-w-[620px] text-center">
             <div data-reveal>
               <Kicker>Planos</Kicker>
@@ -276,7 +276,7 @@ const LandingPage = () => {
                 )}
               </Titulo>
             </div>
-            <p data-reveal className="mt-3 text-[clamp(1rem,2.4vw,1.1rem)] font-light text-mist">
+            <p data-reveal className="mt-3 text-[clamp(1rem,2.4vw,1.1rem)] text-mist">
               {planos.length === 1
                 ? "Sem pacote para destravar depois. Sem fidelidade."
                 : "Trocou de plano depois? Você paga só a diferença."}
@@ -306,17 +306,17 @@ const LandingPage = () => {
                   }`}
                 >
                   {p.destaque && (
-                    <span className="absolute -top-3 left-7 rounded-full bg-accent px-3 py-1 text-[11px] font-bold text-white shadow-[0_6px_16px_-4px_rgb(var(--accent))]">Mais escolhido</span>
+                    <span className="absolute -top-3 left-7 rounded-full bg-accent px-3 py-1 text-[11px] text-white shadow-[0_6px_16px_-4px_rgb(var(--accent))]">Mais escolhido</span>
                   )}
 
-                  <h3 className="text-[22px] font-bold text-ink">{p.nome}</h3>
+                  <h3 className="text-[22px] text-ink">{p.nome}</h3>
 
                   <p className="mt-3 flex items-baseline gap-1">
-                    <span className="text-[clamp(2.2rem,7vw,2.8rem)] font-extrabold leading-none tracking-tight text-ink">{formatCurrencyFromCents(p.precoCentavos)}</span>
+                    <span className="text-[clamp(2.2rem,7vw,2.8rem)] leading-none tracking-tight text-ink">{formatCurrencyFromCents(p.precoCentavos)}</span>
                     <span className="text-[13px] text-faint">{CICLO_LABEL[p.ciclo]}</span>
                   </p>
 
-                  <p className="mt-3 min-h-[42px] text-[13.5px] font-light leading-relaxed text-mist">{p.descricao}</p>
+                  <p className="mt-3 min-h-[42px] text-[13.5px] leading-relaxed text-mist">{p.descricao}</p>
 
                   <ul className="mt-5 grid gap-2.5 border-t border-fg/[0.06] pt-5">
                     {/* Cada linha leva o ícone do que ela é. Um check repetido
@@ -387,7 +387,7 @@ const LandingPage = () => {
         </section>
 
         {/* ===================== COMO FUNCIONA ===================== */}
-        <section id="como-funciona" className="mx-auto max-w-6xl px-[clamp(18px,5vw,44px)] py-[clamp(56px,9vw,100px)]">
+        <section id="como-funciona"className="mx-auto max-w-6xl px-[clamp(18px,5vw,44px)] py-[clamp(56px,9vw,100px)]">
           <header className="mx-auto mb-[clamp(32px,5vw,52px)] max-w-[620px] text-center">
             <div data-reveal>
               <Kicker>Como funciona</Kicker>
@@ -402,9 +402,9 @@ const LandingPage = () => {
           <div className="mx-auto grid max-w-4xl grid-cols-1 gap-4 sm:grid-cols-3">
             {PASSOS.map((p) => (
               <div key={p.n} data-reveal className="rounded-2xl border border-fg/[0.08] bg-fg/[0.02] p-6 backdrop-blur-sm">
-                <span className="grid h-10 w-10 place-items-center rounded-full border border-accent/30 bg-accent/[0.1] text-[15px] font-bold text-accent-soft">{p.n}</span>
-                <h3 className="mt-4 text-[16px] font-semibold text-ink">{p.titulo}</h3>
-                <p className="mt-1.5 text-[13px] font-light leading-relaxed text-mist">{p.texto}</p>
+                <span className="grid h-10 w-10 place-items-center rounded-full border border-accent/30 bg-accent/[0.1] text-[15px] text-accent-soft">{p.n}</span>
+                <h3 className="mt-4 text-[16px] text-ink">{p.titulo}</h3>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-mist">{p.texto}</p>
               </div>
             ))}
           </div>
@@ -421,8 +421,8 @@ const LandingPage = () => {
               <ShieldCheck size={22} />
             </span>
 
-            <h2 className="text-[clamp(1.7rem,5vw,2.4rem)] font-extrabold tracking-tight text-ink">Ainda com dúvida?</h2>
-            <p className="mx-auto mt-3 max-w-[46ch] text-[clamp(1rem,2.4vw,1.08rem)] font-light text-mist">
+            <h2 className="text-[clamp(1.7rem,5vw,2.4rem)] tracking-tight text-ink">Ainda com dúvida?</h2>
+            <p className="mx-auto mt-3 max-w-[46ch] text-[clamp(1rem,2.4vw,1.08rem)] text-mist">
               Manda uma mensagem que a gente te ajuda a escolher o plano certo para o tamanho da sua loja.
             </p>
 
@@ -451,13 +451,13 @@ const LandingPage = () => {
       {/* ===================== RODAPÉ ===================== */}
       <footer className="relative z-10 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t border-fg/[0.08] px-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-7 text-mist">
         <span className="inline-flex items-center gap-2">
-          <img src="/logo.png" alt="" width={18} height={18} className="rounded" />
-          <span className="text-[14px] font-semibold text-ink">
+          <img src="/logo.png"alt=""width={18} height={18} className="rounded" />
+          <span className="text-[14px] text-ink">
             CodeEx <span className="text-accent-soft">Flow</span>
           </span>
         </span>
 
-        <button type="button" onClick={() => navigate("/login")} className="focus-ring rounded text-[13px] transition-colors hover:text-accent-soft">
+        <button type="button"onClick={() => navigate("/login")} className="focus-ring rounded text-[13px] transition-colors hover:text-accent-soft">
           Entrar no sistema
         </button>
 

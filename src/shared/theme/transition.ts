@@ -6,9 +6,13 @@ import type { MouseEvent } from "react";
  * (Firefox atual ou usuário com "reduzir movimento" ativado).
  */
 export const switchThemeWithTransition = (event: MouseEvent<Element>, callback: () => void) => {
-  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  /* A decisão já resolvida (`data-motion`), e não o sistema direto: quem
+     escolheu "Sempre animar" ganha o círculo também. No modo leve não: o
+     círculo é uma captura da tela inteira, pesada em máquina sem placa. */
+  const raiz = document.documentElement.dataset;
+  const semEfeito = raiz.motion === "reduce" || raiz.fx === "lite";
 
-  if (!document.startViewTransition || reduceMotion) {
+  if (!document.startViewTransition || semEfeito) {
     callback();
     return;
   }

@@ -1,113 +1,156 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { CalendarDays, ClipboardList, Factory, Receipt, Table2 } from "lucide-react";
+import { ArrowRight, Check, ClipboardList, ExternalLink, Factory, ListFilter, Loader2, Receipt, Save, Table2, X } from "lucide-react";
 
 import ProducaoService, { type ItemProducao, type ModeloOsDisponivel, type PedidoDeProducao } from "@/features/producao/services/producao.service";
+import PlanilhaService, { type Modelo } from "@/features/planilhas/services/planilha.service";
 import useSincronizacao from "@/shared/realtime/useSincronizacao";
+import { useNavigate } from "react-router-dom";
+
 import { PageScreen } from "@/shared/ui/PageShell";
-import { BarraFiltros, ListaAcao, ListaCabecalho, ListaLinha, TabelaPaginacao, TabelaVazia } from "@/shared/ui/DataTable";
-import { Search } from "lucide-react";
-import { Selo } from "@/shared/ui/StatusBadge";
+import { Modal } from "@/shared/ui/Modal";
+import { ControlesPagina, ListaAcao, ListaCabecalho, ListaFantasmas, ListaLinha, TabelaCard, TabelaVazia } from "@/shared/ui/DataTable";
 import { SkeletonListaPainel } from "@/shared/ui/skeleton";
-import { useAlert } from "@/shared/ui/Alert";
-import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
-import { formatDate, toDate } from "@/shared/utils/date";
+import { Selo } from "@/shared/ui/StatusBadge";
+import BuscaSugestoes from "@/shared/ui/BuscaSugestoes";
+import { useAutoPageSize } from "@/shared/hooks/useAutoPageSize";
+import { formatDateShort } from "@/shared/utils/date";
 import { getInitials } from "@/shared/utils/format";
 import Select from "@/shared/ui/Select";
-import { Modal } from "@/shared/ui/Modal";
+import BotaoVerDocumento, { type ModoDocumento } from "@/shared/ui/BotaoVerDocumento";
+import { gerarBlobNota, proximoQuadro } from "@/shared/ui/DownloadButton";
+import { entregarDocumento } from "@/shared/ui/downloadNota";
+import { useAlert } from "@/shared/ui/Alert";
+import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
+import useEnterprise from "@/features/empresa/store/enterprise.store";
 import AbasProducao from "@/features/producao/components/AbasProducao";
+import VisorDocumento from "@/features/producao/components/VisorDocumento";
+import { modeloOS } from "@/features/producao/modelos";
 
 /**
- * PEDIDOS — a porta de entrada da produção.
+ * PEDIDOS — a venda e a ordem de serviço dela, numa lista só.
  *
  * ---------------------------------------------------------------------------
- * Toda venda aparece aqui. Todas.
+ * Venda e OS são o MESMO pedido
  * ---------------------------------------------------------------------------
- * Não há filtro de "merece produção" nesta lista, e é deliberado: quem decide
- * o que vira trabalho é a pessoa que olha, e ela só pode decidir sobre o que
- * enxerga. Uma lista que já viesse peneirada esconderia justamente o caso que
- * motiva a tela — a venda de estoque que, daquela vez, deu trabalho (a estampa
- * pedida depois, o ajuste, a montagem).
+ * Eram duas abas: Pedidos (as vendas, com o botão de gerar a ordem) e Ordem de
+ * Serviço (as ordens geradas, com o documento e a planilha). Para a loja é uma
+ * coisa só — o pedido do cliente — e a divisão obrigava a ir e voltar entre as
+ * duas para acompanhar o mesmo trabalho.
  *
- * O automático continua existindo por baixo, e só para venda com item de
- * SERVIÇO: essa já chega aqui com a ordem gerada, e a linha mostra o número
- * dela em vez do botão. Ver `ProducaoAutomaticaService`.
+ * Agora cada linha é UM pedido. Sem ordem ainda, a ação da linha gera a OS;
+ * com ordem, a linha abre a ficha, imprime o documento e diz para qual
+ * planilha ela foi produzir. As ordens criadas sem venda (`pedido_fk` nulo)
+ * entram como pedidos também — senão sumiriam da tela.
  *
  * ---------------------------------------------------------------------------
  * Nada é copiado
  * ---------------------------------------------------------------------------
- * Esta tela não tem dados próprios. Ela é o cruzamento de duas listas que já
- * existem — os pedidos (`producao/pedidos`) e as ordens (`producao/itens`),
- * casadas pelo `pedido_fk` da ordem. É o que permite a mesma venda estar aqui,
- * na aba de OS e no quadro ao mesmo tempo, sem nenhuma cópia para sincronizar.
+ * A tela cruza duas listas que já existem — os pedidos (`producao/pedidos`) e
+ * as ordens (`producao/itens`), casadas pelo `pedido_fk` da ordem.
  *
  * ---------------------------------------------------------------------------
- * A lista vem da Produção, e não das Vendas
+ * Um nó escondido, trocado no clique
  * ---------------------------------------------------------------------------
- * Ela saía do `venda.store`, que lê `GET /pedidos/` — filtrado por vendedor
- * para todo mundo que não é o dono. Quem produz não vende: a aba de onde o
- * trabalho começa abria VAZIA exatamente para quem a usa, e gerar a ordem de
- * serviço virava tarefa do dono.
- *
- * `GET /producao/pedidos` responde a mesma lista pela régua da área `producao`
- * — e sem valor nenhum, porque o que a bancada precisa saber é o cliente, o
- * dia e as peças. Quanto a loja faturou continua em Vendas, para quem tem
- * Vendas.
+ * Mesmo caminho da nota e do orçamento: existe UM documento de OS fora da
+ * tela, e o conteúdo dele é trocado para a ordem escolhida antes de
+ * fotografar. N nós escondidos numa lista de cem pedidos seriam cem documentos
+ * renderizados para usar um.
  */
 
-const COLS = "grid-cols-[minmax(200px,2fr)_minmax(96px,120px)_minmax(120px,160px)_124px]";
-/* Sem coluna de data: quem responde "de quando é" é a faixa do dia, e uma
-   coluna repetindo isso em toda linha gastaria largura para dizer de novo o
-   que a pessoa acabou de ler no topo do bloco. */
-/* "Itens" no lugar de "Total": o tamanho do trabalho é o que esta lista
-   responde, e o valor da venda nunca foi assunto de quem vai produzi-la. */
-const ROTULOS = ["Cliente", "Itens", "Produção", "Ações"];
+/* A mesma tabela de Vendas: a mesma casca, a mesma altura de linha e a mesma
+   paginação pela altura do corpo — quem anda de uma tela para a outra lê as
+   duas do mesmo jeito. */
+const COLS = "grid-cols-[minmax(190px,1.6fr)_96px_150px_minmax(140px,1fr)_minmax(140px,1fr)_124px]";
+const ROTULOS = ["Cliente", "Data", "Situação", "Itens", "Produção", "Ações"];
 const ALTURA_LINHA = 60;
-/* Página fixa, e não `useAutoPageSize`: as faixas de dia entram entre as
-   linhas e a conta por altura erraria. O que não couber rola dentro do corpo. */
-const POR_PAGINA = 30;
+const ALTURA_CABECALHO = 40;
 
-type Situacao = "todos" | "sem-os" | "com-os";
+/** O botão-pastilha da barra da ordem aberta. */
+const CHIP = (aceso: boolean) =>
+  aceso
+    ? "focus-ring flex h-[30px] shrink-0 cursor-default items-center rounded-lg border border-accent/40 bg-accent/[0.15] px-2.5 text-[11.5px] text-accent-soft"
+    : "focus-ring flex h-[30px] shrink-0 cursor-pointer items-center rounded-lg border border-fg/[0.08] px-2.5 text-[11.5px] text-mist transition-colors hover:border-accent/40 hover:text-accent-soft disabled:cursor-not-allowed disabled:opacity-50";
 
-const SITUACOES: { valor: Situacao; label: string }[] = [
-  { valor: "todos", label: "Todos" },
-  /* O primeiro filtro que se usa: "o que ainda não mandei para a oficina?" */
+type Filtro = "abertos" | "sem-os" | "finalizados" | "todos";
+
+const FILTROS: { valor: Filtro; label: string }[] = [
+  /* O padrão é o que ainda dá trabalho: sem ordem ou com a ordem na bancada. */
+  { valor: "abertos", label: "Em aberto" },
   { valor: "sem-os", label: "Sem ordem" },
-  { valor: "com-os", label: "Com ordem" },
+  { valor: "finalizados", label: "Finalizados" },
+  { valor: "todos", label: "Todos" },
 ];
+
+/** Um pedido da lista: a venda, a ordem dela, ou as duas. */
+type Linha = {
+  chave: string;
+  data: string;
+  cliente: string;
+  venda: PedidoDeProducao | null;
+  ordem: ItemProducao | null;
+};
+
+const finalizado = (l: Linha) => Boolean(l.ordem?.concluido_em);
+
+/** A situação do pedido em uma palavra, no mesmo selo da coluna de Vendas. */
+const SituacaoPedido = ({ ordem }: { ordem: ItemProducao | null }) =>
+  !ordem ? (
+    <Selo tom="alerta">Sem ordem</Selo>
+  ) : ordem.concluido_em ? (
+    <Selo tom="sucesso">Finalizado</Selo>
+  ) : (
+    <Selo tom="info">{rotuloEtapa(ordem.etapa_nome)}</Selo>
+  );
+
+/* A etapa vem do banco como a empresa escreveu — às vezes "ATENDIMENTO" em
+   caixa alta. No selo ela segue o padrão dos outros: só a inicial maiúscula. */
+const rotuloEtapa = (nome: string | null) => {
+  const t = (nome ?? "").trim().toLowerCase();
+  return t ? t[0].toUpperCase() + t.slice(1) : "Em produção";
+};
 
 const PedidosPage = () => {
   const alert = useAlert();
   const navigate = useNavigate();
-  const [pedidos, setPedidos] = useState<PedidoDeProducao[]>([]);
-  const [carregandoPedidos, setCarregandoPedidos] = useState(true);
-  const [ordens, setOrdens] = useState<ItemProducao[]>([]);
-  const [carregandoOrdens, setCarregandoOrdens] = useState(true);
-  const [gerando, setGerando] = useState<string | null>(null);
-  const [modelosOs, setModelosOs] = useState<ModeloOsDisponivel[]>([]);
+  const empresa = useEnterprise((s) => s.enterprise);
 
-  /**
-   * A venda escolhida para virar OS — e o modelo escolhido para ela.
-   *
-   * Gerar deixou de ser um clique direto: o papel que sai é decisão de quem
-   * gera, e ela precisa acontecer ANTES da ordem existir. Trocar depois é
-   * possível (a coluna Modelo, na aba OS), mas exigir isso significaria que a
-   * primeira impressão sai sempre errada.
-   */
+  const [pedidos, setPedidos] = useState<PedidoDeProducao[]>([]);
+  const [ordens, setOrdens] = useState<ItemProducao[]>([]);
+  const [carregandoPedidos, setCarregandoPedidos] = useState(true);
+  const [carregandoOrdens, setCarregandoOrdens] = useState(true);
+  const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState<Filtro>("abertos");
+  const [abrindo, setAbrindo] = useState<string | null>(null);
+  const [modelosOs, setModelosOs] = useState<ModeloOsDisponivel[]>([]);
+  const [trocando, setTrocando] = useState<string | null>(null);
+  const [pagina, setPagina] = useState(1);
+
+  /** A ordem que acabou de ser gerada aqui — fica destacada até ir para uma planilha. */
+  const [novaOrdem, setNovaOrdem] = useState<string | null>(null);
+
+  /* Gerar a OS: a venda escolhida e o modelo do papel, decididos ANTES de a
+     ordem existir — senão a primeira impressão sai sempre no modelo errado. */
   const [aGerar, setAGerar] = useState<PedidoDeProducao | null>(null);
   const [modeloEscolhido, setModeloEscolhido] = useState("PADRAO");
-  const [busca, setBusca] = useState("");
-  const [situacao, setSituacao] = useState<Situacao>("todos");
-  const [pagina, setPagina] = useState(1);
-  const corpoRef = useRef<HTMLDivElement>(null);
+  const [gerando, setGerando] = useState<string | null>(null);
+
+  /** As planilhas de produção da empresa — para onde a ordem pode ir. */
+  const [planilhas, setPlanilhas] = useState<Modelo[]>([]);
+  const [mandando, setMandando] = useState<string | null>(null);
+  const [aMandar, setAMandar] = useState<ItemProducao | null>(null);
+  const [planilhaEscolhida, setPlanilhaEscolhida] = useState("");
+
+  /* A ordem aberta para preencher, num modal sobre a lista, e o rascunho dela. */
+  const [preenchendo, setPreenchendo] = useState<ItemProducao | null>(null);
+  const [rascunho, setRascunho] = useState<Record<string, unknown>>({});
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
 
   const carregarPedidos = async () => {
     try {
       setPedidos(await ProducaoService.pedidos());
     } catch {
-      /* Sem a lista não há tela. O vazio aqui é o mesmo do "nenhum pedido
-         ainda": falhar calado é melhor do que um erro vermelho sobre uma
-         lista que a pessoa não pediu — as ordens continuam na aba ao lado. */
+      /* Sem as vendas a lista ainda mostra as ordens. */
       setPedidos([]);
     } finally {
       setCarregandoPedidos(false);
@@ -116,14 +159,11 @@ const PedidosPage = () => {
 
   const carregarOrdens = async () => {
     try {
-      /* `incluirConcluidos` para a linha não perder a ordem que já foi
-         entregue: a venda continua tendo tido uma, e oferecer "gerar" de novo
-         criaria a segunda para o mesmo trabalho. */
+      /* `incluirConcluidos` para o pedido não perder a ordem já entregue: ele
+         continua tendo tido uma, e oferecer "gerar" de novo criaria a segunda. */
       setOrdens(await ProducaoService.itens({ incluirConcluidos: true }));
-    } catch {
-      /* Sem as ordens a lista ainda serve: mostra as vendas e deixa gerar. O
-         que se perde é saber quais já foram. */
-      setOrdens([]);
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível carregar as ordens."));
     } finally {
       setCarregandoOrdens(false);
     }
@@ -133,128 +173,145 @@ const PedidosPage = () => {
     void carregarPedidos();
     void carregarOrdens();
 
-    /* Os modelos que o painel liberou. Falhar aqui não derruba a tela: o
-       seletor fica só com o documento simples. */
+    /* Falhar aqui não derruba a tela: o seletor fica só com o documento simples. */
     ProducaoService.modelosDeOs()
       .then(setModelosOs)
       .catch(() => setModelosOs([]));
+
+    /* Sem as planilhas some só a escolha de produção. */
+    PlanilhaService.modelos()
+      .then(setPlanilhas)
+      .catch(() => setPlanilhas([]));
     // Só na montagem.
   }, []);
 
-  /* O quadro da bancada e o balcão mexem nos mesmos dados: quem está com esta
-     tela aberta vê a ordem nova sem recarregar. */
+  /* A bancada e o balcão mexem nos mesmos dados: quem está com esta tela
+     aberta vê a venda e a ordem nova sem recarregar. */
   useSincronizacao(["producao", "pedidos"], () => {
     void carregarOrdens();
     void carregarPedidos();
   });
 
-  /** A ordem de cada venda, pelo vínculo que a própria ordem guarda. */
-  const ordemPorPedido = useMemo(() => {
-    const mapa = new Map<string, ItemProducao>();
+  const carregando = carregandoPedidos || carregandoOrdens;
 
-    for (const o of ordens) if (o.pedido_fk) mapa.set(String(o.pedido_fk), o);
+  /** Cada venda com a sua ordem, mais as ordens que não vieram de venda. */
+  const linhas = useMemo<Linha[]>(() => {
+    const ordemPorPedido = new Map<string, ItemProducao>();
+    for (const o of ordens) if (o.pedido_fk) ordemPorPedido.set(String(o.pedido_fk), o);
 
-    return mapa;
-  }, [ordens]);
+    const vendas = new Set(pedidos.map((v) => String(v.pedidoId)));
+
+    const daVenda: Linha[] = pedidos.map((v) => ({
+      chave: `v-${v.pedidoId}`,
+      data: v.dataPedido,
+      cliente: v.nomeCliente,
+      venda: v,
+      ordem: ordemPorPedido.get(String(v.pedidoId)) ?? null,
+    }));
+
+    /* Ordem à mão, ou de uma venda que não veio na lista (cancelada, de outro
+       vendedor): continua sendo um pedido em produção. */
+    const soOrdem: Linha[] = ordens
+      .filter((o) => !o.pedido_fk || !vendas.has(String(o.pedido_fk)))
+      .map((o) => ({ chave: `o-${o.id}`, data: o.criado_em, cliente: o.cliente_nome || "Sem cliente", venda: null, ordem: o }));
+
+    return [...daVenda, ...soOrdem].sort((a, b) => +new Date(b.data) - +new Date(a.data));
+  }, [pedidos, ordens]);
 
   const filtradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
 
-    /* Nota cancelada não chega aqui: o servidor já a descarta — não há o que
-       produzir para uma venda que não existe mais. */
-    return pedidos
-      .filter((v) => {
-        const temOrdem = ordemPorPedido.has(String(v.pedidoId));
+    return linhas.filter((l) => {
+      if (filtro === "abertos" && finalizado(l)) return false;
+      if (filtro === "sem-os" && l.ordem) return false;
+      if (filtro === "finalizados" && !finalizado(l)) return false;
 
-        if (situacao === "sem-os" && temOrdem) return false;
-        if (situacao === "com-os" && !temOrdem) return false;
+      if (!termo) return true;
 
-        if (!termo) return true;
+      return (
+        l.cliente.toLowerCase().includes(termo) ||
+        String(l.venda?.pedidoId ?? "").toLowerCase().includes(termo) ||
+        (l.ordem ? String(l.ordem.codigo).includes(termo) || (l.ordem.titulo ?? "").toLowerCase().includes(termo) : false) ||
+        (l.venda?.itens ?? []).some((i) => i.nomeProduto.toLowerCase().includes(termo))
+      );
+    });
+  }, [linhas, busca, filtro]);
 
-        return (
-          (v.nomeCliente ?? "").toLowerCase().includes(termo) ||
-          String(v.pedidoId ?? "").toLowerCase().includes(termo)
-        );
-      })
-      .sort((a, b) => +new Date(b.dataPedido) - +new Date(a.dataPedido));
-  }, [pedidos, ordemPorPedido, busca, situacao]);
-
-  /**
-   * As mesmas linhas, agrupadas pelo DIA em que a venda entrou.
-   *
-   * -------------------------------------------------------------------------
-   * Por que a data vira faixa, e não uma coluna a mais
-   * -------------------------------------------------------------------------
-   * A coluna de data já existia e não respondia a pergunta que se faz aqui:
-   * "quanto entrou ontem, e quanto disso já foi para a oficina?". Para saber
-   * isso era preciso correr o olho pela coluna contando linha por linha — e a
-   * conta que a pessoa faz de cabeça é sempre por dia.
-   *
-   * A faixa carrega as duas contagens porque uma sozinha não diz nada: seis
-   * pedidos é bom ou ruim conforme quantos viraram ordem. É o "3 de 6" que
-   * manda alguém abrir a lista.
-   *
-   * A ordem é do mais recente para o mais antigo, e a chave do agrupamento é o
-   * dia no fuso de Brasília (via `toDate`) — não a string ISO, que jogaria a
-   * venda das 22h para o dia seguinte.
-   */
-  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / POR_PAGINA));
+  /* Quantas linhas cabem é medido pela altura do corpo, como em Vendas: a
+     lista não rola dentro do cartão, pagina. */
+  const { bodyRef, perPage } = useAutoPageSize<HTMLDivElement>({ rowHeight: ALTURA_LINHA + 1, minPerPage: 4, offset: ALTURA_CABECALHO });
+  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / perPage));
 
   /* Busca ou filtro novo começa da primeira página; lista que encolheu não
      deixa a pessoa numa página que não existe mais. */
-  useEffect(() => setPagina(1), [busca, situacao]);
+  useEffect(() => setPagina(1), [busca, filtro]);
   useEffect(() => {
     if (pagina > totalPaginas) setPagina(totalPaginas);
   }, [pagina, totalPaginas]);
 
-  /* Trocar de página volta o corpo para o topo — senão a página nova abre no
-     meio, onde a anterior tinha parado. No clique, e não num efeito sobre
-     `pagina`: o salto até a ordem recém-gerada também troca a página, e ali
-     quem manda na rolagem é ela. */
-  const irParaPagina = (p: number) => {
-    setPagina(p);
-    corpoRef.current?.scrollTo({ top: 0 });
-  };
+  const primeiraDaPagina = (pagina - 1) * perPage + 1;
+  const daPagina = filtradas.slice((pagina - 1) * perPage, pagina * perPage);
+  const ultimaDaPagina = primeiraDaPagina + daPagina.length - 1;
 
-  const daPagina = useMemo(() => filtradas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA), [filtradas, pagina]);
+  /* A ordem recém-gerada vai para a página em que o pedido dela está. */
+  useEffect(() => {
+    if (carregando || !novaOrdem) return;
 
-  const porDia = useMemo(() => {
-    const mapa = new Map<string, { chave: string; rotulo: string; itens: PedidoDeProducao[]; comOrdem: number }>();
+    const indice = filtradas.findIndex((l) => l.ordem?.id === novaOrdem);
+    if (indice >= 0) setPagina(Math.floor(indice / perPage) + 1);
+    // `filtradas` fica de fora: reler a lista não deve puxar a tela de volta.
+  }, [carregando, novaOrdem, perPage]);
 
-    for (const v of daPagina) {
-      const dia = toDate(v.dataPedido);
+  /* Clientes para a busca — tirados dos próprios pedidos, como em Vendas. */
+  const clientesSugeridos = useMemo(() => {
+    const mapa = new Map<string, number>();
 
-      if (!dia) continue;
+    for (const l of linhas) if (l.cliente.trim()) mapa.set(l.cliente.trim(), (mapa.get(l.cliente.trim()) ?? 0) + 1);
 
-      const chave = `${dia.getFullYear()}-${String(dia.getMonth() + 1).padStart(2, "0")}-${String(dia.getDate()).padStart(2, "0")}`;
-      const grupo = mapa.get(chave) ?? { chave, rotulo: formatDate(v.dataPedido), itens: [], comOrdem: 0 };
+    return [...mapa.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([nome, n]) => ({ id: nome, label: nome, sub: `${n} ${n === 1 ? "pedido" : "pedidos"}` }));
+  }, [linhas]);
 
-      grupo.itens.push(v);
-      if (ordemPorPedido.has(String(v.pedidoId))) grupo.comOrdem += 1;
+  const abertosTotal = useMemo(() => linhas.filter((l) => !finalizado(l)).length, [linhas]);
+  const semOrdemTotal = useMemo(() => linhas.filter((l) => !l.ordem).length, [linhas]);
 
-      mapa.set(chave, grupo);
-    }
-
-    /* `filtradas` já vem do mais novo para o mais antigo, então a ordem de
-       inserção do Map é a que se quer — sem um segundo `sort` por data. */
-    return Array.from(mapa.values());
-  }, [daPagina, ordemPorPedido]);
+  /** A ordem recém-gerada, se ela estiver na lista. */
+  const linhaNova = useMemo(() => (novaOrdem ? ordens.find((o) => o.id === novaOrdem) ?? null : null), [novaOrdem, ordens]);
 
   /**
-   * Gera a ordem — e VAI ATÉ ELA.
+   * QUAL planilha usar — a pergunta de quem acabou de gerar a ordem.
    *
-   * -------------------------------------------------------------------------
-   * Gerar termina na aba Ordem de serviço, não num aviso
-   * -------------------------------------------------------------------------
-   * Antes o desfeito era um balão verde e a lista continuando igual: a ordem
-   * existia em outra aba, e a pergunta seguinte de quem gerou — "em qual
-   * planilha esta vai produzir?" — não tinha resposta nesta tela. A pessoa
-   * ficava olhando o mesmo pedido, agora com um selo, sem nada para fazer.
-   *
-   * Agora a tela troca para a lista de ordens com a nova destacada e a coluna
-   * Produção esperando a escolha. Ver `OrdensServicoPage`: é ela que lê o
-   * `novaOrdem` do estado da navegação.
+   * A planilha para onde as outras ordens foram é a resposta certa na
+   * esmagadora maioria das vezes. Sem histórico, só há sugestão se existir UMA
+   * planilha — aí a escolha não é escolha.
    */
+  const sugestao = useMemo(() => {
+    const vezes = new Map<string, number>();
+
+    for (const o of ordens) if (o.planilha_modelo_fk) vezes.set(o.planilha_modelo_fk, (vezes.get(o.planilha_modelo_fk) ?? 0) + 1);
+
+    const [maisUsada] = [...vezes.entries()].sort((a, b) => b[1] - a[1]);
+    const doHistorico = maisUsada && planilhas.find((m) => m.id === maisUsada[0]);
+
+    if (doHistorico) return { modelo: doHistorico, vezes: maisUsada[1] };
+
+    return planilhas.length === 1 ? { modelo: planilhas[0], vezes: 0 } : null;
+  }, [ordens, planilhas]);
+
+  /** Abre a pergunta do modelo do papel para gerar a OS da venda. */
+  const pedirGerar = (v: PedidoDeProducao) => {
+    setModeloEscolhido("PADRAO");
+    setAGerar(v);
+  };
+
+  /** Abre a escolha da planilha, já com a sugerida marcada. */
+  const abrirMandar = (o: ItemProducao) => {
+    setPlanilhaEscolhida(sugestao?.modelo.id ?? planilhas[0]?.id ?? "");
+    setAMandar(o);
+  };
+
+  /** Gera a ordem da venda e a destaca aqui mesmo, com a faixa da planilha. */
   const gerarOrdem = async (v: PedidoDeProducao, osModelo: string) => {
     const id = String(v.pedidoId);
 
@@ -265,7 +322,9 @@ const PedidosPage = () => {
       const r = await ProducaoService.daVenda(id, osModelo === "PADRAO" ? "" : osModelo);
 
       if (r.criado) {
-        navigate("/producao/os", { state: { novaOrdem: r.id } });
+        await carregarOrdens();
+        setFiltro((f) => (f === "sem-os" || f === "finalizados" ? "abertos" : f));
+        setNovaOrdem(r.id);
         return;
       }
 
@@ -279,73 +338,239 @@ const PedidosPage = () => {
     }
   };
 
-  const carregando = carregandoPedidos || carregandoOrdens;
+  /* O nó que vira documento — um só, trocado antes de cada foto. */
+  const refDoc = useRef<HTMLDivElement>(null);
+  const [ordemAlvo, setOrdemAlvo] = useState<ItemProducao | null>(null);
 
-  /** Quantos dos pedidos visíveis já viraram ordem — o apoio do cabeçalho. */
-  const comOrdemTotal = useMemo(
-    () => filtradas.filter((v) => ordemPorPedido.has(String(v.pedidoId))).length,
-    [filtradas, ordemPorPedido],
-  );
+  /* O papel que sai é o modelo carimbado na PRÓPRIA ordem; as antigas, sem
+     modelo, caem no padrão da empresa. Ver `modeloOS`. */
+  const modeloDaOrdem = (o: ItemProducao) => modeloOS(o.os_modelo ?? empresa?.osModelo);
+
+  const trocarModelo = async (o: ItemProducao, chave: string) => {
+    setTrocando(o.id);
+
+    try {
+      await ProducaoService.definirModeloOs(o.id, chave === "PADRAO" ? "" : chave);
+
+      const atualizada = { ...o, os_modelo: chave === "PADRAO" ? null : chave };
+
+      setOrdens((lista) => lista.map((x) => (x.id === o.id ? atualizada : x)));
+
+      /* A ficha da chave nova não entende os campos da antiga: o rascunho da
+         tela é reposto. O que já estava gravado continua no servidor. */
+      setPreenchendo((atual) => {
+        if (!atual || atual.id !== o.id) return atual;
+
+        const modelo = modeloOS(atualizada.os_modelo);
+
+        setRascunho((atualizada.os_dados as Record<string, unknown>) ?? modelo.vazio?.() ?? {});
+        setSalvo(false);
+
+        return atualizada;
+      });
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível trocar o modelo."));
+    } finally {
+      setTrocando(null);
+    }
+  };
+
+  /** Manda a ordem para a planilha escolhida — uma vez só por ordem. */
+  const mandarParaPlanilha = async (o: ItemProducao, modeloId: string) => {
+    setMandando(o.id);
+
+    try {
+      const mensagem = await ProducaoService.mandarParaPlanilha(o.id, modeloId);
+
+      await carregarOrdens();
+
+      setNovaOrdem((atual) => (atual === o.id ? null : atual));
+
+      alert.success("Pronto!", mensagem || "A ordem foi para a planilha.");
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível mandar a ordem para a planilha."));
+    } finally {
+      setMandando(null);
+    }
+  };
+
+  /** Abre a ficha da ordem para preencher, com o que já foi salvo nela. */
+  const preencher = (o: ItemProducao) => {
+    const modelo = modeloDaOrdem(o);
+
+    setPreenchendo(o);
+    setRascunho((o.os_dados as Record<string, unknown>) ?? modelo.vazio?.() ?? {});
+    setSalvo(false);
+  };
+
+  const salvarFicha = async () => {
+    if (!preenchendo) return;
+
+    setSalvando(true);
+
+    try {
+      await ProducaoService.salvarDadosOs(preenchendo.id, rascunho);
+
+      setOrdens((lista) => lista.map((x) => (x.id === preenchendo.id ? { ...x, os_dados: rascunho } : x)));
+      setPreenchendo((p) => (p ? { ...p, os_dados: rascunho } : p));
+
+      setSalvo(true);
+      setTimeout(() => setSalvo(false), 2000);
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível salvar a ficha."));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const abrirOS = async (o: ItemProducao, modo: ModoDocumento = "ver") => {
+    setAbrindo(o.id);
+    setOrdemAlvo(o);
+
+    try {
+      /* Espera o nó escondido render com a ordem certa antes de fotografar. */
+      await proximoQuadro();
+
+      const blob = await gerarBlobNota(refDoc);
+
+      const nomeBase = `os-${o.codigo}`;
+      const nomeEmpresa = empresa?.nomeFantasia ?? "ordem-de-servico";
+
+      await entregarDocumento(blob, modo, nomeBase, nomeEmpresa);
+    } catch (err) {
+      alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir a ordem."));
+    } finally {
+      setAbrindo(null);
+    }
+  };
 
   return (
-    /* O cabeçalho da PÁGINA é o mesmo nas três abas, de propósito: trocar de
-       aba troca a lista, não a seção em que a pessoa está. Ver o Kanban. */
+    /* O cabeçalho da PÁGINA é o mesmo nas abas, de propósito: trocar de aba
+       troca a lista, não a seção em que a pessoa está. Ver o Kanban. */
     <PageScreen icon={<Table2 className="h-5 w-5" />} title="Produção" subtitle="As produções que a sua operação usa">
-      {/* A mesma casca de lista de Clientes, Estoque e do Kanban. */}
-      <div className="card glass-sheen flex min-h-[460px] min-w-0 flex-col overflow-hidden rounded-lg sm:min-h-[260px] sm:flex-1">
-        {/* O cabeçalho do CARTÃO: diz que lista é esta e quantas linhas ela
-            tem. É a mesma peça do Kanban — sem ela, as abas trocavam o
-            conteúdo e a tela ficava sem dizer o que se está olhando. */}
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-fg/[0.06] px-4 py-3.5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/[0.15]">
-              <Receipt className="h-4 w-4 text-accent-soft" />
-            </div>
-            <div>
-              <h2 className="text-[13px] text-ink">Pedidos</h2>
-              <p className="text-[11px] text-faint">
-                {filtradas.length} {filtradas.length === 1 ? "pedido" : "pedidos"}
-                {comOrdemTotal > 0 && ` · ${comOrdemTotal} na produção`}
-              </p>
-            </div>
+      {/* A FAIXA de quem acabou de gerar a ordem: em qual planilha ela vai
+          produzir. Fora do cartão, para não roubar altura das linhas que a
+          paginação já contou. Some ao escolher ou ao fechar no X. */}
+      {linhaNova && !linhaNova.planilha_registro_fk && (
+        <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-xl border border-success/25 bg-success/[0.07] px-4 py-3">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-success/30 bg-success/[0.12] text-success">
+            <Check size={14} />
+          </span>
+
+          <div className="min-w-[200px] flex-1">
+            <p className="text-[12.5px] text-ink">
+              OS #{linhaNova.codigo} gerada para {linhaNova.cliente_nome || "sem cliente"} — falta dizer onde ela produz.
+            </p>
+
+            <p className="mt-0.5 text-[11.5px] leading-relaxed text-mist">
+              {planilhas.length === 0
+                ? "Você ainda não tem planilha de produção. Crie a primeira em Produção › Kanban — é nela que a ordem ganha a linha do cliente, com as colunas do seu processo."
+                : sugestao
+                  ? sugestao.vezes > 0
+                    ? `Use a planilha ${sugestao.modelo.nome} — foi para lá que ${sugestao.vezes === 1 ? "a última ordem foi" : `as últimas ${sugestao.vezes} ordens foram`}.`
+                    : `Você tem uma planilha de produção: ${sugestao.modelo.nome}. É nela que esta ordem entra.`
+                  : `Escolha a planilha — ${planilhas.slice(0, 3).map((m) => m.nome).join(", ")}${planilhas.length > 3 ? " e outras" : ""}.`}
+            </p>
           </div>
+
+          {planilhas.length === 0 ? (
+            <button
+              type="button"
+              onClick={() => navigate("/producao/kanban")}
+              className="focus-ring flex h-[32px] shrink-0 items-center gap-1.5 rounded-lg border border-fg/[0.12] px-3 text-[12px] text-mist transition-colors hover:border-accent/40 hover:text-accent-soft"
+            >
+              Criar uma planilha <ArrowRight size={13} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={mandando === linhaNova.id}
+              onClick={() => (sugestao ? void mandarParaPlanilha(linhaNova, sugestao.modelo.id) : abrirMandar(linhaNova))}
+              className="focus-ring flex h-[32px] shrink-0 items-center gap-1.5 rounded-lg border border-success/30 bg-success/[0.1] px-3 text-[12px] text-success transition-colors hover:bg-success/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {mandando === linhaNova.id ? <Loader2 size={13} className="animate-spin" /> : <ArrowRight size={13} />}
+              {sugestao ? `Mandar para ${sugestao.modelo.nome}` : "Escolher a planilha"}
+            </button>
+          )}
+
+          <button
+            type="button"
+            aria-label="Fechar o aviso"
+            onClick={() => setNovaOrdem(null)}
+            className="focus-ring shrink-0 rounded-lg p-1 text-muted transition-colors hover:text-ink"
+          >
+            <X size={14} />
+          </button>
         </div>
+      )}
 
-        <BarraFiltros navegacao={<AbasProducao />}>
-          <div className="glass-subtle flex min-w-[200px] flex-1 items-center gap-2 rounded-xl px-3">
-            <Search className="h-4 w-4 shrink-0 text-muted" />
-            <input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar por cliente ou número da nota…"
-              className="w-full flex-1 bg-transparent py-2 text-[13px] text-ink outline-none placeholder:text-faint"
+      <TabelaCard
+        title="Pedidos"
+        icon={<Receipt size={15} />}
+        count={filtradas.length}
+        countLabel={`${filtradas.length === 1 ? "pedido" : "pedidos"}${filtradas.length !== linhas.length ? ` de ${linhas.length}` : ""}`}
+        minWidth={900}
+        bodyRef={bodyRef}
+        navegacao={<AbasProducao />}
+        controles={
+          <>
+            <BuscaSugestoes
+              valor={busca}
+              onValor={setBusca}
+              sugestoes={clientesSugeridos}
+              onEscolher={(s) => setBusca(s.label)}
+              placeholder="Buscar cliente, item ou OS…"
+              aria-label="Buscar pedido"
+              className="w-[230px] shrink-0"
             />
-          </div>
 
-          <Select
-            valor={situacao}
-            aria-label="Situação na produção"
-            onChange={(v) => setSituacao(v as Situacao)}
-            icone={<Factory size={14} />}
-            opcoes={SITUACOES.map((s) => ({
-              valor: s.valor,
-              label: s.label,
-              contagem:
-                s.valor === "todos"
-                  ? undefined
-                  : pedidos.filter((v) => ordemPorPedido.has(String(v.pedidoId)) === (s.valor === "com-os")).length,
-            }))}
-          />
-        </BarraFiltros>
+            <Select
+              valor={filtro}
+              aria-label="Situação do pedido"
+              onChange={(v) => setFiltro(v as Filtro)}
+              icone={<ListFilter size={14} />}
+              className="w-[162px] shrink-0"
+              opcoes={FILTROS.map((f) => ({
+                valor: f.valor,
+                label: f.label,
+                contagem:
+                  f.valor === "todos"
+                    ? linhas.length
+                    : f.valor === "abertos"
+                      ? abertosTotal
+                      : f.valor === "sem-os"
+                        ? semOrdemTotal
+                        : linhas.filter(finalizado).length,
+              }))}
+            />
+          </>
+        }
+        footer={
+          <>
+            <span className="flex items-center gap-1.5">
+              Em aberto <strong className="nums text-[13px] font-normal text-ink">{abertosTotal}</strong>
+              <span className="text-faint">· {semOrdemTotal} sem ordem</span>
+            </span>
 
+            {totalPaginas > 1 && (
+              <span className="flex items-center gap-3">
+                <span className="hidden tabular-nums sm:inline">
+                  {primeiraDaPagina}–{ultimaDaPagina} de {filtradas.length}
+                </span>
+                <ControlesPagina pagina={pagina} totalPaginas={totalPaginas} onPagina={setPagina} />
+              </span>
+            )}
+          </>
+        }
+      >
         {carregando ? (
           <SkeletonListaPainel linhas={8} />
         ) : filtradas.length === 0 ? (
           <TabelaVazia
             icon={<Receipt size={20} />}
-            title={busca.trim() || situacao !== "todos" ? "Nenhum pedido encontrado" : "Nenhum pedido ainda"}
+            title={busca.trim() || filtro !== "abertos" ? "Nenhum pedido encontrado" : "Nenhum pedido em aberto"}
             description={
-              busca.trim() || situacao !== "todos"
+              busca.trim() || filtro !== "abertos"
                 ? "Tente outra busca ou outro filtro."
                 : "Toda venda registrada no balcão aparece aqui, pronta para virar ordem de serviço."
             }
@@ -354,127 +579,184 @@ const PedidosPage = () => {
           <>
             <ListaCabecalho cols={COLS}>
               {ROTULOS.map((r, i) => (
-                <span key={r} className={i >= 1 ? "text-right" : undefined}>{r}</span>
+                <span key={r} className={i === ROTULOS.length - 1 ? "text-right" : undefined}>{r}</span>
               ))}
             </ListaCabecalho>
 
-            {/* O corpo rola; a faixa de cada dia gruda no topo enquanto o
-                bloco dele passa. Numa lista que atravessa semanas, saber de
-                que dia é a linha que está na tela é metade da informação. */}
-            <div ref={corpoRef} className="min-h-0 flex-1 overflow-y-auto">
-            {porDia.map((grupo) => (
-              <section key={grupo.chave}>
-                <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-y border-fg/[0.06] bg-surface/95 px-5 py-2 backdrop-blur-sm">
-                  <span className="flex items-center gap-2 text-[11.5px] text-mist">
-                    <CalendarDays size={13} className="text-accent-soft" />
-                    <span className="tabular-nums">{grupo.rotulo}</span>
-                    <span className="text-faint">
-                      · {grupo.itens.length} {grupo.itens.length === 1 ? "pedido" : "pedidos"}
-                    </span>
-                  </span>
+            {daPagina.map((l) => {
+              const o = l.ordem;
+              const v = l.venda;
+              const idVenda = v ? String(v.pedidoId) : null;
 
-                  {/* "3 de 6 na produção" — é este número que faz alguém abrir
-                      o dia. Zero fica em cinza; não é urgência, é um dia sem
-                      trabalho de oficina, e isso é normal em muita loja. */}
-                  <span className={`text-[11.5px] tabular-nums ${grupo.comOrdem > 0 ? "text-accent-soft" : "text-faint"}`}>
-                    {grupo.comOrdem} de {grupo.itens.length} na produção
-                  </span>
-                </div>
+              return (
+                <ListaLinha
+                  key={l.chave}
+                  cols={COLS}
+                  rotulos={ROTULOS}
+                  altura={ALTURA_LINHA}
+                  ancora={o ? `ordem-${o.id}` : undefined}
+                  destaque={o && o.id === novaOrdem ? "sucesso" : undefined}
+                  /* A linha inteira é o pedido: com ordem, abre a ficha da OS;
+                     sem ordem, pergunta o modelo e gera. Os botões ficam FORA
+                     do botão da linha — ver `ListaLinha`. */
+                  ariaLabel={o ? `Abrir a OS ${o.codigo} de ${l.cliente}` : `Gerar a ordem de serviço de ${l.cliente}`}
+                  onClick={o ? () => preencher(o) : v ? () => pedirGerar(v) : undefined}
+                  acoes={
+                    o ? (
+                      <>
+                        {o.planilha_registro_fk ? (
+                          <ListaAcao
+                            icon={<ExternalLink size={14} />}
+                            label={`Abrir em ${o.planilha_nome ?? "Produção"}`}
+                            tom="sucesso"
+                            onClick={() => navigate("/producao/kanban")}
+                          />
+                        ) : (
+                          <ListaAcao
+                            icon={<Factory size={14} />}
+                            label="Mandar para uma planilha de produção"
+                            ocupado={mandando === o.id}
+                            onClick={() => abrirMandar(o)}
+                          />
+                        )}
 
-                {grupo.itens.map((v) => {
-                const id = String(v.pedidoId);
-                const ordem = ordemPorPedido.get(id);
-
-                return (
-                  <ListaLinha
-                    key={id}
-                    cols={COLS}
-                    rotulos={ROTULOS}
-                    altura={ALTURA_LINHA}
-                    acoes={
-                      /* A ordem já existe: não há botão. Oferecer "gerar" outra
-                         vez prometeria algo que o servidor recusa — e o número da
-                         OS ao lado já diz onde o trabalho está. */
-                      ordem ? undefined : (
-                        <ListaAcao
-                          icon={<ClipboardList size={14} />}
-                          label="Gerar ordem de serviço"
-                          tom="sucesso"
-                          ocupado={gerando === id}
-                          onClick={() => {
-                            setModeloEscolhido("PADRAO");
-                            setAGerar(v);
-                          }}
+                        <BotaoVerDocumento
+                          variante="linha"
+                          titulo="Ver ou imprimir a ordem de serviço"
+                          documento="ordem"
+                          ocupado={abrindo === o.id || trocando === o.id}
+                          onAbrir={(modo) => void abrirOS(o, modo)}
                         />
-                      )
-                    }
-                  >
-                    <span className="flex min-w-0 items-center gap-2.5 pr-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-accent/25 bg-accent/[0.12] text-[10.5px] text-accent-soft">
-                        {getInitials(v.nomeCliente)}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-[12.5px] text-ink">{v.nomeCliente}</span>
-                        <span className="block truncate text-[10px] text-faint">#{id.slice(-6).toUpperCase()}</span>
+                      </>
+                    ) : v ? (
+                      <ListaAcao
+                        icon={<ClipboardList size={14} />}
+                        label="Gerar ordem de serviço"
+                        tom="sucesso"
+                        ocupado={gerando === idVenda}
+                        onClick={() => pedirGerar(v)}
+                      />
+                    ) : undefined
+                  }
+                >
+                  <span className="flex min-w-0 items-center gap-2.5 pr-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-accent/25 bg-accent/[0.12] text-[10.5px] text-accent-soft">
+                      {getInitials(l.cliente)}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[12.5px] text-ink">{l.cliente}</span>
+                      <span className="flex min-w-0 items-center gap-1.5 text-[10px] text-faint">
+                        <span className="truncate">{idVenda ? `#${idVenda.slice(-6).toUpperCase()}` : "Sem venda"}</span>
+                        {o && <span className="shrink-0 text-accent-soft">· OS #{o.codigo}</span>}
                       </span>
                     </span>
+                  </span>
 
-                    {/* Quantas peças, e o que são: é a leitura que diz se o
-                        pedido é de dez minutos ou da semana inteira. Os nomes
-                        vêm embaixo, truncados — a lista inteira está na OS. */}
-                    <span className="min-w-0 text-right">
-                      <span className="block text-[12.5px] tabular-nums text-ink">
-                        {v.quantidadeItens} {v.quantidadeItens === 1 ? "peça" : "peças"}
+                  <span className="nums text-[12px] text-mist">{formatDateShort(l.data)}</span>
+
+                  <span className="min-w-0">
+                    <SituacaoPedido ordem={o} />
+                  </span>
+
+                  {/* Quantas peças, e o que são. */}
+                  <span className="min-w-0 pr-3">
+                    {v ? (
+                      <>
+                        <span className="block text-[12.5px] tabular-nums text-ink">
+                          {v.quantidadeItens} {v.quantidadeItens === 1 ? "peça" : "peças"}
+                        </span>
+                        <span className="block truncate text-[10px] text-faint">{v.itens.map((i) => i.nomeProduto).join(", ")}</span>
+                      </>
+                    ) : (
+                      <span className="block truncate text-[12px] text-mist">{o?.titulo}</span>
+                    )}
+                  </span>
+
+                  {/* PARA ONDE a ordem foi produzir — só texto: escolher a
+                      planilha é o botão de Ações, fora do clique da linha. */}
+                  <span className="min-w-0 truncate pr-3 text-[12px]">
+                    {!o ? (
+                      <span className="text-faint">—</span>
+                    ) : o.planilha_registro_fk ? (
+                      <span className="text-success">{o.planilha_nome ?? "Na produção"}</span>
+                    ) : mandando === o.id ? (
+                      <span className="flex items-center gap-1.5 text-faint">
+                        <Loader2 size={13} className="animate-spin text-accent" /> Mandando...
                       </span>
-                      <span className="block truncate text-[10px] text-faint">
-                        {v.itens.map((i) => i.nomeProduto).join(", ")}
-                      </span>
-                    </span>
+                    ) : (
+                      <span className="text-warning">Sem planilha</span>
+                    )}
+                  </span>
 
-                    {/* A coluna que a tela existe para responder. */}
-                    <span className="flex justify-end">
-                      {ordem ? (
-                        <Selo tom={ordem.concluido_em ? "sucesso" : "info"}>
-                          OS #{ordem.codigo} · {ordem.concluido_em ? "concluída" : ordem.etapa_nome ?? "sem etapa"}
-                        </Selo>
-                      ) : (
-                        <span className="text-[11.5px] text-faint">sem ordem</span>
-                      )}
-                    </span>
+                  <span />
+                </ListaLinha>
+              );
+            })}
 
-                    <span />
-                  </ListaLinha>
-                );
-                })}
-              </section>
-            ))}
-            </div>
-
-            <TabelaPaginacao
-              pagina={pagina}
-              totalPaginas={totalPaginas}
-              onPagina={irParaPagina}
-              resumo={`${filtradas.length} ${filtradas.length === 1 ? "pedido" : "pedidos"}`}
-            />
+            {/* Linhas vazias completando a página, para o rodapé não pular. */}
+            <ListaFantasmas quantidade={Math.max(0, perPage - daPagina.length)} altura={ALTURA_LINHA} />
           </>
         )}
-      </div>
+      </TabelaCard>
 
-      {/*
-        Escolher o papel ANTES de a ordem existir.
-        
-        Um clique direto criaria a OS no documento simples e deixaria a troca
-        para depois — o que significa que a primeira impressão sai sempre
-        errada para quem usa um modelo próprio. Uma pergunta de um campo é mais
-        barata do que reimprimir.
-      */}
+      {/* Para qual planilha a ordem vai produzir. */}
       <Modal
-        open={!!aGerar}
-        onClose={() => setAGerar(null)}
-        title="Gerar ordem de serviço"
-        subtitle={aGerar ? aGerar.nomeCliente : ""}
+        open={!!aMandar}
+        onClose={() => setAMandar(null)}
+        title="Mandar para a produção"
+        subtitle={aMandar ? `OS #${aMandar.codigo} · ${aMandar.cliente_nome || "Sem cliente"}` : ""}
         size="sm"
       >
+        {aMandar && (
+          <div className="flex flex-col gap-4">
+            {planilhas.length === 0 ? (
+              <p className="text-[12px] leading-relaxed text-mist">
+                Você ainda não tem planilha de produção. Crie a primeira em Produção › Kanban — é nela que a ordem ganha a linha do cliente.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] uppercase tracking-[0.7px] text-faint">Planilha</span>
+                <Select
+                  valor={planilhaEscolhida}
+                  aria-label="Planilha de produção"
+                  onChange={setPlanilhaEscolhida}
+                  opcoes={planilhas.map((m) => ({ valor: m.id, label: m.nome }))}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 border-t border-fg/[0.06] pt-3">
+              <button onClick={() => setAMandar(null)} className="flex min-h-[36px] items-center rounded-lg px-3 text-[12px] text-mist transition-colors hover:text-ink">
+                Cancelar
+              </button>
+
+              {planilhas.length === 0 ? (
+                <button
+                  onClick={() => navigate("/producao/kanban")}
+                  className="flex min-h-[36px] items-center gap-1.5 rounded-lg border border-fg/[0.12] px-3.5 text-[12px] text-mist transition-colors hover:text-ink"
+                >
+                  Criar uma planilha <ArrowRight size={13} />
+                </button>
+              ) : (
+                <button
+                  disabled={!planilhaEscolhida}
+                  onClick={() => {
+                    const o = aMandar;
+                    setAMandar(null);
+                    void mandarParaPlanilha(o, planilhaEscolhida);
+                  }}
+                  className="flex min-h-[36px] items-center gap-1.5 rounded-lg border border-success/30 bg-success/[0.1] px-3.5 text-[12px] text-success transition-colors hover:bg-success/20 disabled:opacity-40"
+                >
+                  <Factory size={13} /> Mandar
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Escolher o papel ANTES de a ordem existir. */}
+      <Modal open={!!aGerar} onClose={() => setAGerar(null)} title="Gerar ordem de serviço" subtitle={aGerar ? aGerar.nomeCliente : ""} size="sm">
         {aGerar && (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
@@ -484,30 +766,23 @@ const PedidosPage = () => {
                 valor={modeloEscolhido}
                 aria-label="Modelo da ordem de serviço"
                 onChange={setModeloEscolhido}
-                opcoes={[
-                  { valor: "PADRAO", label: "Ordem de serviço simples" },
-                  ...modelosOs.map((m) => ({ valor: m.chave, label: m.nome })),
-                ]}
+                opcoes={[{ valor: "PADRAO", label: "Ordem de serviço simples" }, ...modelosOs.map((m) => ({ valor: m.chave, label: m.nome }))]}
               />
 
               <p className="text-[11.5px] leading-relaxed text-faint">
-                {modelosOs.find((m) => m.chave === modeloEscolhido)?.descricao
-                  ?? "Cliente, etapa, responsável, prazo e o que produzir. Serve a qualquer ramo."}
+                {modelosOs.find((m) => m.chave === modeloEscolhido)?.descricao ?? "Cliente, etapa, responsável, prazo e o que produzir. Serve a qualquer ramo."}
               </p>
 
               {modelosOs.length === 0 && (
                 <p className="text-[11.5px] leading-relaxed text-mist">
-                  Outros modelos — como a ficha técnica de produção, com grades de tamanho, moldes e tecidos — são
-                  liberados para a sua empresa pelo suporte.
+                  Outros modelos — como a ficha técnica de produção, com grades de tamanho, moldes e tecidos — são liberados para a sua
+                  empresa pelo suporte.
                 </p>
               )}
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t border-fg/[0.06] pt-3">
-              <button
-                onClick={() => setAGerar(null)}
-                className="flex min-h-[36px] items-center rounded-lg px-3 text-[12px] text-mist transition-colors hover:text-ink"
-              >
+              <button onClick={() => setAGerar(null)} className="flex min-h-[36px] items-center rounded-lg px-3 text-[12px] text-mist transition-colors hover:text-ink">
                 Cancelar
               </button>
 
@@ -521,6 +796,93 @@ const PedidosPage = () => {
           </div>
         )}
       </Modal>
+
+      {/* A ordem aberta: o modelo, salvar e imprimir numa barra, e a folha. */}
+      <Modal
+        open={!!preenchendo}
+        onClose={() => setPreenchendo(null)}
+        title={preenchendo ? `OS #${preenchendo.codigo} · ${preenchendo.cliente_nome || "Sem cliente"}` : ""}
+        subtitle={preenchendo ? modeloDaOrdem(preenchendo).nome : undefined}
+        size="full"
+      >
+        {preenchendo && (
+          <div className="flex min-h-0 flex-1 flex-col gap-3">
+            <div className="shrink-0 overflow-hidden rounded-xl border border-fg/[0.07] bg-fg/[0.02]">
+              <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
+                <span className="text-[10px] uppercase tracking-[0.7px] text-faint">Modelo</span>
+
+                {[{ chave: "PADRAO", nome: "Simples" }, ...modelosOs.map((m) => ({ chave: m.chave, nome: m.nome }))].map((m) => {
+                  const atual = (preenchendo.os_modelo ?? empresa?.osModelo ?? "PADRAO") === m.chave;
+
+                  return (
+                    <button
+                      key={m.chave}
+                      type="button"
+                      disabled={trocando === preenchendo.id || atual}
+                      onClick={() => void trocarModelo(preenchendo, m.chave)}
+                      title={atual ? "É o modelo desta ordem" : `Usar ${m.nome}`}
+                      className={CHIP(atual)}
+                    >
+                      {m.nome}
+                    </button>
+                  );
+                })}
+
+                {trocando === preenchendo.id && <Loader2 size={14} className="animate-spin text-accent" />}
+
+                <span className="ml-auto flex items-center gap-2">
+                  {/* Só há o que salvar onde há o que preencher. */}
+                  {modeloDaOrdem(preenchendo).Edicao && (
+                    <button
+                      onClick={() => void salvarFicha()}
+                      disabled={salvando}
+                      className="focus-ring flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-br from-accent-soft to-accent px-3 text-[11.5px] text-white transition-all hover:brightness-110 disabled:opacity-50"
+                    >
+                      {salvando ? <Loader2 size={13} className="animate-spin" /> : salvo ? <Check size={13} /> : <Save size={13} />}
+                      {salvo ? "Salvo" : "Salvar ficha"}
+                    </button>
+                  )}
+
+                  <BotaoVerDocumento
+                    variante="linha"
+                    titulo="Ver ou imprimir a ordem de serviço"
+                    documento="ordem"
+                    ocupado={abrindo === preenchendo.id}
+                    onAbrir={(modo) => void abrirOS(preenchendo, modo)}
+                  />
+                </span>
+              </div>
+            </div>
+
+            {/* A folha inteira, reduzida para caber — e com zoom. */}
+            <VisorDocumento>
+              {(() => {
+                const modelo = modeloDaOrdem(preenchendo);
+
+                if (modelo.Edicao) return <modelo.Edicao ordem={preenchendo} dados={rascunho} onChange={setRascunho} />;
+
+                /* Modelo sem ficha: mostra o papel como ele vai sair. Largura
+                   FIXA — dentro do visor quem manda no tamanho é a folha. */
+                return (
+                  <div className="w-[900px] overflow-hidden rounded-xl">
+                    <modelo.Documento ordem={preenchendo} />
+                  </div>
+                );
+              })()}
+            </VisorDocumento>
+          </div>
+        )}
+      </Modal>
+
+      {/* O documento fora da tela: largura fixa, nunca rola, sempre inteiro —
+          `html-to-image` precisa do nó renderizado de verdade. */}
+      <div className="fixed -left-[9999px] top-0 w-fit" aria-hidden>
+        {ordemAlvo &&
+          (() => {
+            const M = modeloDaOrdem(ordemAlvo).Documento;
+            return <M ordem={ordemAlvo} refDoc={refDoc} />;
+          })()}
+      </div>
     </PageScreen>
   );
 };

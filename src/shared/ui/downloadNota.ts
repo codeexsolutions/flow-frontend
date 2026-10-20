@@ -201,7 +201,7 @@ export async function abrirDocumento(png: Blob, nomeBase: string, nomeEmpresa: s
   const nome = nomeArquivo(nomeBase);
   const urlPng = URL.createObjectURL(png);
 
-  const botao = "display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;text-decoration:none;font:14px system-ui,sans-serif;border:1px solid #2b2f3a";
+  const botao = "display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;text-decoration:none;font:14px 'Inter Variable',Inter,system-ui,sans-serif;border:1px solid #2b2f3a";
 
   /* O conteúdo entra pelo DOM, e NÃO por um segundo `document.write` — ver
      acima por que o stream do esqueleto já foi fechado. */
@@ -209,7 +209,7 @@ export async function abrirDocumento(png: Blob, nomeBase: string, nomeEmpresa: s
 
   aba.document.body.setAttribute(
     "style",
-    "margin:0;background:#0f1115;color:#e6e8ef;font:15px system-ui,sans-serif",
+    "margin:0;background:#0f1115;color:#e6e8ef;font:15px 'Inter Variable',Inter,system-ui,sans-serif",
   );
 
   aba.document.body.innerHTML = `

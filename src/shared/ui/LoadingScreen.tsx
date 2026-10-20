@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotionConfig } from "framer-motion";
 
 import useMarcaDominio from "@/shared/marca/marcaDominio";
 
@@ -12,6 +12,38 @@ const ANEL = {
   mask: "radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px))",
 };
 
+/*
+ * O fundo "de instrumento" — malha do tema, apagando nas bordas.
+ *
+ * Duas grades sobrepostas, como papel milimetrado: a fina a cada 24px e a
+ * marcada a cada 96px, as duas na cor de destaque do tema. A máscara radial
+ * deixa a malha nítida em volta da logo e some até as bordas — grade de
+ * ponta a ponta com a mesma força vira estampa, não profundidade.
+ *
+ * Tudo é `background` parado: nenhum desfoque, nada que o navegador precise
+ * recalcular a cada quadro. O único movimento é a linha de varredura, que
+ * anda por `transform`.
+ */
+const MASCARA = "radial-gradient(ellipse 60% 55% at 50% 50%, #000 0%, rgb(0 0 0 / 0.5) 45%, transparent 80%)";
+
+const GRADE: CSSProperties = {
+  backgroundImage: [
+    "linear-gradient(rgb(var(--accent) / 0.16) 1px, transparent 1px)",
+    "linear-gradient(90deg, rgb(var(--accent) / 0.16) 1px, transparent 1px)",
+    "linear-gradient(rgb(var(--accent) / 0.07) 1px, transparent 1px)",
+    "linear-gradient(90deg, rgb(var(--accent) / 0.07) 1px, transparent 1px)",
+  ].join(", "),
+  backgroundSize: "96px 96px, 96px 96px, 24px 24px, 24px 24px",
+  backgroundPosition: "center center",
+  WebkitMaskImage: MASCARA,
+  maskImage: MASCARA,
+};
+
+/** Cantoneira de mira num canto da tela — o mesmo vocabulário do `hud-cantos`. */
+const Canto = ({ className }: { className: string }) => (
+  <span aria-hidden className={`pointer-events-none absolute h-6 w-6 border-accent/40 ${className}`} />
+);
+
 /**
  * Tela de espera do boot, enquanto a sessão é conferida.
  *
@@ -21,7 +53,7 @@ const ANEL = {
  * não chegou, a logo fica de fora para não piscar a nossa e trocar em seguida.
  */
 const LoadingScreen = () => {
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
   const marca = useMarcaDominio((s) => s.marca);
   const carregandoMarca = useMarcaDominio((s) => s.carregando);
 
@@ -39,6 +71,32 @@ const LoadingScreen = () => {
       className="relative flex h-[100dvh] w-full items-center justify-center overflow-hidden bg-canvas"
       style={corDaMarca ? ({ "--accent": corDaMarca, "--accent-soft": corDaMarca, "--accent-strong": corDaMarca } as CSSProperties) : undefined}
     >
+      {/* ---------- Fundo tecnológico ---------- */}
+      <div aria-hidden className="pointer-events-none absolute inset-0" style={GRADE} />
+
+      {/* A cruz de mira passando pelo centro: duas linhas finas que apagam
+          nas pontas e "apontam" para a logo. */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-accent/30 to-transparent" />
+      <div aria-hidden className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-gradient-to-b from-transparent via-accent/30 to-transparent" />
+
+      {/* Linha de varredura — desce a tela devagar, como um radar. */}
+      {!reduzir && (
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-24"
+          style={{ background: "linear-gradient(to bottom, transparent, rgb(var(--accent) / 0.08) 85%, rgb(var(--accent) / 0.35))" }}
+          initial={{ y: "-10vh" }}
+          animate={{ y: "100vh" }}
+          transition={{ repeat: Infinity, duration: 3.6, ease: "linear" }}
+        />
+      )}
+
+      {/* Cantoneiras nos quatro cantos da tela */}
+      <Canto className="left-5 top-5 rounded-tl-lg border-l-[1.5px] border-t-[1.5px]" />
+      <Canto className="right-5 top-5 rounded-tr-lg border-r-[1.5px] border-t-[1.5px]" />
+      <Canto className="bottom-5 left-5 rounded-bl-lg border-b-[1.5px] border-l-[1.5px]" />
+      <Canto className="bottom-5 right-5 rounded-br-lg border-b-[1.5px] border-r-[1.5px]" />
+
       {/* Glows de fundo — os mesmos do login, e somem no modo leve */}
       <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden" style={{ opacity: "var(--fx-aurora, 1)" }}>
         <motion.div
@@ -117,7 +175,16 @@ const LoadingScreen = () => {
                 </>
               )}
             </span>
-            <span className="text-[10px] uppercase tracking-[3px] text-faint">Preparando seu painel</span>
+            <span className="flex items-center gap-2 text-[10px] uppercase tracking-[3px] text-faint">
+              {/* O ponto que pisca é o "sistema vivo" do painel de instrumentos. */}
+              <motion.span
+                aria-hidden
+                className="h-1.5 w-1.5 rounded-full bg-accent-soft shadow-[0_0_8px_1px_rgb(var(--accent-soft)/0.8)]"
+                animate={reduzir ? undefined : { opacity: [1, 0.25, 1] }}
+                transition={{ repeat: Infinity, duration: 1.2, ease: "easeInOut" }}
+              />
+              Preparando seu painel
+            </span>
           </motion.div>
         )}
 

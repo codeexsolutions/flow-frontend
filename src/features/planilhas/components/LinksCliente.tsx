@@ -8,6 +8,7 @@ import SeletorCliente from "@/features/planilhas/components/SeletorCliente";
 import Personalizacao from "@/features/planilhas/components/Personalizacao";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import { useAlert } from "@/shared/ui/Alert";
+import Select from "@/shared/ui/Select";
 
 type Props = {
   planilhaId: string;
@@ -249,18 +250,14 @@ const LinksCliente = ({ planilhaId, colunas, registros }: Props) => {
           />
 
           {colunasCliente.length > 1 && (
-            <select
-              value={colunaCliente}
-              onChange={(e) => setColunaCliente(e.target.value)}
-              className="focus-ring rounded-xl border border-fg/[0.1] bg-transparent px-3 py-2 text-[12.5px] text-ink outline-none"
-            >
-              <option value="">Qual coluna?</option>
-              {colunasCliente.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
+            <Select
+              valor={colunaCliente}
+              onChange={setColunaCliente}
+              aria-label="Coluna do cliente"
+              placeholder="Qual coluna?"
+              className="w-[180px] shrink-0"
+              opcoes={colunasCliente.map((c) => ({ valor: c.id, label: c.nome }))}
+            />
           )}
 
           <button

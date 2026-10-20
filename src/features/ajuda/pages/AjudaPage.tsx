@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotionConfig } from "framer-motion";
 import {
   LifeBuoy, MessageCircle, Mail, ChevronDown, ShieldCheck, Building2, Store,
   Loader2, Receipt, Users, Wallet, Smartphone, Search, HelpCircle,
@@ -139,7 +139,7 @@ const FAQ: GrupoFaq[] = [
 
 const AjudaPage = () => {
   const { whatsapp, email } = useContatoSuporte();
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
   const alerta = useAlert();
 
   const { user } = useAuth();

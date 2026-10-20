@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useForm, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotionConfig } from "framer-motion";
 import {
   BadgeCheck, Cake, Check, Home, IdCard, Mail, MapPin,
   MessageCircle, Phone, Save, Search, Smartphone, Loader2, UserRound, Users,
@@ -107,7 +107,7 @@ type Props = {
 const ClienteForm = ({ open = true, cliente, prefill, saving = false, onClose, onSubmit }: Props) => {
   const alert = useAlert();
   const { buscar, buscando } = useBuscaCep();
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
   const editando = Boolean(cliente);
 
   const [etapa, setEtapa] = useState(0);

@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import useSincronizacao from "@/shared/realtime/useSincronizacao";
-import { Table2, Plus, ChevronLeft, ChevronRight, ChevronDown, Settings2, Trash2, X, Loader2, ArrowLeft, Copy, History, LayoutTemplate, EyeOff, Lock, Eraser, Rows3, KanbanSquare, Columns3 } from "lucide-react";
+import { Table2, Plus, ChevronDown, Settings2, Trash2, X, Loader2, ArrowLeft, Copy, History, LayoutTemplate, EyeOff, Lock, Eraser, Rows3, KanbanSquare, Columns3 } from "lucide-react";
 
-import PlanilhaService, { type Alteracao, type Coluna, type Modelo, type ModeloCatalogo, type Pagina, type Periodicidade, type Periodo, type TipoColuna } from "@/features/planilhas/services/planilha.service";
+import PlanilhaService, { type Alteracao, type Coluna, type Modelo, type ModeloCatalogo, type Pagina, type Periodicidade, type Periodo, type Registro, type TipoColuna } from "@/features/planilhas/services/planilha.service";
 import { PageScreen } from "@/shared/ui/PageShell";
 import { BarraFiltros, ListaAcao, ListaCabecalho, ListaLinha } from "@/shared/ui/DataTable";
 import { ROW_HEIGHT } from "@/shared/hooks/useAutoPageSize";
@@ -13,7 +13,7 @@ import { useAlert } from "@/shared/ui/Alert";
 import { extractErrorMessage, getErrorTitle } from "@/shared/utils/errorHandler";
 import { ehGestor } from "@/features/vendas/components/TabsVendas";
 import useAuth from "@/features/auth/store/auth.store";
-import { SkeletonListaPainel } from "@/shared/ui/skeleton";
+import { Skeleton, SkeletonPlanilha, SkeletonQuadro, SkeletonTableRows } from "@/shared/ui/skeleton";
 import Celula from "@/features/planilhas/components/Celula";
 import useEquipeStore from "@/features/funcionarios/store/equipe.store";
 import { podemReceberTarefa } from "@/shared/domain/funcionario";
@@ -21,6 +21,7 @@ import Presenca from "@/features/planilhas/components/Presenca";
 import MenuColuna from "@/features/planilhas/components/MenuColuna";
 import MenuContexto from "@/features/planilhas/components/MenuContexto";
 import QuadroPlanilha from "@/features/planilhas/components/QuadroPlanilha";
+import Select from "@/shared/ui/Select";
 
 /**
  * ============================================================================
@@ -68,7 +69,7 @@ import QuadroPlanilha from "@/features/planilhas/components/QuadroPlanilha";
  *          `definirCor`, `definirPadrao`, `definirDataMinima`, `criarColuna`,
  *          `removerColuna`;
  *        · planilhas: `carregarModelos`, `criarModelo`, `usarModelo`,
- *          `duplicarAtual`, `excluirPlanilha`;
+ *          `excluirPlanilha`;
  *        · dados: `carregarPlanilha`, `novaLinha`, `salvarCelula`,
  *          `copiarDeCima`, `excluirLinha`;
  *        · navegação e páginas: `navegar`, `proximaPagina`, `confirmarRenome`.
@@ -283,6 +284,103 @@ const lembrar = (chave: string, id: string, valor: string) => {
   }
 };
 
+/**
+ * A FORMA da última visita — só as quantidades, nunca o conteúdo.
+ *
+ * Ao entrar, a tela esperava a API para saber até o tamanho do que ia
+ * mostrar: a lista piscava com quatro linhas genéricas, e a planilha aberta
+ * mostrava por um instante "ainda não tem colunas" antes de a grade aparecer.
+ * Guardando quantas produções existem, as larguras das colunas, quantas linhas
+ * a página tinha e quantos cartões havia em cada raia, o esqueleto já nasce
+ * do tamanho do que vem — e a troca para os dados não mexe no layout.
+ *
+ * O CONTEÚDO não vai para o localStorage de propósito: nome de cliente e
+ * valor de pedido ficariam gravados no navegador de qualquer computador da
+ * loja, e um dado velho mostrado como atual é pior que um esqueleto.
+ */
+type Forma = { larguras: number[]; linhas: number; raias: number[] };
+
+const CHAVE_FORMA = "planilhas:forma";
+const CHAVE_QTD_LISTA = "planilhas:qtd";
+
+const FORMA_PADRAO: Forma = { larguras: [240, 240, 240, 240, 240, 240], linhas: 10, raias: [3, 2, 2, 1] };
+
+const formaLembrada = (id: string): Forma => {
+  try {
+    const salva = JSON.parse(lembrado(CHAVE_FORMA, id) ?? "null") as Forma | null;
+    if (!salva?.larguras?.length) return FORMA_PADRAO;
+
+    /* Teto no que se desenha: o esqueleto cobre a tela, não a planilha
+       inteira — trezentas linhas cinzas custariam mais que a espera. */
+    return {
+      larguras: salva.larguras.slice(0, 16),
+      linhas: Math.min(Math.max(salva.linhas, 3), 30),
+      raias: (salva.raias?.length ? salva.raias : FORMA_PADRAO.raias).slice(0, 8).map((n) => Math.min(n, 6)),
+    };
+  } catch {
+    return FORMA_PADRAO;
+  }
+};
+
+/** Cartões por raia — a mesma partição do `QuadroPlanilha`, só contada. */
+const contarRaias = (etapa: Coluna | null, registros: Registro[]): number[] => {
+  if (!etapa) return [];
+
+  const valores = listaDeOpcoes(etapa).map((o) => o.valor);
+  const contagem = new Map<string, number>(valores.map((v) => [v, 0]));
+  let semEtapa = 0;
+
+  for (const r of registros) {
+    const bruto = r.valores[etapa.id];
+    const v = (bruto == null ? "" : String(bruto)).trim();
+
+    if (contagem.has(v)) contagem.set(v, (contagem.get(v) ?? 0) + 1);
+    else semEtapa += 1;
+  }
+
+  const raias = valores.map((v) => contagem.get(v) ?? 0);
+  return semEtapa > 0 ? [semEtapa, ...raias] : raias;
+};
+
+/** Id de algo criado na tela e ainda não confirmado pelo servidor. */
+const idProvisorio = () => `tmp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const ehProvisorio = (id: string) => id.startsWith("tmp-");
+
+/**
+ * A página que chegou do servidor, mais as linhas provisórias da tela.
+ *
+ * A recarga silenciosa (tempo real, outra pessoa digitando) substituía a
+ * página inteira — e apagava a linha que acabou de ser criada aqui e ainda
+ * esperava resposta. Ela volta a entrar no fim, até a criação terminar.
+ */
+const comPendentes = (nova: Pagina, atual: Pagina | null): Pagina => {
+  const provisorias = (atual?.registros ?? []).filter((r) => ehProvisorio(r.id));
+  return provisorias.length > 0 && atual?.de === nova.de ? { ...nova, registros: [...nova.registros, ...provisorias] } : nova;
+};
+
+/**
+ * A largura de uma coluna que ninguém redimensionou.
+ *
+ * 240px para todas deixava a coluna de Pagamento — "0%", "50%", "100%" — do
+ * tamanho da de Cliente, com a palavra perdida no meio de uma faixa vazia.
+ * Coluna de seleção mede pela maior alternativa e pelo próprio nome, entre
+ * 140 e 240px; as demais ficam nos 240px. Quem arrastar a borda manda.
+ */
+const larguraDaColuna = (c: Coluna): number => {
+  if (c.largura) return c.largura;
+  if (c.tipo !== "SELECAO") return 240;
+
+  const opcoes = Array.isArray(c.opcoes) ? c.opcoes : [];
+  const maior = Math.max(0, ...opcoes.map((o) => o.valor.length));
+
+  return Math.min(240, Math.max(140, maior * 9 + 90, c.nome.length * 9 + 70));
+};
+
+const qtdListaLembrada = () => {
+  const n = Number(lembrado(CHAVE_QTD_LISTA, "total"));
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
 const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
   const alert = useAlert();
 
@@ -315,6 +413,37 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
   const [pagina, setPagina] = useState<Pagina | null>(null);
   const [dataAtual, setDataAtual] = useState(() => iso(new Date()));
   const [carregando, setCarregando] = useState(true);
+  /* De qual planilha são as `colunas` e a `pagina` que estão no estado. No
+     render em que se clica numa produção, `carregando` ainda é falso e as
+     colunas são as da anterior (ou nenhuma) — era o quadro em que piscava
+     "ainda não tem colunas". Diferente do id aberto = ainda carregando. */
+  const [carregadaId, setCarregadaId] = useState<string | null>(null);
+
+  /*
+   * Linhas criadas na tela antes de o servidor responder — ver `criarLinha`.
+   *
+   * `pendentes`: id provisório → promessa do id verdadeiro (`null` se a
+   * criação falhou). Fica guardado a sessão toda: uma edição disparada com o
+   * id provisório pode chegar depois da troca e ainda precisa achá-lo.
+   * `chaves`: id verdadeiro → provisório, para a linha manter a mesma `key`.
+   */
+  const pendentes = useRef(new Map<string, Promise<string | null>>());
+  const chaves = useRef(new Map<string, string>());
+
+  const idReal = async (id: string) => (ehProvisorio(id) ? ((await pendentes.current.get(id)) ?? null) : id);
+
+  /** A linha é esta — pelo id atual ou pelo provisório com que nasceu. */
+  const mesmaLinha = (r: Registro, id: string) => r.id === id || chaves.current.get(r.id) === id;
+
+  /*
+   * A página aberta pelo "+ Página" antes de o servidor saber dela — ver
+   * `proximaPagina`. `paginaNaTela` é a data que o efeito de carga NÃO deve
+   * buscar (a tela já está montada); `loteEmCurso` são os períodos cujo lote
+   * de linhas ainda está sendo gravado, para a recarga de tempo real não
+   * achar a página vazia e criar outro lote por cima.
+   */
+  const paginaNaTela = useRef<string | null>(null);
+  const loteEmCurso = useRef(new Set<string>());
 
   const [novaAberta, setNovaAberta] = useState(false);
   const [configAberta, setConfigAberta] = useState(false);
@@ -445,7 +574,9 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     setCarregando(true);
 
     try {
-      setModelos(await PlanilhaService.modelos());
+      const lista = await PlanilhaService.modelos();
+      setModelos(lista);
+      lembrar(CHAVE_QTD_LISTA, "total", String(lista.length));
     } catch (err) {
       avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível carregar as produções."));
     } finally {
@@ -553,14 +684,16 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
          convida a escrever, e criar a primeira linha manualmente é um passo que
          ninguém deveria precisar dar. Só quando já há colunas — sem elas, as
          linhas não teriam onde ser preenchidas. */
-      if (cols.length > 0 && pag.registros.length === 0) {
+      if (cols.length > 0 && pag.registros.length === 0 && !loteEmCurso.current.has(pag.de)) {
         await PlanilhaService.criarLote(modelo.id, 10, pag.de);
-        setPagina(await PlanilhaService.registros(modelo.id, data));
+        const cheia = await PlanilhaService.registros(modelo.id, data);
+        setPagina((atual) => comPendentes(cheia, atual));
       } else {
-        setPagina(pag);
+        setPagina((atual) => comPendentes(pag, atual));
       }
 
       setColunas(cols);
+      setCarregadaId(modelo.id);
     } catch (err) {
       avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível abrir a produção."));
     } finally {
@@ -569,9 +702,19 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* Pelo ID, e não pelo objeto: renomear a planilha troca o objeto `aberta`
+     (o nome novo entra na hora, ver `confirmarRenome`), e com ele na
+     dependência cada renomeação recarregava a grade inteira. */
   useEffect(() => {
+    /* A página que o "+ Página" já montou na tela não volta a ser buscada. */
+    if (paginaNaTela.current === dataAtual) {
+      paginaNaTela.current = null;
+      return;
+    }
+
+    paginaNaTela.current = null;
     if (aberta) carregarPlanilha(aberta, dataAtual);
-  }, [aberta, dataAtual, carregarPlanilha]);
+  }, [aberta?.id, dataAtual, carregarPlanilha]);
 
   /* Mesma fila do quadro de produção, em linhas: o que muda de um lado tem de
      aparecer do outro sem ninguém apertar atualizar. Só com planilha aberta —
@@ -579,17 +722,6 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
   useSincronizacao(["planilhas", "producao"], () => {
     if (aberta) carregarPlanilha(aberta, dataAtual, true);
   }, Boolean(aberta));
-
-  /** Anda um período inteiro para frente ou para trás. */
-  const navegar = (passo: 1 | -1) => {
-    const d = doIso(dataAtual);
-
-    if (pagina?.periodicidade === "MENSAL") d.setMonth(d.getMonth() + passo);
-    else if (pagina?.periodicidade === "SEMANAL") d.setDate(d.getDate() + 7 * passo);
-    else d.setDate(d.getDate() + passo);
-
-    setDataAtual(isoSeguro(d));
-  };
 
   const criarModelo = async () => {
     if (!formModelo.nome.trim()) return;
@@ -608,55 +740,122 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     }
   };
 
+  /*
+   * A coluna aparece na hora; o servidor confirma depois.
+   *
+   * Esperava a gravação e depois recarregava a planilha inteira — a grade
+   * sumia num esqueleto a cada coluna criada. Agora ela entra com um id
+   * provisório, o formulário já limpa para a próxima, e a recarga silenciosa
+   * no fim troca a provisória pela verdadeira sem a grade piscar.
+   */
   const criarColuna = async () => {
     if (!aberta || !formColuna.nome.trim()) return;
 
-    setSalvando(true);
+    /* Opções digitadas separadas por vírgula: pedir um formulário por
+       alternativa transformaria "criar um seletor" numa tarefa de minutos. */
+    const opcoes = formColuna.opcoes
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .map((valor) => ({ valor }));
+
+    const nome = formColuna.nome.trim();
+    const valorPadrao = formColuna.valorPadrao.trim() || null;
+    const provisoria: Coluna = {
+      id: idProvisorio(),
+      nome,
+      tipo: formColuna.tipo,
+      opcoes,
+      ordem: colunas.length,
+      largura: null,
+      obrigatorio: false,
+      valor_padrao: valorPadrao,
+      permissoes: [],
+      publico: true,
+      nao_antes_de: null,
+    };
+
+    setColunas((cs) => [...cs, provisoria]);
+    setFormColuna({ nome: "", tipo: "TEXTO", opcoes: "", valorPadrao: "" });
 
     try {
-      /* Opções digitadas separadas por vírgula: pedir um formulário por
-         alternativa transformaria "criar um seletor" numa tarefa de minutos. */
-      const opcoes = formColuna.opcoes
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean)
-        .map((valor) => ({ valor }));
-
-      await PlanilhaService.criarColuna(aberta.id, { nome: formColuna.nome.trim(), tipo: formColuna.tipo, opcoes, valorPadrao: formColuna.valorPadrao.trim() || null });
-      setFormColuna({ nome: "", tipo: "TEXTO", opcoes: "", valorPadrao: "" });
-      carregarPlanilha(aberta, dataAtual);
+      await PlanilhaService.criarColuna(aberta.id, { nome, tipo: provisoria.tipo, opcoes, valorPadrao });
+      carregarPlanilha(aberta, dataAtual, true);
     } catch (err) {
+      setColunas((cs) => cs.filter((x) => x.id !== provisoria.id));
       avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a coluna."));
-    } finally {
-      setSalvando(false);
     }
   };
 
   const removerColuna = async (c: Coluna) => {
     if (!aberta) return;
 
+    /* Sai da tela antes da resposta; se o servidor recusar, volta no lugar. */
+    setColunas((cs) => cs.filter((x) => x.id !== c.id));
+
     try {
       await PlanilhaService.removerColuna(c.id);
-      carregarPlanilha(aberta, dataAtual);
     } catch (err) {
+      carregarPlanilha(aberta, dataAtual, true);
       avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível remover."));
     }
   };
 
-  const novaLinha = async () => {
+  /*
+   * Linha nova — na tela primeiro, no servidor depois.
+   *
+   * Era um bloco de DEZ linhas, gravado no servidor e só então mostrado, com a
+   * planilha inteira recarregando: um clique custava uma ida e volta à API, a
+   * grade piscava e apareciam dez linhas para quem pediu uma.
+   *
+   * Agora a linha entra na hora com um id provisório (`tmp-…`) e os valores
+   * padrão das colunas, e a criação segue por baixo. Dá para digitar nela
+   * antes de o servidor responder: quem grava numa linha provisória espera o
+   * id verdadeiro (`idReal`) e só então manda a alteração, na ordem certa. Se
+   * a criação falhar, a linha sai e o aviso diz por quê.
+   *
+   * A linha nasce dentro do período aberto: criar em "hoje" enquanto se olha
+   * o mês que vem faria a linha sumir na frente de quem a criou.
+   */
+  const criarLinha = (extras: Record<string, unknown> = {}) => {
     if (!aberta || !pagina) return;
 
-    try {
-      /* A linha nasce dentro do período aberto: criar em "hoje" enquanto se
-         olha o mês que vem faria a linha sumir na frente de quem a criou.
-         Em bloco de dez, porque quem clica em "adicionar" quase nunca quer
-         só uma. */
-      await PlanilhaService.criarLote(aberta.id, 10, pagina.de);
-      carregarPlanilha(aberta, dataAtual);
-    } catch (err) {
-      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a linha."));
-    }
+    const provisorio = idProvisorio();
+    const padroes = Object.fromEntries(colunas.filter((c) => c.valor_padrao).map((c) => [c.id, c.valor_padrao]));
+    const valores = { ...padroes, ...extras };
+    const ordem = pagina.registros.reduce((max, r) => Math.max(max, r.ordem), 0) + 1;
+
+    setPagina((p) => (p ? { ...p, registros: [...p.registros, { id: provisorio, valores, competencia: p.de, ordem }] } : p));
+
+    const criacao = PlanilhaService.criarRegistro(aberta.id, { valores, competencia: pagina.de })
+      .then((id) => {
+        chaves.current.set(id, provisorio);
+
+        setPagina((p) => {
+          if (!p) return p;
+
+          /* Uma recarga de tempo real pode ter trazido a linha verdadeira
+             antes desta resposta — aí a provisória só sai, sem duplicar. */
+          const jaVeio = p.registros.some((r) => r.id === id);
+
+          return {
+            ...p,
+            registros: jaVeio ? p.registros.filter((r) => r.id !== provisorio) : p.registros.map((r) => (r.id === provisorio ? { ...r, id } : r)),
+          };
+        });
+
+        return id;
+      })
+      .catch((err) => {
+        setPagina((p) => (p ? { ...p, registros: p.registros.filter((r) => r.id !== provisorio) } : p));
+        avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a linha."));
+        return null;
+      });
+
+    pendentes.current.set(provisorio, criacao);
   };
+
+  const novaLinha = () => criarLinha();
 
   /* Grava a célula e atualiza só ela na memória — recarregar a planilha
      inteira a cada tecla seria lento e faria o cursor pular. */
@@ -694,11 +893,16 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     }
 
     setPagina((p) =>
-      p ? { ...p, registros: p.registros.map((r) => (r.id === registroId ? { ...r, valores: { ...r.valores, [colunaId]: valor } } : r)) } : p,
+      p ? { ...p, registros: p.registros.map((r) => (mesmaLinha(r, registroId) ? { ...r, valores: { ...r.valores, [colunaId]: valor } } : r)) } : p,
     );
 
     try {
-      await PlanilhaService.alterarRegistro(registroId, { valores: { [colunaId]: valor } });
+      /* Linha provisória: espera a criação terminar. Se ela falhou, a linha
+         já saiu da tela e não há onde gravar. */
+      const id = await idReal(registroId);
+      if (!id) return;
+
+      await PlanilhaService.alterarRegistro(id, { valores: { [colunaId]: valor } });
 
       /* Depois de gravar, e sem esperar: o link é consequência da célula, não
          condição dela. Se demorar, a digitação não espera por ele. */
@@ -709,10 +913,13 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     }
   };
 
-  const excluirLinha = async (id: string) => {
-    setPagina((p) => (p ? { ...p, registros: p.registros.filter((r) => r.id !== id) } : p));
+  const excluirLinha = async (registroId: string) => {
+    setPagina((p) => (p ? { ...p, registros: p.registros.filter((r) => !mesmaLinha(r, registroId)) } : p));
 
     try {
+      const id = await idReal(registroId);
+      if (!id) return;
+
       await PlanilhaService.excluirRegistro(id);
     } catch {
       if (aberta) carregarPlanilha(aberta, dataAtual, true);
@@ -738,7 +945,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
    */
   const copiarDeCima = async (registroId: string) => {
     const lista = pagina?.registros ?? [];
-    const i = lista.findIndex((r) => r.id === registroId);
+    const i = lista.findIndex((r) => mesmaLinha(r, registroId));
 
     /* A primeira linha não tem de onde copiar — o menu já desabilita o item,
        isto é o cinto de segurança. */
@@ -760,11 +967,14 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     for (const c of editaveis) valores[c.id] = acima.valores[c.id] ?? null;
 
     setPagina((p) =>
-      p ? { ...p, registros: p.registros.map((r) => (r.id === registroId ? { ...r, valores: { ...r.valores, ...valores } } : r)) } : p,
+      p ? { ...p, registros: p.registros.map((r) => (mesmaLinha(r, registroId) ? { ...r, valores: { ...r.valores, ...valores } } : r)) } : p,
     );
 
     try {
-      await PlanilhaService.alterarRegistro(registroId, { valores });
+      const id = await idReal(registroId);
+      if (!id) return;
+
+      await PlanilhaService.alterarRegistro(id, { valores });
 
       /* Mesma consequência de digitar o nome à mão: a coluna de Cliente emite
          o link. Como o cliente é o mesmo da linha de cima, o servidor devolve
@@ -916,7 +1126,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     } catch (err) {
       avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível renomear."));
       carregarModelos();
-      if (aberta) carregarPlanilha(aberta, dataAtual);
+      if (aberta) carregarPlanilha(aberta, dataAtual, true);
     }
   };
 
@@ -950,31 +1160,82 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     else if (pagina?.periodicidade === "SEMANAL") d.setDate(d.getDate() + 7);
     else d.setDate(d.getDate() + 1);
 
-    setDataAtual(isoSeguro(d));
-  };
+    const de = isoSeguro(d);
 
-  /** Copia a planilha aberta e já entra na cópia — é o que se quer em seguida. */
-  const duplicarAtual = async () => {
-    if (!aberta) return;
-
-    setSalvando(true);
-
-    try {
-      const novoId = await PlanilhaService.duplicarModelo(aberta.id);
-      const lista = await PlanilhaService.modelos();
-
-      setModelos(lista);
-
-      const nova = lista.find((m) => m.id === novoId);
-      if (nova) setAberta(nova);
-    } catch (err) {
-      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível duplicar a produção."));
-    } finally {
-      setSalvando(false);
+    if (!aberta || !pagina) {
+      setDataAtual(de);
+      return;
     }
+
+    /*
+     * A página nasce na TELA primeiro, e no servidor depois.
+     *
+     * Era: trocar a data, esqueleto cinza, criar o lote de linhas, buscar de
+     * novo — duas idas e voltas antes de a pessoa ver a página que pediu. Agora
+     * ela aparece na hora, com as dez linhas em branco provisórias (`tmp-…`),
+     * e o lote é gravado por baixo. Quem já começar a digitar grava pelo mesmo
+     * caminho de `criarLinha`: a célula espera o id verdadeiro (`idReal`).
+     */
+    const fim = doIso(de);
+    if (pagina.periodicidade === "MENSAL") fim.setMonth(fim.getMonth() + 1, 0);
+    else if (pagina.periodicidade === "SEMANAL") fim.setDate(fim.getDate() + 6);
+
+    const padroes = Object.fromEntries(colunas.filter((c) => c.valor_padrao).map((c) => [c.id, c.valor_padrao]));
+    const provisorios = colunas.length > 0 ? Array.from({ length: 10 }, () => idProvisorio()) : [];
+    const modeloId = aberta.id;
+
+    paginaNaTela.current = de;
+    setPagina({
+      periodicidade: pagina.periodicidade,
+      de,
+      ate: isoSeguro(fim),
+      registros: provisorios.map((id, i) => ({ id, valores: { ...padroes }, competencia: de, ordem: i + 1 })),
+    });
+    setPeriodos((ps) => (ps.some((p) => p.de === de) ? ps : [{ de, linhas: provisorios.length }, ...ps]));
+    setDataAtual(de);
+
+    if (provisorios.length === 0) return;
+
+    loteEmCurso.current.add(de);
+
+    /* Um lote só no servidor; cada linha provisória fica com a verdadeira da
+       mesma posição. */
+    const lote = PlanilhaService.criarLote(modeloId, 10, de)
+      .then(() => PlanilhaService.registros(modeloId, de))
+      .then((pag) => {
+        const reais = [...pag.registros].sort((a, b) => a.ordem - b.ordem).map((r) => r.id);
+        const troca = new Map(provisorios.map((tmp, i) => [tmp, reais[i] ?? null]));
+
+        troca.forEach((real, tmp) => real && chaves.current.set(real, tmp));
+
+        setPagina((p) => {
+          if (!p || p.de !== de) return p;
+
+          /* Uma recarga de tempo real pode ter trazido as linhas verdadeiras
+             antes desta resposta — aí as provisórias só saem, sem duplicar. */
+          const presentes = new Set(p.registros.map((r) => r.id));
+
+          return {
+            ...p,
+            registros: p.registros
+              .filter((r) => !troca.has(r.id) || (troca.get(r.id) && !presentes.has(troca.get(r.id)!)))
+              .map((r) => (troca.has(r.id) ? { ...r, id: troca.get(r.id)! } : r)),
+          };
+        });
+
+        return troca;
+      })
+      .catch((err) => {
+        setPagina((p) => (p ? { ...p, registros: p.registros.filter((r) => !provisorios.includes(r.id)) } : p));
+        avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a página."));
+        return null;
+      })
+      .finally(() => loteEmCurso.current.delete(de));
+
+    for (const tmp of provisorios) pendentes.current.set(tmp, lote.then((troca) => troca?.get(tmp) ?? null));
   };
 
-  const larguraTotal = useMemo(() => colunas.reduce((soma, c) => soma + (c.largura ?? 180), 56), [colunas]);
+  const larguraTotal = useMemo(() => colunas.reduce((soma, c) => soma + larguraDaColuna(c), 56), [colunas]);
 
   /* ===================== 3. PLANILHA ⇄ BACKLOG ===================== */
 
@@ -993,6 +1254,26 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     [colunasEtapa, colunaEtapaId],
   );
 
+  /* Grava a forma da planilha aberta — ver `Forma`. Só quando o que está no
+     estado é DESTA planilha; senão a forma de uma seria salva com o id da
+     outra no render da troca. */
+  useEffect(() => {
+    if (!aberta || carregadaId !== aberta.id || !pagina) return;
+
+    const atual: Forma = {
+      larguras: colunas.map(larguraDaColuna),
+      linhas: pagina.registros.length,
+      raias: contarRaias(etapa, pagina.registros),
+    };
+    lembrar(CHAVE_FORMA, aberta.id, JSON.stringify(atual));
+  }, [aberta, carregadaId, colunas, pagina, etapa]);
+
+  const planilhaCarregando = !!aberta && (carregando || carregadaId !== aberta.id);
+
+  /* Lida uma vez por planilha aberta, e não a cada render: a forma gravada
+     muda a cada carga, e o esqueleto não pode mudar de tamanho no meio. */
+  const forma = useMemo(() => (aberta ? formaLembrada(aberta.id) : FORMA_PADRAO), [aberta?.id]);
+
   /* Ao abrir uma planilha, retoma como ela estava da última vez. A coluna
      lembrada só vale se ainda existir: removida, cai na primeira. */
   useEffect(() => {
@@ -1000,7 +1281,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
 
     setVisao(lembrado(CHAVE_VISAO, aberta.id) === "backlog" ? "backlog" : "planilha");
     setColunaEtapaId(lembrado(CHAVE_ETAPA, aberta.id) ?? "");
-  }, [aberta]);
+  }, [aberta?.id]);
 
   const trocarVisao = (v: Visao) => {
     setVisao(v);
@@ -1073,19 +1354,11 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     }
   };
 
-  /** Nova linha já dentro da raia: uma requisição, no período aberto. */
-  const criarNaRaia = async (valor: string) => {
-    if (!aberta || !pagina || !etapa) return;
+  /** Nova linha já dentro da raia — o mesmo caminho otimista de `criarLinha`. */
+  const criarNaRaia = (valor: string) => {
+    if (!etapa) return;
 
-    try {
-      await PlanilhaService.criarRegistro(aberta.id, {
-        valores: { [etapa.id]: valor },
-        competencia: pagina.de,
-      });
-      carregarPlanilha(aberta, dataAtual);
-    } catch (err) {
-      avisar(getErrorTitle(err), extractErrorMessage(err, "Não foi possível criar a linha."));
-    }
+    criarLinha({ [etapa.id]: valor });
   };
 
   /* ------------------------- Fora do plano ------------------------- */
@@ -1118,9 +1391,13 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
               </div>
               <div>
                 <h2 className="text-[13px] text-ink">Produções</h2>
-                <p className="text-[11px] text-faint">
-                  {modelos.length} {modelos.length === 1 ? "produção" : "produções"}
-                </p>
+                {carregando ? (
+                  <Skeleton className="mt-1 h-2.5 w-16" />
+                ) : (
+                  <p className="text-[11px] text-faint">
+                    {modelos.length} {modelos.length === 1 ? "produção" : "produções"}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1177,7 +1454,22 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                   nada. */}
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {carregando ? (
-                  <SkeletonListaPainel linhas={4} />
+                  /* Tantas linhas quantas produções havia na última visita, no
+                     mesmo grid da lista — ver `Forma`. */
+                  <SkeletonTableRows count={Math.min(qtdListaLembrada() ?? 3, 10)} cols={LISTA_COLS} rowHeight={ROW_HEIGHT}>
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 shrink-0 rounded-xl bg-fg/[0.06]" />
+                      <div className="flex flex-col gap-1.5">
+                        <div className="h-3 w-36 rounded bg-fg/[0.07]" />
+                        <div className="h-2 w-24 rounded bg-fg/[0.05]" />
+                      </div>
+                    </div>
+                    <div className="h-4 w-16 rounded-full bg-fg/[0.05]" />
+                    <div className="ml-auto h-3 w-6 rounded bg-fg/[0.05]" />
+                    <div className="ml-auto h-3 w-6 rounded bg-fg/[0.05]" />
+                    <div className="ml-auto h-3 w-8 rounded bg-fg/[0.05]" />
+                    <span />
+                  </SkeletonTableRows>
                 ) : modelos.length === 0 ? (
                   <div className="flex h-full items-center justify-center py-10">
                     <div className="flex max-w-xs flex-col items-center gap-3 text-center text-faint">
@@ -1399,19 +1691,13 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
     <>
       <Presenca planilhaId={aberta.id} />
 
-      <span className="hidden text-[11.5px] tabular-nums text-faint sm:inline">
-        {pagina?.registros.length ?? 0} {(pagina?.registros.length ?? 0) === 1 ? "linha" : "linhas"}
-      </span>
-
-      <div className="flex items-center rounded-xl border border-fg/[0.1]">
-        <button onClick={() => navegar(-1)} aria-label="Período anterior" title="Período anterior" className="focus-ring grid h-8 w-8 place-items-center rounded-l-xl text-mist transition-colors hover:bg-fg/[0.05] hover:text-ink">
-          <ChevronLeft size={15} />
-        </button>
-        <span className="h-4 w-px bg-fg/[0.1]" />
-        <button onClick={() => navegar(1)} aria-label="Próximo período" title="Próximo período" className="focus-ring grid h-8 w-8 place-items-center rounded-r-xl text-mist transition-colors hover:bg-fg/[0.05] hover:text-ink">
-          <ChevronRight size={15} />
-        </button>
-      </div>
+      {planilhaCarregando ? (
+        <Skeleton className="hidden h-3 w-14 sm:block" />
+      ) : (
+        <span className="hidden text-[11.5px] tabular-nums text-faint sm:inline">
+          {pagina?.registros.length ?? 0} {(pagina?.registros.length ?? 0) === 1 ? "linha" : "linhas"}
+        </span>
+      )}
 
       {/*
        * "Histórico" e "Cliente" saíram daqui.
@@ -1470,40 +1756,14 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
            * seletor ocuparia largura para não perguntar nada.
            */}
           {visao === "backlog" && colunasEtapa.length > 1 && (
-            <select
-              value={etapa?.id ?? ""}
-              onChange={(e) => trocarColunaEtapa(e.target.value)}
-              title="Qual coluna vira as raias do quadro"
+            <Select
+              valor={etapa?.id ?? ""}
+              onChange={trocarColunaEtapa}
               aria-label="Coluna que agrupa o quadro"
-              className="focus-ring h-[38px] shrink-0 rounded-xl border border-fg/[0.1] bg-transparent px-3 text-[12.5px] text-ink outline-none"
-            >
-              {colunasEtapa.map((c) => (
-                <option key={c.id} value={c.id}>
-                  Agrupar por {c.nome}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {/*
-           * As colunas se mexem nas DUAS visões.
-           *
-           * Na grade dá para clicar no rótulo de cada uma, mas no quadro não
-           * existe rótulo para clicar — e sem esta porta, mudar uma alternativa
-           * de etapa exigiria voltar para a tabela. Este é o mesmo painel do
-           * "+" do cabeçalho da grade: criar, renomear, remover, escolher
-           * alternativas e cores, e dizer quem edita o quê.
-           */}
-          {ehRoot && (
-            <button
-              type="button"
-              onClick={() => setConfigAberta(true)}
-              title="Criar, renomear e configurar as colunas desta produção"
-              className="focus-ring flex h-[38px] shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-fg/[0.1] px-3 text-[12px] text-mist transition-colors hover:text-ink"
-            >
-              <Columns3 size={14} />
-              <span className="hidden sm:inline">Colunas</span>
-            </button>
+              icone={<KanbanSquare size={14} />}
+              className="w-[200px] shrink-0"
+              opcoes={colunasEtapa.map((c) => ({ valor: c.id, label: `Agrupar por ${c.nome}` }))}
+            />
           )}
 
           {/*
@@ -1538,7 +1798,9 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
         </BarraFiltros>
 
         <div className="min-h-0 flex-1 overflow-auto">
-        {colunas.length === 0 ? (
+        {planilhaCarregando ? (
+          visao === "backlog" ? <SkeletonQuadro raias={forma.raias} /> : <SkeletonPlanilha larguras={forma.larguras} linhas={forma.linhas} />
+        ) : colunas.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
             <p className="text-[14px] text-ink">Esta produção ainda não tem colunas</p>
             <p className="max-w-sm text-[12.5px] leading-relaxed text-faint">Defina o que cada coluna representa e de que tipo ela é — texto, seleção, data, imagem.</p>
@@ -1601,7 +1863,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
               <tr>
                 {/* Número da linha, como em planilha de verdade. Gruda na
                     esquerda para não se perder o eixo ao rolar na horizontal. */}
-                <th className="sticky left-0 z-30 w-12 border-b border-r border-fg/[0.07] bg-surface-raised px-2 py-2.5 text-center text-[10px] text-faint">#</th>
+                <th className="sticky left-0 z-30 w-12 border-b border-r border-fg/[0.07] bg-surface-raised px-2 py-3.5 text-center text-[11px] text-faint">#</th>
 
                 {colunas.map((c) => {
                   const restrita = (c.permissoes?.length ?? 0) > 0;
@@ -1610,7 +1872,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                   return (
                     <th
                       key={c.id}
-                      style={{ minWidth: c.largura ?? 180 }}
+                      style={{ width: larguraDaColuna(c), minWidth: larguraDaColuna(c) }}
                       className="relative border-b border-r border-fg/[0.07] bg-surface-raised p-0"
                     >
                       {/*
@@ -1628,7 +1890,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                         onClick={() => ehRoot && setMenuColuna(menuColuna === c.id ? null : c.id)}
                         disabled={!ehRoot}
                         title={ehRoot ? "Configurar coluna" : undefined}
-                        className={`flex w-full items-center gap-1.5 px-3 py-2.5 text-left text-[11px] uppercase tracking-[0.07em] text-mist transition-colors ${
+                        className={`flex w-full items-center gap-1.5 px-4 py-3.5 text-left text-[12px] uppercase tracking-[0.07em] text-mist transition-colors ${
                           ehRoot ? "hover:bg-fg/[0.04] hover:text-ink" : "cursor-default"
                         }`}
                       >
@@ -1681,14 +1943,17 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
 
             <tbody>
               {(pagina?.registros ?? []).map((r, i) => (
-                <tr key={r.id} className="group transition-colors hover:bg-fg/[0.02]">
+                /* Chave estável: a linha provisória troca de id quando o
+                   servidor responde, e com `key={r.id}` ela remontaria — a
+                   célula em que a pessoa está digitando perderia o foco. */
+                <tr key={chaves.current.get(r.id) ?? r.id} className="group transition-colors hover:bg-fg/[0.02]">
                   {/* O número da linha também abre o menu: as ações de LINHA
                       (copiar a de cima, excluir, histórico) são as mesmas, e
                       quem quer a linha inteira mira o número, não uma célula
                       qualquer dela. */}
                   <td
                     onContextMenu={(e) => abrirMenuCelula(e, r.id, colunas[0], i + 1, "linha")}
-                    className="sticky left-0 z-10 cursor-context-menu border-b border-r border-fg/[0.05] bg-surface px-2 py-1 text-center text-[11px] tabular-nums text-faint transition-colors group-hover:text-mist"
+                    className="sticky left-0 z-10 cursor-context-menu border-b border-r border-fg/[0.05] bg-surface px-2 py-1 text-center text-[12.5px] tabular-nums text-faint transition-colors group-hover:text-mist"
                   >
                     {i + 1}
                   </td>
@@ -1697,7 +1962,11 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                     <td
                       key={c.id}
                       onContextMenu={(e) => abrirMenuCelula(e, r.id, c, i + 1)}
-                      className="border-b border-r border-fg/[0.05] p-0 align-top"
+                      /* `h-px`: célula de tabela só deixa o filho usar `h-full`
+                         quando tem altura declarada. Sem isso o botão da data e
+                         o seletor ficavam com a altura do texto, e só uma faixa
+                         no meio da célula respondia ao clique. */
+                      className="h-px border-b border-r border-fg/[0.05] p-0 align-top"
                     >
                       <Celula coluna={c} valor={r.valores[c.id]} editavel={podeEditar(c)} onSalvar={(v) => salvarCelula(r.id, c.id, v)} />
                     </td>
@@ -1722,7 +1991,7 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
                 <td colSpan={colunas.length + 2} className="border-b border-fg/[0.05] p-0">
                   <button
                     onClick={novaLinha}
-                    className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-[12.5px] text-faint transition-colors hover:bg-fg/[0.03] hover:text-accent-soft"
+                    className="flex w-full items-center gap-2 px-4 py-3.5 text-left text-[13.5px] text-faint transition-colors hover:bg-fg/[0.03] hover:text-accent-soft"
                   >
                     <Plus size={14} />
                     Adicionar linha
@@ -1796,16 +2065,6 @@ const PlanilhasPage = ({ abasSecao, controlesSecao }: Props = {}) => {
         >
           <Plus size={13} />
           Página
-        </button>
-
-        <button
-          onClick={duplicarAtual}
-          disabled={salvando}
-          title={`Criar outra produção com as mesmas colunas de ${aberta.nome}`}
-          aria-label="Duplicar produção"
-          className="focus-ring ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-lg text-mist transition-colors hover:bg-fg/[0.05] hover:text-ink disabled:opacity-40"
-        >
-          <Copy size={13} />
         </button>
       </div>
 

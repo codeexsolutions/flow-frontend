@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotionConfig } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { Bell, BellRing, BellOff, Package, ShoppingCart, UserPlus, Wallet, Users, Trash2, CheckCheck, BadgeCheck, Undo2 } from "lucide-react";
@@ -45,7 +45,7 @@ const SinoNotificacoes = () => {
 
   const [mural, setMural] = useState<Mural>({ notificacoes: [], naoLidas: 0 });
   const [aberto, setAberto] = useState(false);
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
   const [ancora, setAncora] = useState<DOMRect | null>(null);
   const [noAparelho, setNoAparelho] = useState(() => notificacoesLigadas() && permissaoAtual() === "granted");
   const painelRef = useRef<HTMLDivElement>(null);

@@ -157,10 +157,10 @@ const ProducaoAutomatica = () => {
                 </p>
                 <button
                   type="button"
-                  onClick={() => navigate("/producao/os")}
+                  onClick={() => navigate("/producao")}
                   className="mt-2 flex items-center gap-1.5 text-[12px] text-accent-soft transition-colors hover:text-accent"
                 >
-                  Abrir as ordens de serviço <ExternalLink size={12} />
+                  Abrir os pedidos <ExternalLink size={12} />
                 </button>
               </div>
             </>

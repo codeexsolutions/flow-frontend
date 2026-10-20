@@ -142,7 +142,7 @@ export const NOVIDADES: Novidade[] = [
         texto:
             "As listas de Pedidos e de Ordem de serviço cortavam o que não cabia na janela. Agora "
             + "elas rolam e têm páginas.",
-        rota: "/producao/os",
+        rota: "/producao",
     },
 ];
 

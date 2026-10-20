@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import useThemeStore, { type ThemeMode, type MotionPref, type FxPref } from "@/shared/theme/theme.store";
-import { detectFxLevel, type FxLevel } from "@/shared/theme/detectPerformance";
+import { fxDetectado, vigiarQuadros, type FxLevel } from "@/shared/theme/detectPerformance";
 import { temaPorId } from "@/shared/theme/theme.catalog";
 
 const applyMode = (mode: ThemeMode) => {
@@ -24,14 +24,35 @@ const applyMode = (mode: ThemeMode) => {
   if (meta && canvas) meta.setAttribute("content", `rgb(${canvas})`);
 };
 
+/**
+ * A decisão final sobre movimento — a única que a tela consulta.
+ *
+ * O CSS (`[data-motion]`) e o framer-motion (`MovimentoConfig`) leem daqui.
+ * Antes o CSS seguia o sistema por conta própria numa media query, e o
+ * framer também: escolher "Sempre animar" não tinha como vencer o Windows.
+ */
+export const reduzMovimento = (pref: MotionPref) =>
+  pref === "reduce" || (pref === "auto" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
 const applyMotion = (pref: MotionPref) => {
-  const root = document.documentElement;
-  const systemReduces = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const shouldReduce = pref === "reduce" || (pref === "auto" && systemReduces);
-  root.dataset.motion = shouldReduce ? "reduce" : "full";
+  document.documentElement.dataset.motion = reduzMovimento(pref) ? "reduce" : "full";
 };
 
 const resolveFx = (pref: FxPref, detected: FxLevel): FxLevel => (pref === "auto" ? detected : pref);
+
+/**
+ * Aplica movimento e efeitos ANTES do primeiro render.
+ *
+ * Pelos efeitos do hook, o `data-fx` só chegava depois da primeira pintura —
+ * e a máquina fraca desenhava a tela de entrada com o vidro no máximo, que é
+ * exatamente o quadro que travava. O store já está hidratado aqui (o
+ * `persist` lê o localStorage de forma síncrona).
+ */
+export const aplicarPreferenciasIniciais = () => {
+  const { motion, fx } = useThemeStore.getState();
+  applyMotion(motion);
+  document.documentElement.dataset.fx = resolveFx(fx, fxDetectado());
+};
 
 const useTheme = () => {
   const mode = useThemeStore((s) => s.mode);
@@ -40,8 +61,8 @@ const useTheme = () => {
   const motion = useThemeStore((s) => s.motion);
   const fx = useThemeStore((s) => s.fx);
 
-  // Detecta uma única vez por sessão — as heurísticas não mudam em runtime.
-  const [detected] = useState<FxLevel>(() => detectFxLevel());
+  // Detecta uma única vez por sessão; só o vigia de quadros rebaixa depois.
+  const [detected, setDetected] = useState<FxLevel>(() => fxDetectado());
 
   useEffect(() => {
     applyMode(mode);
@@ -61,6 +82,13 @@ const useTheme = () => {
 
   useEffect(() => {
     document.documentElement.dataset.fx = resolveFx(fx, detected);
+  }, [fx, detected]);
+
+  /* No automático, confere no uso se a estimativa acertou — ver
+     `vigiarQuadros`. Já leve não tem para onde descer. */
+  useEffect(() => {
+    if (fx !== "auto" || detected === "lite") return;
+    return vigiarQuadros(() => setDetected("lite"));
   }, [fx, detected]);
 
   // Reage ao sistema quando estiver em "sistema"

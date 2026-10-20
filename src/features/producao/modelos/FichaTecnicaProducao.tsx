@@ -12,7 +12,7 @@
  * ---------------------------------------------------------------------------
  * O resto do sistema segue o tema do usuário; esta folha, não. Ela nasce para
  * a impressora: fundo branco, traço preto, A4 com margem de 10mm e as regras
- * `print:` no rodapé. Um documento que herdasse o tema escuro sairia da
+ * `print:`no rodapé. Um documento que herdasse o tema escuro sairia da
  * impressora como uma mancha de toner.
  *
  * ---------------------------------------------------------------------------
@@ -21,13 +21,13 @@
  * A primeira versão era a réplica fiel do PDF que a oficina usava, e herdou os
  * defeitos dele:
  *
- *   **Fio duplo em toda junção.** Cada célula tinha `border` inteira, então
+ *   **Fio duplo em toda junção.** Cada célula tinha `border`inteira, então
  *   duas células vizinhas encostavam dois traços de 1px — e a folha ficava
  *   riscada de linhas grossas irregulares, mais pesadas nas junções do que nas
  *   bordas. Agora a MOLDURA é do grupo e as células só desenham a linha que as
  *   separa (`border-l`, `border-t`): fio de 1px em todo lugar, igual.
  *
- *   **Rótulo e valor na mesma linha.** "CLIENTE:" em 9px colado no nome em
+ *   **Rótulo e valor na mesma linha.** "CLIENTE:"em 9px colado no nome em
  *   11px fazia os dois disputarem a mesma faixa, e o que se lê de longe na
  *   bancada — o valor — era o menor dos dois. Agora o rótulo é uma legenda
  *   miúda EM CIMA, e o valor tem a linha inteira e o corpo maior.
@@ -38,7 +38,7 @@
  *   grande para o conteúdo.
  *
  *   **A grade sem cabeçalho e sem total.** A tabela de tamanhos abria com uma
- *   linha "TAM" e uma célula vazia ao lado, e terminava sem somar nada — quem
+ *   linha "TAM"e uma célula vazia ao lado, e terminava sem somar nada — quem
  *   corta soma de cabeça e escreve o total na margem. Agora tem cabeçalho
  *   (TAM / QTD) e uma linha de TOTAL que o próprio papel calcula.
  *
@@ -54,7 +54,7 @@
  * chamar window.print() (ou rasterizar o ref, como faz o resto do sistema em
  * `abrirDocumento`).
  *
- * Dependências: react + tailwindcss, mais o `UploadImagem` do sistema — é ele
+ * Dependências: react + tailwindcss, mais o `UploadImagem`do sistema — é ele
  * que põe a arte de frente e costa na ficha (só no modo edição; o documento
  * impresso é imagem e nada mais).
  * ---------------------------------------------------------------------------
@@ -190,7 +190,7 @@ const CAIXA = "border border-black";
  *
  * Por padrão o navegador não imprime cor de fundo, e a barra de seção sairia
  * como texto branco sobre papel branco — ou seja, invisível. As duas
- * propriedades (a `-webkit-` e a padrão) cobrem os motores que ainda pedem o
+ * propriedades (a `-webkit-`e a padrão) cobrem os motores que ainda pedem o
  * prefixo.
  */
 const FUNDO_IMPRESSO: React.CSSProperties = {
@@ -228,10 +228,10 @@ function SectionBar({
       className={`flex items-center gap-2 border border-black bg-black px-2 py-[3.5px] text-white print:bg-black print:text-white ${className}`}
       style={FUNDO_IMPRESSO}
     >
-      <span className="grid h-[14px] min-w-[14px] place-items-center border border-white/80 px-[3px] text-[8px] font-bold leading-none">
+      <span className="grid h-[14px] min-w-[14px] place-items-center border border-white/80 px-[3px] text-[8px] leading-none">
         {numero}
       </span>
-      <span className="text-[10.5px] font-bold uppercase leading-none tracking-[0.16em]">
+      <span className="text-[10.5px] uppercase leading-none tracking-[0.16em]">
         {children}
       </span>
     </div>
@@ -263,7 +263,7 @@ function Field({
 }) {
   return (
     <div className={`flex min-h-[12mm] flex-col justify-center gap-[2px] px-2.5 py-1.5 ${className}`}>
-      <span className="text-[7.5px] font-bold uppercase leading-none tracking-[0.14em] text-neutral-500">
+      <span className="text-[7.5px] uppercase leading-none tracking-[0.14em] text-neutral-500">
         {label}
       </span>
 
@@ -273,13 +273,13 @@ function Field({
           value={value == null ? "" : String(value)}
           placeholder={placeholder}
           onChange={(e) => onChange?.(e.target.value)}
-          className={`w-full min-w-0 border-0 bg-transparent p-0 text-[12.5px] font-semibold leading-tight ${FOCO}`}
+          className={`w-full min-w-0 border-0 bg-transparent p-0 text-[12.5px] leading-tight ${FOCO}`}
         />
       ) : (
         /* Vazio sai VAZIO: o campo em branco é o produto, é nele que a
            bancada escreve a caneta. Só a data ganha a pauta pontilhada, que
            diz o formato sem preencher nada. */
-        <span className="block min-w-0 truncate text-[12.5px] font-semibold leading-tight">
+        <span className="block min-w-0 truncate text-[12.5px] leading-tight">
           {type === "date"
             ? formatarData(value as string) || (
                 <span className="font-normal tracking-[0.2em] text-neutral-300">__/__/____</span>
@@ -301,11 +301,11 @@ function Field({
  * sabia preencher: a arte chegava por WhatsApp e alguém imprimia, recortava e
  * grampeava na ficha. Aqui a mesma caixa recebe o arquivo.
  *
- * O upload existe SÓ em `editable`, e pede o `tom="papel"` do `UploadImagem`:
+ * O upload existe SÓ em `editable`, e pede o `tom="papel"`do `UploadImagem`:
  * a caixa padrão é desenhada com as cores do TEMA (borda clara sobre fundo
  * escuro), e sobre a folha branca ela sumia — tracejado quase invisível e
  * texto cinza-claro em cima de branco. O documento que vai para a impressora
- * não tem nada disso: o nó que vira PNG é montado com `editable` desligado.
+ * não tem nada disso: o nó que vira PNG é montado com `editable`desligado.
  *
  * `object-contain`, e não `cover`: recortar a arte para preencher o quadrado
  * cortaria justamente a manga ou a gola que a bancada precisa ver.
@@ -325,13 +325,13 @@ function AnexoBox({
 }) {
   return (
     <div className={`flex min-h-0 flex-col ${className}`}>
-      <div className="border-b border-black py-[3px] text-center text-[9px] font-bold uppercase leading-none tracking-[0.18em]">
+      <div className="border-b border-black py-[3px] text-center text-[9px] uppercase leading-none tracking-[0.18em]">
         {titulo}
       </div>
 
       <div className="flex flex-1 items-center justify-center overflow-hidden p-1.5">
         {editable ? (
-          /* `min-h` para a caixa não colapsar quando a ficha é aberta fora da
+          /* `min-h`para a caixa não colapsar quando a ficha é aberta fora da
              folha A4 (`a4={false}`): sem altura o alvo de clique viraria uma
              faixa de poucos pixels. */
           <div className="h-full min-h-[180px] w-full">
@@ -365,7 +365,7 @@ function AnexoBox({
 /**
  * Tabela de grade (TAM | QTD), com cabeçalho e total.
  *
- * O total é somado pelo papel, não pela bancada: `totalGrade` já existia para
+ * O total é somado pelo papel, não pela bancada: `totalGrade`já existia para
  * quem consome a ficha de fora e agora serve à própria folha. Uma grade de
  * oito tamanhos somada de cabeça no fim do dia é onde nasce a peça a mais — e
  * a peça a menos.
@@ -390,7 +390,7 @@ function GradeTable({
   return (
     <div className={`flex flex-col ${CAIXA} ${className}`}>
       <div
-        className="border-b border-black bg-black px-2 py-[3px] text-center text-[9px] font-bold uppercase leading-none tracking-[0.14em] text-white print:bg-black print:text-white"
+        className="border-b border-black bg-black px-2 py-[3px] text-center text-[9px] uppercase leading-none tracking-[0.14em] text-white print:bg-black print:text-white"
         style={FUNDO_IMPRESSO}
       >
         {titulo}
@@ -399,10 +399,10 @@ function GradeTable({
       <table className="w-full table-fixed border-collapse">
         <thead>
           <tr>
-            <th className="w-[46%] border-b border-r border-black px-2 py-[2px] text-left text-[7.5px] font-bold uppercase tracking-[0.14em] text-neutral-500">
+            <th className="w-[46%] border-b border-r border-black px-2 py-[2px] text-left text-[7.5px] uppercase tracking-[0.14em] text-neutral-500">
               Tam
             </th>
-            <th className="border-b border-black px-2 py-[2px] text-center text-[7.5px] font-bold uppercase tracking-[0.14em] text-neutral-500">
+            <th className="border-b border-black px-2 py-[2px] text-center text-[7.5px] uppercase tracking-[0.14em] text-neutral-500">
               Qtd
             </th>
           </tr>
@@ -411,7 +411,7 @@ function GradeTable({
         <tbody>
           {tamanhos.map((tam) => (
             <tr key={tam}>
-              <td className="border-b border-r border-black px-2 py-[2.5px] text-[10.5px] font-bold uppercase leading-tight">
+              <td className="border-b border-r border-black px-2 py-[2.5px] text-[10.5px] uppercase leading-tight">
                 {tam}
               </td>
               <td className="border-b border-black px-1 py-[2.5px] text-center text-[11px] leading-tight">
@@ -421,23 +421,23 @@ function GradeTable({
                     inputMode="numeric"
                     value={grade?.[tam] == null ? "" : String(grade[tam])}
                     onChange={(e) => onChange?.(tam, e.target.value)}
-                    className={`w-full border-0 bg-transparent p-0 text-center text-[11px] font-semibold ${FOCO}`}
+                    className={`w-full border-0 bg-transparent p-0 text-center text-[11px]  ${FOCO}`}
                   />
                 ) : (
-                  <span className="font-semibold">{grade?.[tam] ?? ""}</span>
+                  <span className="">{grade?.[tam] ?? ""}</span>
                 )}
               </td>
             </tr>
           ))}
 
           {/* O total fecha a tabela — e some quando não há o que somar, para a
-              folha em branco não sair com um "0" impresso onde a bancada vai
+              folha em branco não sair com um "0"impresso onde a bancada vai
               escrever à mão. */}
           <tr>
-            <td className="border-r border-black px-2 py-[2.5px] text-[7.5px] font-bold uppercase tracking-[0.14em] text-neutral-500">
+            <td className="border-r border-black px-2 py-[2.5px] text-[7.5px] uppercase tracking-[0.14em] text-neutral-500">
               Total
             </td>
-            <td className="px-1 py-[2.5px] text-center text-[11px] font-bold leading-tight">
+            <td className="px-1 py-[2.5px] text-center text-[11px] leading-tight">
               {total > 0 ? total : ""}
             </td>
           </tr>
@@ -517,18 +517,18 @@ const FichaTecnicaProducao = forwardRef<HTMLDivElement, FichaTecnicaProducaoProp
         <header className={`grid grid-cols-[22%_1fr_24%] items-stretch ${CAIXA}`}>
           <div className="flex items-center justify-center p-1.5">
             {logo ?? (
-              <span className="select-none text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-300 print:hidden">
+              <span className="select-none text-[9px] uppercase tracking-[0.2em] text-neutral-300 print:hidden">
                 Logo
               </span>
             )}
           </div>
 
           <div className="flex flex-col items-center justify-center border-l border-r border-black px-2 py-3 text-center">
-            <h1 className="text-[17px] font-bold uppercase leading-none tracking-[0.06em]">
+            <h1 className="text-[17px] uppercase leading-none tracking-[0.06em]">
               {titulo}
             </h1>
             {/* O que o papel É, em letra miúda: quem recebe a folha na bancada
-                nem sempre sabe que "ficha técnica" e "ordem de serviço" são a
+                nem sempre sabe que "ficha técnica"e "ordem de serviço"são a
                 mesma coisa nesta casa. */}
             <span className="mt-1.5 text-[8px] uppercase tracking-[0.3em] text-neutral-500">
               Ordem de serviço
@@ -536,7 +536,7 @@ const FichaTecnicaProducao = forwardRef<HTMLDivElement, FichaTecnicaProducaoProp
           </div>
 
           <div className="flex flex-col justify-center gap-[3px] px-2.5 py-2">
-            <span className="text-[7.5px] font-bold uppercase leading-none tracking-[0.14em] text-neutral-500">
+            <span className="text-[7.5px] uppercase leading-none tracking-[0.14em] text-neutral-500">
               OS Nº
             </span>
             {editable ? (
@@ -544,10 +544,10 @@ const FichaTecnicaProducao = forwardRef<HTMLDivElement, FichaTecnicaProducaoProp
                 type="text"
                 value={data.osNumero == null ? "" : String(data.osNumero)}
                 onChange={(e) => set("osNumero", e.target.value)}
-                className={`w-full min-w-0 border-0 bg-transparent p-0 text-[20px] font-bold leading-none ${FOCO}`}
+                className={`w-full min-w-0 border-0 bg-transparent p-0 text-[20px] leading-none ${FOCO}`}
               />
             ) : (
-              <span className="block w-full min-w-0 truncate text-[20px] font-bold leading-none">
+              <span className="block w-full min-w-0 truncate text-[20px] leading-none">
                 {data.osNumero ?? ""}
               </span>
             )}
@@ -555,12 +555,12 @@ const FichaTecnicaProducao = forwardRef<HTMLDivElement, FichaTecnicaProducaoProp
         </header>
 
         {/* ---------------- 1. Dados do pedido ---------------- */}
-        <SectionBar numero="1" className="mt-2.5">
+        <SectionBar numero="1"className="mt-2.5">
           Dados do pedido
         </SectionBar>
         <div className={`grid grid-cols-2 ${CAIXA} border-t-0`}>
-          <Field label="Cliente" value={data.cliente} editable={editable} onChange={(v) => set("cliente", v)} />
-          <Field label="Contato" className={FIO_ESQ} value={data.contato} editable={editable} onChange={(v) => set("contato", v)} />
+          <Field label="Cliente"value={data.cliente} editable={editable} onChange={(v) => set("cliente", v)} />
+          <Field label="Contato"className={FIO_ESQ} value={data.contato} editable={editable} onChange={(v) => set("contato", v)} />
           <Field
             label="Data de fechamento"
             className={FIO_CIMA}
@@ -580,7 +580,7 @@ const FichaTecnicaProducao = forwardRef<HTMLDivElement, FichaTecnicaProducaoProp
         </div>
 
         {/* ---------------- 2. Anexos do modelo ---------------- */}
-        <SectionBar numero="2" className="mt-2.5">
+        <SectionBar numero="2"className="mt-2.5">
           Anexos do modelo
         </SectionBar>
         <div className={`grid min-h-[105mm] flex-1 grid-cols-2 ${CAIXA} border-t-0`}>
@@ -605,18 +605,18 @@ const FichaTecnicaProducao = forwardRef<HTMLDivElement, FichaTecnicaProducaoProp
           <SectionBar numero="4">Tecidos</SectionBar>
 
           <div className={`${CAIXA} border-t-0`}>
-            <Field label="Molde camisa" value={data.moldeCamisa} editable={editable} onChange={(v) => set("moldeCamisa", v)} />
-            <Field label="Molde short" className={FIO_CIMA} value={data.moldeShort} editable={editable} onChange={(v) => set("moldeShort", v)} />
+            <Field label="Molde camisa"value={data.moldeCamisa} editable={editable} onChange={(v) => set("moldeCamisa", v)} />
+            <Field label="Molde short"className={FIO_CIMA} value={data.moldeShort} editable={editable} onChange={(v) => set("moldeShort", v)} />
           </div>
 
           <div className={`${CAIXA} border-t-0`}>
-            <Field label="Tecido camisa" value={data.tecidoCamisa} editable={editable} onChange={(v) => set("tecidoCamisa", v)} />
-            <Field label="Tecido short" className={FIO_CIMA} value={data.tecidoShort} editable={editable} onChange={(v) => set("tecidoShort", v)} />
+            <Field label="Tecido camisa"value={data.tecidoCamisa} editable={editable} onChange={(v) => set("tecidoCamisa", v)} />
+            <Field label="Tecido short"className={FIO_CIMA} value={data.tecidoShort} editable={editable} onChange={(v) => set("tecidoShort", v)} />
           </div>
         </div>
 
         {/* ---------------- 5. Grades / 6. Observações ---------------- */}
-        <SectionBar numero="5" className="mt-2.5">
+        <SectionBar numero="5"className="mt-2.5">
           Grades de tamanhos e quantidades
         </SectionBar>
 
@@ -645,10 +645,10 @@ const FichaTecnicaProducao = forwardRef<HTMLDivElement, FichaTecnicaProducaoProp
               className="flex items-center gap-2 border-b border-black bg-black px-2 py-[3.5px] text-white print:bg-black print:text-white"
               style={FUNDO_IMPRESSO}
             >
-              <span className="grid h-[14px] min-w-[14px] place-items-center border border-white/80 px-[3px] text-[8px] font-bold leading-none">
+              <span className="grid h-[14px] min-w-[14px] place-items-center border border-white/80 px-[3px] text-[8px] leading-none">
                 6
               </span>
-              <span className="text-[10.5px] font-bold uppercase leading-none tracking-[0.16em]">
+              <span className="text-[10.5px] uppercase leading-none tracking-[0.16em]">
                 Obs. gerais e pós-produção
               </span>
             </div>

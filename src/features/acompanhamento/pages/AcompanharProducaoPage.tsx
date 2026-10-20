@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion, useSpring, useTransform } from "framer-motion";
+import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotionConfig, useSpring, useTransform } from "framer-motion";
 import { AlertTriangle, CalendarCheck, Check, CircleAlert, Clock, Maximize2, MessageCircle, Paperclip, X } from "lucide-react";
 
 import AcompanhamentoService, { type ProducaoPublica } from "@/features/acompanhamento/services/acompanhamento.service";
@@ -198,7 +198,7 @@ const situacaoPrazo = (valor: string, concluido: boolean, p: Paleta) => {
 
 const AcompanharProducaoPage = () => {
   const { token = "" } = useParams();
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
 
   const [dados, setDados] = useState<ProducaoPublica | null>(null);
   const [carregando, setCarregando] = useState(true);

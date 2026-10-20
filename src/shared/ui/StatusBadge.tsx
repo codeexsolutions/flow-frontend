@@ -28,8 +28,18 @@ const TONS: Record<TomSelo, { wrap: string; dot: string }> = {
   neutro: { wrap: "border-fg/[0.08] bg-fg/[0.04] text-mist", dot: "bg-faint" },
 };
 
-const base = "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px]";
-const dot = "h-1.5 w-1.5 rounded-full";
+/*
+ * Largura mínima comum e texto que não quebra.
+ *
+ * Cada selo tinha a largura do próprio rótulo: numa coluna de situação,
+ * "Pago" saía na metade do tamanho de "Em aberto" e de "Cancelado", e a
+ * coluna parecia desalinhada. Com o mínimo de 100px os três estados ficam do
+ * mesmo tamanho, centralizados; rótulo maior que isso cresce em vez de cortar.
+ * `whitespace-nowrap` + `shrink-0`: numa célula estreita o selo não quebra
+ * em duas linhas nem é espremido pelo flex.
+ */
+const base = "inline-flex min-w-[100px] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-[12px] normal-case leading-none tracking-normal";
+const dot = "h-1.5 w-1.5 shrink-0 rounded-full";
 
 export function Selo({ tom = "neutro", children }: { tom?: TomSelo; children: ReactNode }) {
   const t = TONS[tom];
@@ -52,7 +62,7 @@ export function Selo({ tom = "neutro", children }: { tom?: TomSelo; children: Re
 const PEDIDO_LOOK: Record<string, { label: string; tom: TomSelo }> = {
   [PEDIDO_STATUS.PAGO]: { label: "Pago", tom: "sucesso" },
   [PEDIDO_STATUS.FECHADO]: { label: "Pago", tom: "sucesso" },
-  [PEDIDO_STATUS.ABERTO]: { label: "Em aberto", tom: "alerta" },
+  [PEDIDO_STATUS.ABERTO]: { label: "Pendente", tom: "alerta" },
   [PEDIDO_STATUS.PENDENTE]: { label: "Pendente", tom: "alerta" },
   [PEDIDO_STATUS.CANCELADO]: { label: "Cancelado", tom: "perigo" },
 };

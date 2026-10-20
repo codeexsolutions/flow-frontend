@@ -46,11 +46,11 @@ const Recibo = ({ dados, refRecibo }: { dados: DadosRecibo; refRecibo: RefObject
   const local = [cidade, uf].filter(Boolean).join("/");
 
   return (
-    <div ref={refRecibo} className="w-[900px] bg-white p-12 text-neutral-900" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+    <div ref={refRecibo} className="w-[900px] bg-white p-12 text-neutral-900"style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
       {/* ---------- Cabeçalho: quem recebeu ---------- */}
       <div className="flex items-start justify-between gap-6 border-b-2 border-neutral-900 pb-5">
         <div className="flex min-w-0 items-center gap-4">
-          {empresa?.urlLogo && <img src={empresa.urlLogo} alt="" crossOrigin="anonymous" className="h-16 w-16 rounded-lg object-cover" />}
+          {empresa?.urlLogo && <img src={empresa.urlLogo} alt=""crossOrigin="anonymous"className="h-16 w-16 rounded-lg object-cover" />}
 
           <div className="min-w-0">
             <p className="text-[20px] leading-tight text-neutral-900">{empresa?.nomeFantasia ?? "—"}</p>
@@ -60,7 +60,7 @@ const Recibo = ({ dados, refRecibo }: { dados: DadosRecibo; refRecibo: RefObject
         </div>
 
         <div className="shrink-0 text-right">
-          <p className="text-[26px] font-semibold leading-none tracking-[0.18em] text-neutral-900">RECIBO</p>
+          <p className="text-[26px] leading-none tracking-[0.18em] text-neutral-900">RECIBO</p>
           <p className="mt-1.5 text-[12px] text-neutral-600">Referente à nota nº {dados.numero}</p>
         </div>
       </div>
@@ -72,7 +72,7 @@ const Recibo = ({ dados, refRecibo }: { dados: DadosRecibo; refRecibo: RefObject
       <div className="mt-8 flex items-end justify-between gap-6 rounded-xl border border-neutral-300 bg-neutral-50 px-6 py-5">
         <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Valor recebido</p>
-          <p className="mt-1 text-[34px] font-semibold leading-none text-neutral-900">{formatCurrency(dados.valor)}</p>
+          <p className="mt-1 text-[34px] leading-none text-neutral-900">{formatCurrency(dados.valor)}</p>
         </div>
 
         <p className="shrink-0 text-right text-[11px] uppercase tracking-[0.12em] text-neutral-400">Quitado</p>
@@ -80,16 +80,16 @@ const Recibo = ({ dados, refRecibo }: { dados: DadosRecibo; refRecibo: RefObject
 
       {/* ---------- A declaração ---------- */}
       <p className="mt-8 text-[14px] leading-[1.9] text-neutral-900">
-        Recebemos de <strong className="font-semibold">{dados.clienteNome}</strong> a importância de{" "}
-        <strong className="font-semibold">{formatCurrency(dados.valor)}</strong> ({valorPorExtenso(dados.valor)}), referente ao
+        Recebemos de <strong className="">{dados.clienteNome}</strong> a importância de{" "}
+        <strong className="">{formatCurrency(dados.valor)}</strong> ({valorPorExtenso(dados.valor)}), referente ao
         pagamento da nota nº {dados.numero}, dando plena e geral quitação do valor aqui declarado.
       </p>
 
       {/* ---------- Os detalhes, para a contabilidade ---------- */}
       <div className="mt-8 grid grid-cols-3 gap-6 border-t border-neutral-200 pt-5">
-        <Linha rotulo="Pago em" valor={formatDate(data)} />
-        <Linha rotulo="Forma de pagamento" valor={dados.formaPagamento?.trim() || "Não informado"} />
-        <Linha rotulo="Nota" valor={`#${dados.numero}`} />
+        <Linha rotulo="Pago em"valor={formatDate(data)} />
+        <Linha rotulo="Forma de pagamento"valor={dados.formaPagamento?.trim() || "Não informado"} />
+        <Linha rotulo="Nota"valor={`#${dados.numero}`} />
       </div>
 
       {/* ---------- Assinatura ---------- */}

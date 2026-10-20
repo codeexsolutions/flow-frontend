@@ -405,12 +405,27 @@
   --shadow-3: 0 4px 12px rgb(var(--shadow-color) / 0.16);
 }
 
-[data-fx="lite"] .glass,
-[data-fx="lite"] .glass-strong,
-[data-fx="lite"] .glass-dock,
-[data-fx="lite"] .glass-panel {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+/* Todo desfoque de fundo, e não só o das classes de vidro: os
+   `backdrop-blur-*` do Tailwind (scrims, barras, chips) ficavam ligados no
+   modo leve, e um só deles sobre a tela inteira já trava máquina sem placa. */
+[data-fx="lite"] *,
+[data-fx="lite"] *::before,
+[data-fx="lite"] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Halos decorativos (`aria-hidden` + `blur-*`). `filter: blur` custa mesmo
+   com opacidade zero — o navegador desenha e desfoca do mesmo jeito —, então
+   no leve eles nem existem. */
+[data-fx="lite"] [aria-hidden].blur-sm,
+[data-fx="lite"] [aria-hidden].blur,
+[data-fx="lite"] [aria-hidden].blur-md,
+[data-fx="lite"] [aria-hidden].blur-lg,
+[data-fx="lite"] [aria-hidden].blur-xl,
+[data-fx="lite"] [aria-hidden].blur-2xl,
+[data-fx="lite"] [aria-hidden].blur-3xl {
+  display: none;
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -517,24 +532,25 @@ html[data-font-scale="lg"] {
   font-size: 17.5px;
 }
 
-/* ---------- Movimento ---------- */
+/* ---------- Movimento ----------
+ *
+ * Quem decide é o `data-motion`, que o JS resolve antes da primeira pintura
+ * (ver `aplicarPreferenciasIniciais`). Existia também uma media query
+ * `prefers-reduced-motion` aqui, e ela vencia a escolha da pessoa: com os
+ * efeitos de animação do Windows desligados — padrão em muita máquina de
+ * escritório, acesso remoto e "melhor desempenho" — não havia como animar.
+ *
+ * E reduzir não é zerar. A regra antiga matava TODA transição, até a troca de
+ * cor no hover, e o sistema parecia quebrado. Agora sai o que desloca
+ * (transform, tamanho, posição) e fica o que só esmaece ou troca de cor.
+ */
 [data-motion="reduce"] *,
 [data-motion="reduce"] *::before,
 [data-motion="reduce"] *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
-  transition-duration: 0.01ms !important;
+  transition-property: color, background-color, border-color, outline-color, opacity, box-shadow, fill, stroke !important;
   scroll-behavior: auto !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -1107,6 +1123,35 @@ input[type="number"]::-webkit-outer-spin-button {
   main main.overflow-y-auto > [class*="w-[calc(100%+2rem)]"] {
     width: auto;
   }
+}
+
+/* ---------- Uma fonte, um peso ----------
+ *
+ * O sistema inteiro é Inter em peso normal. Havia `font-bold`,
+ * `font-semibold`, `font-light` espalhados — e o navegador ainda engrossa
+ * sozinho `<strong>`, `<b>`, `<th>` e os títulos. Cada tela acabava com três
+ * ou quatro pesos diferentes, e o destaque deixava de destacar.
+ *
+ * A hierarquia vem de TAMANHO e de COR (`text-ink`, `text-mist`,
+ * `text-faint`), nunca de peso. `!important` porque a regra é do produto, não
+ * de uma tela: nenhuma classe nova escapa dela por descuido.
+ *
+ * `font-synthesis: none` impede o navegador de "fingir" negrito ou itálico
+ * engrossando a letra quando a variação não existe. `code`, `kbd` e `pre`
+ * herdam a Inter em vez de cair na monoespaçada do sistema.
+ */
+*,
+*::before,
+*::after {
+  font-weight: 400 !important;
+  font-synthesis: none;
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: inherit;
 }
 
 /* ---------- Papéis tipográficos ---------- */

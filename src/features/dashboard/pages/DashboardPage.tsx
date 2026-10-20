@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotionConfig } from "framer-motion";
 import {
   DollarSign,
   Wallet,
@@ -27,10 +27,14 @@ import {
   Gauge,
   Hourglass,
   UserCheck,
+  ChevronRight,
+  FileText,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 import { KpiFaixa } from "@/shared/ui/Painel";
+import { Modal } from "@/shared/ui/Modal";
+import Invoice from "@/features/vendas/components/Invoice";
 import { Rosca } from "@/shared/ui/Rosca";
 import { PageScreen } from "@/shared/ui/PageShell";
 import SeletorPeriodo from "@/shared/ui/SeletorPeriodo";
@@ -94,7 +98,7 @@ const Bloco = ({ i, className, children }: { i: number; className?: string; chil
  * justamente o tamanho da mudança.
  */
 const useContagem = (valor: number) => {
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
 
   const [n, setN] = useState(() => (reduzir ? valor : 0));
   const anteriorRef = useRef(reduzir ? valor : 0);
@@ -187,6 +191,7 @@ const Kpi = ({
   tone = "accent",
   serie,
   corSerie = "rgb(var(--accent))",
+  onClick,
 }: {
   icon: ReactNode;
   label: string;
@@ -198,8 +203,24 @@ const Kpi = ({
   /** A curva do período no pé do cartão — ver `Sparkline`. */
   serie?: { name: string; valor: number }[];
   corSerie?: string;
+  /** Com ele o cartão vira botão — abre o detalhe do número. */
+  onClick?: () => void;
 }) => (
-  <div className="card glass-sheen hud-cantos group relative overflow-hidden p-4 transition-transform duration-200 hover:-translate-y-0.5">
+  <div
+    /* `div` com papel de botão, e não `<button>`: o cartão tem parágrafos
+       dentro, que não são conteúdo válido de botão. */
+    {...(onClick && {
+      role: "button",
+      tabIndex: 0,
+      onClick,
+      onKeyDown: (e: KeyboardEvent) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        onClick();
+      },
+    })}
+    className={`card glass-sheen hud-cantos group relative overflow-hidden p-4 transition-transform duration-200 hover:-translate-y-0.5 ${onClick ? "focus-ring cursor-pointer active:scale-[0.99]" : ""}`}
+  >
     {/* Halo que acende no hover — o mesmo vocabulário de brilho da entrada,
         contido para não competir com o número. */}
     <span
@@ -464,6 +485,12 @@ const DashboardPage = () => {
       return !!d && d >= inicioHoje;
     });
 
+    /* As notas em aberto, da mais antiga para a mais nova: no topo fica quem
+       está devendo há mais tempo, que é por onde se começa a cobrar. */
+    const abertas = ativas
+      .filter(estaAberto)
+      .sort((a, b) => +new Date(a.pedido.dataPedido) - +new Date(b.pedido.dataPedido));
+
     const ticket = noPeriodo.length ? faturado / noPeriodo.length : 0;
     const ticketAnterior = noAnterior.length ? faturadoAnterior / noAnterior.length : 0;
 
@@ -606,7 +633,8 @@ const DashboardPage = () => {
       vendasHoje: doDia.length,
       ticket,
       ticketAnterior,
-      abertasAgora: ativas.filter(estaAberto).length,
+      abertasAgora: abertas.length,
+      abertas,
       mesesComMovimento,
       serie,
       /* O subtítulo do gráfico diz qual das duas leituras está na tela. */
@@ -649,6 +677,16 @@ const DashboardPage = () => {
     const m = [...dados.porSemana].sort((a, b) => b.valor - a.valor)[0];
     return m && m.valor > 0 ? m : null;
   }, [dados.porSemana]);
+
+  /* A lista de notas em aberto (cartão "A receber") e a nota aberta a partir
+     dela — a mesma `Invoice` do panorama de Vendas. */
+  const [verAbertas, setVerAbertas] = useState(false);
+  const [notaAberta, setNotaAberta] = useState<{ id: string; clienteId: string; nome: string } | null>(null);
+  const fecharAbertas = useCallback(() => setVerAbertas(false), []);
+  const fecharNota = useCallback(() => {
+    setNotaAberta(null);
+    fetchVendas(true);
+  }, [fetchVendas]);
 
   const DIAS_EXTENSO = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
@@ -769,7 +807,15 @@ const DashboardPage = () => {
             label="A receber"
             valor={dados.aReceber}
             hint={`${dados.abertasAgora} ${dados.abertasAgora === 1 ? "nota em aberto" : "notas em aberto"}`}
+            rodape={
+              dados.abertasAgora > 0 ? (
+                <span className="inline-flex items-center gap-0.5 text-[11px] text-faint transition-colors group-hover:text-warning">
+                  Ver notas <ChevronRight size={12} className="transition-transform group-hover:translate-x-0.5" />
+                </span>
+              ) : undefined
+            }
             tone="warning"
+            onClick={dados.abertasAgora > 0 ? () => setVerAbertas(true) : undefined}
           />
           <Kpi
             icon={<Receipt size={16} />}
@@ -1103,6 +1149,69 @@ const DashboardPage = () => {
         </Painel>
       </Bloco>
 
+      <Modal
+        open={verAbertas}
+        onClose={fecharAbertas}
+        title="Notas em aberto"
+        subtitle={`${dados.abertasAgora} ${dados.abertasAgora === 1 ? "nota" : "notas"} · ${formatCurrency(dados.aReceber)} a receber`}
+        accent="rgb(var(--warning))"
+        size="lg"
+      >
+        {dados.abertas.length === 0 ? (
+          <Vazio>Nada em aberto. Tudo recebido. 👌</Vazio>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {dados.abertas.map((v, i) => {
+              const d = toDate(v.pedido.dataPedido);
+              const dias = d ? Math.floor((Date.now() - +d) / 86_400_000) : null;
+              const saldo = valorPendenteDoPedido(v);
+              const total = totalDoPedido(v);
+
+              return (
+                <motion.li
+                  key={v.pedido.pedidoId}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  /* Escada curta e com teto: com cinquenta notas, 40ms cada
+                     faria a última chegar dois segundos depois. */
+                  transition={{ delay: Math.min(i, 12) * 0.04, duration: 0.3, ease: SUAVE }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setNotaAberta({ id: v.pedido.pedidoId, clienteId: v.clienteId, nome: v.nomeCliente })}
+                    className="focus-ring group flex w-full cursor-pointer items-center gap-3 rounded-xl border border-fg/[0.06] bg-fg/[0.02] px-3 py-2.5 text-left transition-colors hover:border-warning/30 hover:bg-warning/[0.06]"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-warning/25 bg-warning/15 text-[10.5px] text-warning">{getInitials(v.nomeCliente)}</span>
+
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12.5px] text-ink">{v.nomeCliente}</span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-faint">
+                        <FileText size={10} />
+                        {formatDateShort(v.pedido.dataPedido)}
+                        {dias !== null && (
+                          /* Acima de 30 dias o fiado deixa de ser rotina e vira cobrança — mesma régua do painel de idade. */
+                          <span className={dias > 30 ? "text-danger" : ""}>· {dias === 0 ? "hoje" : `há ${dias} ${dias === 1 ? "dia" : "dias"}`}</span>
+                        )}
+                      </span>
+                    </span>
+
+                    <span className="shrink-0 text-right">
+                      <span className="nums block text-[13px] text-warning">{formatCurrency(saldo)}</span>
+                      {saldo < total && <span className="nums block text-[10.5px] text-faint">de {formatCurrency(total)}</span>}
+                    </span>
+
+                    <ChevronRight size={15} className="shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
+                  </button>
+                </motion.li>
+              );
+            })}
+          </ul>
+        )}
+      </Modal>
+
+      <Modal open={!!notaAberta} onClose={fecharNota} title="Venda" subtitle={notaAberta?.nome} size="full">
+        {notaAberta && <Invoice id={notaAberta.id} clienteId={notaAberta.clienteId} nome={notaAberta.nome} />}
+      </Modal>
     </PageScreen>
   );
 };

@@ -243,3 +243,71 @@ export const SkeletonListaPainel = ({ linhas = 5 }: { linhas?: number }) => (
     ))}
   </div>
 );
+
+/* ─────────────────────────────── Planilhas ─────────────────────────────── */
+
+/**
+ * A grade da planilha antes dos dados — com a forma da ÚLTIMA visita.
+ *
+ * Quem abre a Estamparia todo dia sabe que ela tem nove colunas e umas trinta
+ * linhas; um esqueleto genérico de cinco linhas encolhe a tela e ela salta
+ * quando os dados chegam. As larguras e a contagem vêm do localStorage (ver
+ * `formaLembrada` em `PlanilhasPage`), então a grade nasce do tamanho certo.
+ */
+export const SkeletonPlanilha = ({ larguras, linhas }: { larguras: number[]; linhas: number }) => {
+  const total = larguras.reduce((soma, l) => soma + l, 56 + 40);
+
+  return (
+    <div aria-hidden className="animate-pulse" style={{ minWidth: total }}>
+      <div className="flex border-b border-fg/[0.07] bg-surface-raised">
+        <div className="w-12 shrink-0 border-r border-fg/[0.07] py-2.5" />
+        {larguras.map((l, i) => (
+          <div key={i} className="shrink-0 border-r border-fg/[0.07] px-3 py-2.5" style={{ width: l }}>
+            <div className="h-2.5 rounded bg-fg/[0.08]" style={{ width: `${40 + ((i * 23) % 35)}%` }} />
+          </div>
+        ))}
+      </div>
+
+      {Array.from({ length: linhas }).map((_, r) => (
+        <div key={r} className="flex h-9 border-b border-fg/[0.05]">
+          <div className="flex w-12 shrink-0 items-center justify-center border-r border-fg/[0.05]">
+            <div className="h-2 w-3 rounded bg-fg/[0.06]" />
+          </div>
+          {larguras.map((l, c) => (
+            <div key={c} className="flex shrink-0 items-center border-r border-fg/[0.05] px-3" style={{ width: l }}>
+              {/* Larguras que variam por célula: uma grade de barras iguais
+                  parece listra, não planilha. */}
+              <div className="h-2.5 rounded bg-fg/[0.05]" style={{ width: `${30 + ((r * 7 + c * 13) % 50)}%` }} />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/** O quadro de raias antes dos dados: uma coluna por raia, os cartões que ela tinha. */
+export const SkeletonQuadro = ({ raias }: { raias: number[] }) => (
+  <div aria-hidden className="flex h-full min-h-0 gap-3 overflow-hidden p-3">
+    {raias.map((cartoes, i) => (
+      <div key={i} className="flex w-[280px] shrink-0 animate-pulse flex-col overflow-hidden rounded-2xl border border-fg/[0.07] bg-fg/[0.02]">
+        <div className="flex items-center gap-2 border-b border-fg/[0.06] px-3.5 py-3">
+          <div className="h-2 w-2 rounded-full bg-fg/[0.1]" />
+          <div className="h-2.5 w-24 rounded bg-fg/[0.08]" />
+          <div className="ml-auto h-3.5 w-5 rounded-full bg-fg/[0.06]" />
+        </div>
+        <div className="flex flex-col gap-2 p-2.5">
+          {Array.from({ length: cartoes }).map((_, c) => (
+            <div key={c} className="rounded-xl border border-fg/[0.06] bg-surface p-3">
+              <div className="h-3 rounded bg-fg/[0.07]" style={{ width: `${55 + ((i * 11 + c * 17) % 35)}%` }} />
+              <div className="mt-2.5 flex gap-1.5">
+                <div className="h-3.5 w-16 rounded-full bg-fg/[0.05]" />
+                <div className="h-3.5 w-12 rounded-full bg-fg/[0.05]" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+);

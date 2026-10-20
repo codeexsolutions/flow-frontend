@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotionConfig } from "framer-motion";
 import { Camera, Check, Clock, Loader2, MapPin, AlertTriangle, RotateCw, User } from "lucide-react";
 
 import PontoService, { type PontoBatido, type PontoLink, type QuemBate } from "@/features/ponto/services/ponto.service";
@@ -47,7 +47,7 @@ const ROTULO: Record<PontoBatido["tipo"], string> = {
 
 const BaterPontoPage = () => {
   const { token = "" } = useParams();
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
 
   const [link, setLink] = useState<PontoLink | null>(null);
   const [carregando, setCarregando] = useState(true);

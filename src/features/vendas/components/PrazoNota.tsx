@@ -48,8 +48,43 @@ const RECORRENCIAS: { id: Recorrencia; label: string }[] = [
   { id: "SEMANAL", label: "Semanal" },
 ];
 
-const campo = "w-full rounded-lg border border-fg/[0.09] bg-fg/[0.03] px-2.5 py-2 text-[12.5px] text-ink outline-none transition-colors focus:border-accent/60";
-const rotulo = "mb-1 block text-[10px] uppercase tracking-[0.08em] text-faint";
+const campo = "w-full rounded-lg border border-fg/[0.09] bg-fg/[0.03] px-2.5 py-2 text-[13px] text-ink outline-none transition-colors focus:border-accent/60";
+const rotulo = "mb-1 block text-[12px] text-mist";
+
+/**
+ * A regra de juros da LOJA — combinada uma vez, valendo em toda venda.
+ *
+ * Ela vivia em estado do componente: cada nota nascia com juros desligado e
+ * "a partir de 2x", e o "3% a partir de 4x" que a loja combinou tinha de ser
+ * refeito venda a venda — ou seja, não existia. Guardada, a regra entra
+ * sozinha: a venda em 6x já abre com o acréscimo, e a de 2x sai sem juros
+ * porque está abaixo do "a partir de".
+ *
+ * Fica no navegador (por aparelho). Falha em silêncio: sem storage, a nota
+ * abre sem juros, que é o lado seguro.
+ */
+const CHAVE_JUROS = "flow:prazo:juros";
+
+type RegraJuros = { ligado: boolean; taxa: number; aPartirDe: number };
+
+const REGRA_PADRAO: RegraJuros = { ligado: false, taxa: 3, aPartirDe: 2 };
+
+const regraGuardada = (): RegraJuros => {
+  try {
+    const salva = JSON.parse(localStorage.getItem(CHAVE_JUROS) ?? "null") as Partial<RegraJuros> | null;
+    return salva ? { ...REGRA_PADRAO, ...salva } : REGRA_PADRAO;
+  } catch {
+    return REGRA_PADRAO;
+  }
+};
+
+const guardarRegra = (regra: RegraJuros) => {
+  try {
+    localStorage.setItem(CHAVE_JUROS, JSON.stringify(regra));
+  } catch {
+    /* modo privado: vale só para esta nota */
+  }
+};
 
 const TOM: Record<Parcela["situacao"], string> = {
   ABERTA: "border-fg/[0.09] text-mist",
@@ -74,17 +109,33 @@ type Props = {
 const PrazoNota = ({ pedidoId, pendente, clienteNome, acordo, carregando = false, onAtualizar }: Props) => {
   const alert = useAlert();
 
-  const [abrindo, setAbrindo] = useState(false);
   const [parcelas, setParcelas] = useState(2);
   const [primeiro, setPrimeiro] = useState(hojeIso());
   const [recorrencia, setRecorrencia] = useState<Recorrencia>("MENSAL");
   const [salvando, setSalvando] = useState(false);
 
-  /* Juros desligado por padrão: a venda sem acréscimo é a maioria, e uma taxa
-     que já vem preenchida vira juros cobrado por descuido. */
-  const [comJuros, setComJuros] = useState(false);
-  const [taxa, setTaxa] = useState(3);
-  const [aPartirDe, setAPartirDe] = useState(2);
+  /* A regra nasce da que a loja guardou — ver `CHAVE_JUROS`. Sem regra
+     guardada, juros desligado: uma taxa que já vem ligada sem ninguém ter
+     combinado vira juros cobrado por descuido. */
+  const [regraLoja] = useState(regraGuardada);
+  const [comJuros, setComJurosEstado] = useState(regraLoja.ligado);
+  const [taxa, setTaxaEstado] = useState(regraLoja.taxa);
+  const [aPartirDe, setAPartirDeEstado] = useState(regraLoja.aPartirDe);
+
+  /* Mexeu na regra, ela vira a da loja para as próximas notas. */
+  const setComJuros = (atualizar: (v: boolean) => boolean) => {
+    const novo = atualizar(comJuros);
+    setComJurosEstado(novo);
+    guardarRegra({ ligado: novo, taxa, aPartirDe });
+  };
+  const setTaxa = (v: number) => {
+    setTaxaEstado(v);
+    guardarRegra({ ligado: comJuros, taxa: v, aPartirDe });
+  };
+  const setAPartirDe = (v: number) => {
+    setAPartirDeEstado(v);
+    guardarRegra({ ligado: comJuros, taxa, aPartirDe: v });
+  };
 
   const [recebendo, setRecebendo] = useState<Parcela | null>(null);
   const [recebendoSalvando, setRecebendoSalvando] = useState(false);
@@ -121,7 +172,6 @@ const PrazoNota = ({ pedidoId, pendente, clienteNome, acordo, carregando = false
         jurosAPartirDe: regra?.aPartirDe ?? 2,
       });
 
-      setAbrindo(false);
       await onAtualizar();
 
       alert.success(
@@ -270,7 +320,6 @@ const PrazoNota = ({ pedidoId, pendente, clienteNome, acordo, carregando = false
             <PagamentoForm
               total={recebendo.valor}
               jaPago={recebendo.valorPago}
-              alvo="parcela"
               salvando={recebendoSalvando}
               textoConfirmar="Registrar recebimento"
               onConfirmar={(valor, forma) => void receber(valor, forma)}
@@ -308,40 +357,25 @@ const PrazoNota = ({ pedidoId, pendente, clienteNome, acordo, carregando = false
 
   /* ─────────────── Sem acordo: combinar o prazo ─────────────── */
 
-  /* Nota sem saldo não tem o que parcelar — o botão só criaria a dúvida. */
+  /* Nota sem saldo não tem o que parcelar. */
   if (pendente <= 0) return null;
 
-  if (!abrindo) {
-    return (
-      <button
-        type="button"
-        onClick={() => setAbrindo(true)}
-        className="focus-ring mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-fg/[0.14] py-2.5 text-[12px] text-mist transition-colors hover:border-accent/50 hover:text-accent-soft"
-      >
-        <CalendarClock size={14} />
-        Vender a prazo · definir vencimento
-      </button>
-    );
-  }
-
+  /* O formulário aparece DIRETO, sem o botão "Vender a prazo" na frente: quem
+     abriu a aba Parcelas já decidiu parcelar, e o clique a mais só adiava as
+     parcelas que a pessoa veio ver. */
   return (
     <div className="mt-4 rounded-xl border border-fg/[0.07] bg-fg/[0.02] p-3">
-      <p className="text-[11.5px] text-ink">Venda a prazo</p>
-      <p className="mt-0.5 text-[10.5px] leading-relaxed text-faint">
-        O saldo de <span className="tabular-nums text-mist">{formatCurrency(pendente)}</span> vira parcelas com vencimento. Passou da data sem pagar, a nota entra em <span className="text-danger">vencidas</span>.
-      </p>
-
       {/* Os atalhos de quantidade.
           Digitar "6" no campo é um toque a mais que tocar em "6x", e são
           essas seis divisões que respondem por quase toda venda a prazo. O
           campo continua abaixo para o 18x que ninguém previu. */}
-      <div className="mt-3 flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-1.5">
         {[2, 3, 4, 6, 10, 12].map((n) => (
           <button
             key={n}
             type="button"
             onClick={() => setParcelas(n)}
-            className={`rounded-md border px-2 py-1 text-[10.5px] tabular-nums transition-colors ${
+            className={`rounded-lg border px-2.5 py-1.5 text-[12.5px] tabular-nums transition-colors ${
               parcelas === n ? "border-accent bg-accent/[0.12] text-accent-soft" : "border-fg/[0.09] text-mist hover:border-fg/[0.2] hover:text-ink"
             }`}
           >
@@ -387,11 +421,11 @@ const PrazoNota = ({ pedidoId, pendente, clienteNome, acordo, carregando = false
           type="button"
           onClick={() => setComJuros((v) => !v)}
           aria-pressed={comJuros}
-          className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-[11.5px] transition-colors ${
+          className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-[13px] transition-colors ${
             comJuros ? "border-accent/50 bg-accent/[0.08] text-ink" : "border-fg/[0.09] text-mist hover:border-fg/[0.2] hover:text-ink"
           }`}
         >
-          <Percent size={12} className={comJuros ? "text-accent-soft" : "text-faint"} />
+          <Percent size={14} className={comJuros ? "text-accent-soft" : "text-faint"} />
           <span className="flex-1 text-left">Cobrar juros pelo prazo</span>
 
           {/* Um interruptor, não um checkbox: a pergunta é "cobra ou não", e a
@@ -426,13 +460,13 @@ const PrazoNota = ({ pedidoId, pendente, clienteNome, acordo, carregando = false
                 </div>
 
                 <div>
-                  <label className={rotulo}>A partir de</label>
+                  <label className={rotulo}>Cobrar a partir de</label>
                   <select
                     value={aPartirDe}
                     onChange={(e) => setAPartirDe(Number(e.target.value))}
                     className={`${campo} tabular-nums`}
                   >
-                    {[1, 2, 3, 4, 5, 6, 10, 12].map((n) => (
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
                       <option key={n} value={n}>{n === 1 ? "qualquer parcelamento" : `${n}x`}</option>
                     ))}
                   </select>
@@ -441,7 +475,7 @@ const PrazoNota = ({ pedidoId, pendente, clienteNome, acordo, carregando = false
 
               {/* O caso em que a taxa está ligada e não vale: dito aqui, não
                   descoberto depois pela prévia que não mudou. */}
-              <p className="mt-1.5 text-[10px] leading-relaxed text-faint">
+              <p className="mt-2 text-[12px] leading-relaxed text-mist">
                 {parcelas < aPartirDe ? (
                   <>Em {parcelas}x não há juros — a taxa só vale de {aPartirDe}x em diante.</>
                 ) : (
@@ -456,28 +490,28 @@ const PrazoNota = ({ pedidoId, pendente, clienteNome, acordo, carregando = false
       {/* A prévia: as datas de verdade, antes de gravar. */}
       {previa.length > 0 && (
         <div className="mt-3 border-t border-fg/[0.06] pt-2.5">
-          <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-faint">
-            <Repeat size={11} className="text-accent-soft" />
+          <p className="mb-1.5 flex items-center gap-1.5 text-[12px] text-mist">
+            <Repeat size={13} className="text-accent-soft" />
             {previa.length === 1 ? "Vence uma vez" : `${previa.length}x ${RECORRENCIAS.find((r) => r.id === recorrencia)?.label.toLowerCase()}`}
           </p>
 
           {/* O número que o cliente leva anotado: quanto sai por mês e quanto
               é no fim. Com juros, o total do prazo passa do total da nota — e
               é justamente essa diferença que ele quer ver antes de aceitar. */}
-          <div className="mb-2 flex items-baseline justify-between gap-2 rounded-lg bg-fg/[0.03] px-2.5 py-1.5">
-            <span className="text-[11px] tabular-nums text-ink">
+          <div className="mb-2 flex items-baseline justify-between gap-2 rounded-lg bg-fg/[0.03] px-3 py-2">
+            <span className="text-[13.5px] tabular-nums text-ink">
               {previa.length > 1 ? `${previa.length}x de ${formatCurrency(previa[previa.length - 1].valor)}` : formatCurrency(previa[0].valor)}
             </span>
-            <span className="shrink-0 text-right text-[10px] text-faint">
+            <span className="shrink-0 text-right text-[12px] text-faint">
               total <span className={`tabular-nums ${acrescimo > 0 ? "text-warning" : "text-mist"}`}>{formatCurrency(totalPrazo)}</span>
               {acrescimo > 0 && <span className="block">à vista {formatCurrency(pendente)}</span>}
             </span>
           </div>
 
-          <div className="flex max-h-[92px] flex-wrap gap-1 overflow-y-auto">
+          <div className="flex max-h-[120px] flex-wrap gap-1.5 overflow-y-auto">
             {previa.map((p) => (
-              <span key={p.numero} className="flex items-center gap-1 rounded-md border border-fg/[0.08] bg-surface px-1.5 py-0.5 text-[10.5px] text-mist">
-                <CalendarDays size={10} className="text-faint" />
+              <span key={p.numero} className="flex items-center gap-1.5 rounded-md border border-fg/[0.08] bg-surface px-2 py-1 text-[12px] text-mist">
+                <CalendarDays size={12} className="text-faint" />
                 <span className="tabular-nums">{dataBr(p.vencimento)}</span>
                 <span className="tabular-nums text-ink">{formatCurrency(p.valor)}</span>
               </span>
@@ -486,16 +520,12 @@ const PrazoNota = ({ pedidoId, pendente, clienteNome, acordo, carregando = false
         </div>
       )}
 
-      <div className="mt-3 flex gap-2">
-        <button type="button" onClick={() => setAbrindo(false)} disabled={salvando} className="flex-1 rounded-lg border border-fg/[0.1] py-2 text-[12px] text-mist transition-colors hover:text-ink disabled:opacity-50">
-          Cancelar
-        </button>
-
+      <div className="mt-3 flex">
         <button
           type="button"
           onClick={() => void gerar()}
           disabled={salvando}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent py-2 text-[12px] text-white transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent py-2.5 text-[13px] text-white transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
         >
           {salvando ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
           {salvando ? "Gerando…" : "Confirmar prazo"}

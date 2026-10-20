@@ -790,7 +790,7 @@ const SalesList = () => {
                         icon={<ClipboardList size={14} />}
                         label={`Ordem de serviço #${ordem.codigo} — abrir na produção`}
                         tom="sucesso"
-                        onClick={() => navigate("/producao/os")}
+                        onClick={() => navigate("/producao")}
                       />
                     ) : (
                       <ListaAcao

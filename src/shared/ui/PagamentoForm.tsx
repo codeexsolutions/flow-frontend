@@ -56,19 +56,11 @@ type Props = {
    * recebia não via a conta inteira sem rolar.
    */
   compacto?: boolean;
-  /**
-   * O que está sendo recebido.
-   *
-   * O mesmo formulário serve para a nota inteira e para UMA parcela de uma
-   * venda a prazo. Chamar a parcela de "nota" faria o rodapé prometer que a
-   * venda ficaria quitada quando só a primeira de seis foi paga.
-   */
-  alvo?: "nota" | "parcela";
   onConfirmar: (valor: number, forma: string) => void | Promise<void>;
   onCancelar?: () => void;
 };
 
-const PagamentoForm = ({ total, jaPago, salvando = false, textoConfirmar = "Adicionar pagamento", compacto = false, alvo = "nota", onConfirmar, onCancelar }: Props) => {
+const PagamentoForm = ({ total, jaPago, salvando = false, textoConfirmar = "Adicionar pagamento", compacto = false, onConfirmar, onCancelar }: Props) => {
   const restante = useMemo(() => Math.max(Math.round((total - jaPago) * 100) / 100, 0), [total, jaPago]);
 
   const [forma, setForma] = useState(FORMAS[0].id);
@@ -204,28 +196,19 @@ const PagamentoForm = ({ total, jaPago, salvando = false, textoConfirmar = "Adic
         </AnimatePresence>
       </div>
 
-      {/* O que vai acontecer — antes de confirmar */}
-      {/* O aviso troca de conteúdo conforme o valor digitado — animar a troca
-          faz o olho perceber que ele mudou, sem precisar reler. */}
+      {/* O que ainda fica a receber — só quando sobra alguma coisa. Quitar
+          tudo é o caso comum e dispensa aviso: o valor digitado já diz isso. */}
       <AnimatePresence mode="wait">
-        {valor > 0 && !excede && (
+        {valor > 0 && !excede && sobra > 0 && (
           <motion.p
-            key={sobra === 0 ? "quita" : "resta"}
+            key="resta"
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             className={`rounded-xl border border-fg/[0.07] bg-fg/[0.02] leading-relaxed text-mist ${compacto ? "px-3 py-2 text-[11px]" : "px-3.5 py-2.5 text-[12px]"}`}
           >
-            {sobra === 0 ? (
-              <>
-                Depois disso {alvo === "parcela" ? "a parcela" : "a nota"} fica <span className="text-success">sem saldo em aberto</span>.
-              </>
-            ) : (
-              <>
-                Ainda ficam <span className="tabular-nums text-warning">{formatCurrency(sobra)}</span> a receber.
-              </>
-            )}
+            Ainda ficam <span className="tabular-nums text-warning">{formatCurrency(sobra)}</span> a receber.
           </motion.p>
         )}
       </AnimatePresence>

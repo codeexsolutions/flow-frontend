@@ -31,11 +31,8 @@ import FuncionarioDetalhe from "@/features/funcionarios/pages/FuncionarioDetailP
 import OrcamentosPage from "@/features/orcamentos/pages/OrcamentosPage";
 import AjudaPage from "@/features/ajuda/pages/AjudaPage";
 import PedidosProducaoPage from "@/features/producao/pages/PedidosPage";
-import OrdensServicoPage from "@/features/producao/pages/OrdensServicoPage";
 import KanbanPage from "@/features/producao/pages/KanbanPage";
 import ProducoesPage from "@/features/producao/pages/ProducoesPage";
-import QuadroProducaoPage from "@/features/producao/pages/ProducaoPage";
-import AbasProducao from "@/features/producao/components/AbasProducao";
 import AcompanharProducaoPage from "@/features/acompanhamento/pages/AcompanharProducaoPage";
 import BaterPontoPage from "@/features/ponto/pages/BaterPontoPage";
 import AbrirPontoPage from "@/features/ponto/pages/AbrirPontoPage";
@@ -383,10 +380,9 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
           {/*
             Produção é uma SEÇÃO, e não uma tela: duas abas sob a mesma casca.
 
-              • `/producao`         — PEDIDOS: toda venda que entrou, e a ação
-                                      que gera a ordem de serviço de cada uma;
-              • `/producao/os`      — ORDEM DE SERVIÇO: as ordens geradas, com
-                                      o documento que vai impresso para a bancada;
+              • `/producao`         — PEDIDOS: cada venda com a ordem de serviço
+                                      dela — gerar, preencher, imprimir e mandar
+                                      para a planilha, numa lista só;
               • `/producao/kanban`  — o trabalho, em planilha ou em quadro. É a
                                       PLANILHA, e continua sendo: Pedidos e OS
                                       entraram ao lado dela, sem tirar nada.
@@ -413,33 +409,12 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
               </RecursoDoPlano>
             }
           />
-          <Route
-            path="producao/os"
-            element={
-              <RecursoDoPlano
-                recurso="producao"
-                promessa="Acompanhe cada pedido por etapa, monte a produção em tabela ou quadro e mande a cada cliente o link do pedido dele."
-              >
-                <OrdensServicoPage />
-              </RecursoDoPlano>
-            }
-          />
-          {/* O QUADRO das ordens de serviço — as mesmas de `/producao/os`, em
-              colunas de etapa. Ele existe porque a venda passou a virar ordem
-              sozinha: sem um lugar para arrastá-la, a ordem nasceria na
-              primeira etapa e ficaria lá para sempre. O Kanban ao lado
-              continua sendo a planilha, intocada. */}
-          <Route
-            path="producao/quadro"
-            element={
-              <RecursoDoPlano
-                recurso="producao"
-                promessa="Acompanhe cada pedido por etapa, monte a produção em tabela ou quadro e mande a cada cliente o link do pedido dele."
-              >
-                <QuadroProducaoPage abasSecao={<AbasProducao />} />
-              </RecursoDoPlano>
-            }
-          />
+          {/* Venda e ordem de serviço viraram uma lista só, em Pedidos. A rota
+              fica só para não quebrar link salvo. */}
+          <Route path="producao/os" element={<Navigate to="/producao" replace />} />
+          {/* O antigo quadro das ordens de serviço saiu — a etapa da ordem vive
+              na planilha. A rota fica só para não quebrar link salvo. */}
+          <Route path="producao/quadro" element={<Navigate to="/producao/kanban" replace />} />
           <Route
             path="producao/kanban"
             element={

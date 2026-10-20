@@ -34,6 +34,8 @@ export type OpcaoSelect = {
    * a cor é a mesma do selo que aparece na linha.
    */
   tom?: "sucesso" | "alerta" | "perigo" | "info";
+  /** Cor livre do ponto (hex), para opções que a própria empresa pinta — as alternativas de uma coluna de planilha. */
+  cor?: string;
 };
 
 const COR_TOM: Record<NonNullable<OpcaoSelect["tom"]>, string> = {
@@ -43,8 +45,12 @@ const COR_TOM: Record<NonNullable<OpcaoSelect["tom"]>, string> = {
   info: "bg-accent-soft shadow-[0_0_6px_rgb(var(--accent-soft)/0.8)]",
 };
 
-const PontoTom = ({ tom }: { tom?: OpcaoSelect["tom"] }) =>
-  tom ? <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${COR_TOM[tom]}`} /> : null;
+const PontoTom = ({ tom, cor }: { tom?: OpcaoSelect["tom"]; cor?: string }) =>
+  cor ? (
+    <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: cor }} />
+  ) : tom ? (
+    <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${COR_TOM[tom]}`} />
+  ) : null;
 
 type Props = {
   valor: string;
@@ -57,9 +63,31 @@ type Props = {
   "aria-label": string;
   /** Largura do botão. A lista acompanha. */
   className?: string;
+  disabled?: boolean;
+  /**
+   * `celula`: sem moldura nem fundo, ocupando a célula inteira — o seletor
+   * dentro de uma grade, onde a moldura de cada campo viraria um xadrez.
+   */
+  variante?: "padrao" | "celula";
+  /** Vai para `data-celula` — é como a célula da planilha sabe se está em edição. */
+  dataCelula?: string;
+  /** Largura mínima da lista quando o botão é estreito (uma célula). */
+  larguraLista?: number;
 };
 
-const Select = ({ valor, onChange, opcoes, icone, placeholder = "Selecionar", "aria-label": ariaLabel, className = "" }: Props) => {
+const Select = ({
+  valor,
+  onChange,
+  opcoes,
+  icone,
+  placeholder = "Selecionar",
+  "aria-label": ariaLabel,
+  className = "",
+  disabled = false,
+  variante = "padrao",
+  dataCelula,
+  larguraLista,
+}: Props) => {
   const [aberto, setAberto] = useState(false);
   const [indice, setIndice] = useState(0);
   const botao = useRef<HTMLButtonElement>(null);
@@ -80,6 +108,8 @@ const Select = ({ valor, onChange, opcoes, icone, placeholder = "Selecionar", "a
   };
 
   const aoTeclar = (e: React.KeyboardEvent) => {
+    if (disabled) return;
+
     if (!aberto) {
       if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
         e.preventDefault();
@@ -112,26 +142,62 @@ const Select = ({ valor, onChange, opcoes, icone, placeholder = "Selecionar", "a
         aria-expanded={aberto}
         aria-haspopup="listbox"
         aria-label={ariaLabel}
+        disabled={disabled}
+        data-celula={dataCelula}
         onClick={() => setAberto((v) => !v)}
         onKeyDown={aoTeclar}
-        className={`focus-ring flex h-[38px] cursor-pointer items-center gap-2 rounded-xl border bg-fg/[0.04] px-3 text-[12.5px] transition-colors ${
-          aberto ? "border-accent/60 text-ink" : "border-fg/[0.08] text-mist hover:border-fg/[0.16] hover:text-ink"
-        } ${className}`}
+        className={
+          variante === "celula"
+            ? `group/celula flex h-full w-full cursor-pointer p-1.5 text-[14px] text-ink outline-none disabled:cursor-not-allowed ${className}`
+            : `focus-ring flex h-[38px] cursor-pointer items-center gap-2 rounded-xl border bg-fg/[0.04] px-3 text-[12.5px] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                aberto ? "border-accent/60 text-ink" : "border-fg/[0.08] text-mist hover:border-fg/[0.16] hover:text-ink"
+              } ${className}`
+        }
       >
-        {icone && <span className="shrink-0 text-muted">{icone}</span>}
+        {variante === "celula" ? (
+          /*
+           * Na célula, a opção escolhida é um BLOCO pintado com a cor dela, com
+           * espaço até a borda da célula e cantos arredondados, indo até a seta.
+           * Toda célula de seleção no mesmo padrão, conteúdo centralizado — a
+           * situação se lê de longe, sem ler a palavra.
+           */
+          <span
+            className={`relative flex h-full w-full items-center justify-center gap-2 rounded-lg px-8 py-3 transition-[filter,background-color] ${
+              valor && escolhida?.cor ? "group-hover/celula:brightness-95" : "group-hover/celula:bg-fg/[0.04]"
+            } ${aberto ? (valor && escolhida?.cor ? "brightness-95" : "bg-fg/[0.04]") : ""}`}
+            style={valor && escolhida?.cor ? { background: `${escolhida.cor}24`, boxShadow: `inset 0 0 0 1px ${escolhida.cor}66` } : undefined}
+          >
+            {valor && <PontoTom tom={escolhida?.tom} cor={escolhida?.cor} />}
 
-        <PontoTom tom={escolhida?.tom} />
+            {/* Valor vazio é célula vazia: a opção de limpar existe na lista,
+                mas o nome dela não fica escrito na planilha. */}
+            <span className="min-w-0 truncate text-center">{valor ? escolhida?.label ?? placeholder : placeholder}</span>
 
-        <span className="min-w-0 flex-1 truncate text-left">{escolhida?.label ?? placeholder}</span>
+            {!disabled && (
+              <ChevronDown
+                size={14}
+                className={`absolute right-2.5 top-1/2 shrink-0 -translate-y-1/2 text-muted transition-transform duration-200 ${aberto ? "rotate-180" : ""}`}
+              />
+            )}
+          </span>
+        ) : (
+          <>
+            {icone && <span className="shrink-0 text-muted">{icone}</span>}
 
-        {/* O ponto sobe para o botão quando o alerta está numa opção fechada:
-            fechado, o seletor é a única coisa visível do filtro. */}
-        {temAlerta && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />}
+            <PontoTom tom={escolhida?.tom} cor={escolhida?.cor} />
 
-        <ChevronDown size={14} className={`shrink-0 text-muted transition-transform duration-200 ${aberto ? "rotate-180" : ""}`} />
+            <span className="min-w-0 flex-1 truncate text-left">{escolhida?.label ?? placeholder}</span>
+
+            {/* O ponto sobe para o botão quando o alerta está numa opção fechada:
+                fechado, o seletor é a única coisa visível do filtro. */}
+            {temAlerta && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />}
+
+            <ChevronDown size={14} className={`shrink-0 text-muted transition-transform duration-200 ${aberto ? "rotate-180" : ""}`} />
+          </>
+        )}
       </button>
 
-      <Suspenso aberto={aberto} onFechar={() => setAberto(false)} ancora={botao} largura="ancora" alturaMax={320}>
+      <Suspenso aberto={aberto} onFechar={() => setAberto(false)} ancora={botao} largura={larguraLista ?? "ancora"} alturaMax={320}>
         <ul role="listbox" aria-label={ariaLabel}>
           {opcoes.map((o, i) => {
             const marcada = o.valor === valor;
@@ -150,7 +216,7 @@ const Select = ({ valor, onChange, opcoes, icone, placeholder = "Selecionar", "a
                     <Check size={13} />
                   </span>
 
-                  <PontoTom tom={o.tom} />
+                  <PontoTom tom={o.tom} cor={o.cor} />
 
                   <span className="min-w-0 flex-1 truncate">{o.label}</span>
 

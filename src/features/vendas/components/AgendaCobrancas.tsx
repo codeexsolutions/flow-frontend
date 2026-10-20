@@ -556,7 +556,6 @@ const AgendaCobrancas = ({ contas, carregando = false, onRecarregar }: Props) =>
           <PagamentoForm
             total={recebendo.parcela.valor}
             jaPago={recebendo.parcela.valorPago}
-            alvo="parcela"
             salvando={salvando}
             textoConfirmar="Registrar recebimento"
             onConfirmar={(valor, forma) => void receber(valor, forma)}

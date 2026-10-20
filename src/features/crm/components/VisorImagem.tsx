@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotionConfig } from "framer-motion";
 import { Download, ExternalLink, X } from "lucide-react";
 
 /**
@@ -31,7 +31,7 @@ type Props = {
 };
 
 const VisorImagem = ({ url, alt, onFechar }: Props) => {
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
 
   /* Esc fecha, e a página atrás não rola enquanto o visor está aberto: rolar o
      histórico por baixo de uma foto em tela cheia faz a conversa aparecer em

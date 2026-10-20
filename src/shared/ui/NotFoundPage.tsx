@@ -1,4 +1,4 @@
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotionConfig } from "framer-motion";
 import { Search } from "lucide-react";
 
 /**
@@ -16,11 +16,11 @@ import { Search } from "lucide-react";
  * está a um clique de distância.
  *
  * A animação é uma sequência curta, não efeitos soltos: os dígitos entram em
- * escada, a lupa assenta girando, o texto sobe depois. `useReducedMotion`
+ * escada, a lupa assenta girando, o texto sobe depois. `useReducedMotionConfig`
  * desliga tudo — quem pediu menos movimento não recebe entrada coreografada.
  */
 const NotFoundPage = () => {
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
 
   const entra = (atraso: number) =>
     reduzir

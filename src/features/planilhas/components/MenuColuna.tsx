@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { CalendarClock, Check, EyeOff, Lock, Pencil, Trash2, Users } from "lucide-react";
 
 import type { Coluna } from "@/features/planilhas/services/planilha.service";
+import Select from "@/shared/ui/Select";
 
 type Funcionario = { id: string; nome: string };
 
@@ -137,18 +138,13 @@ const MenuColuna = ({
                   <CalendarClock size={11} /> Não pode ser antes de
                 </p>
 
-                <select
-                  value={coluna.nao_antes_de ?? ""}
-                  onChange={(e) => onDefinirDataMinima(e.target.value || null)}
-                  className="focus-ring w-full rounded-lg border border-fg/[0.1] bg-transparent px-2 py-1.5 text-[11.5px] text-ink outline-none"
-                >
-                  <option value="">— sem regra —</option>
-                  {datas.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.nome}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  valor={coluna.nao_antes_de ?? ""}
+                  onChange={(v) => onDefinirDataMinima(v || null)}
+                  aria-label="Data que esta coluna não pode preceder"
+                  className="w-full"
+                  opcoes={[{ valor: "", label: "Sem regra" }, ...datas.map((d) => ({ valor: d.id, label: d.nome }))]}
+                />
               </div>
             )}
 

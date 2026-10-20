@@ -8,7 +8,7 @@ import {
   Zap, QrCode, Repeat, LogIn,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotionConfig } from "framer-motion";
 import RedeAnimada from "@/features/landing/components/RedeAnimada";
 import CarrosselPlanos from "@/features/assinatura/components/CarrosselPlanos";
 
@@ -214,7 +214,7 @@ const CadastroEmpresaPage = () => {
   const [step, setStep] = useState(0);
   /* +1 avançando, -1 voltando — decide de que lado a etapa entra. */
   const [direcao, setDirecao] = useState(1);
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
   const [isLoading, setIsLoading] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
   const [verSenha, setVerSenha] = useState(false);

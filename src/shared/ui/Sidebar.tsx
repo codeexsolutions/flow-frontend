@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotionConfig } from "framer-motion";
 import type { ReactNode } from "react";
 import { Package, Users, DollarSign, Settings, LogOut, ShoppingCart, BarChart3, LayoutDashboard, UserCog, Wallet, LifeBuoy, Lock, MessageCircle, Factory, Bell } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -145,7 +145,7 @@ const Sidebar = () => {
     return !FILHAS_COM_ITEM_PROPRIO.some((f) => f !== alvo && pathname.startsWith(f));
   };
 
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
 
   const goto = (route: string) => {
     // Não toca ao clicar onde já se está: som sem mudança confunde.
@@ -277,17 +277,17 @@ const Sidebar = () => {
   };
 
   /**
-   * Um grupo do menu, em bloco próprio.
+   * Um grupo do menu.
    *
-   * Cada assunto mora numa caixa com moldura e o nome no topo: a divisão é
-   * visível de relance, e o olho acha o grupo pela caixa antes de ler
-   * qualquer item. O traço depois do nome fecha a linha até a borda.
+   * Já foi uma caixa com moldura e fundo próprio. Saiu: três caixas
+   * empilhadas, mais a da Ajuda, deixavam o menu com cara de formulário, e o
+   * título com o traço até a borda já separa um assunto do outro.
    *
    * `explicacao` fica no `title`: a frase inteira ajuda quem procura onde
    * mora um assunto, e no hover ela não custa linha nenhuma do menu.
    */
   const bloco = (filhos: ReactNode, cabecalho?: { nome: string; explicacao: string }) => (
-    <div className="rounded-2xl border border-fg/[0.07] bg-fg/[0.025] p-1.5 shadow-[inset_0_1px_0_rgb(var(--glass-highlight)/0.06)]">
+    <div>
       {cabecalho && (
         <p title={cabecalho.explicacao} className="flex items-center gap-2 px-3 pb-2 pt-2 text-[12px] uppercase tracking-[0.12em] text-accent-soft">
           {cabecalho.nome}
@@ -476,7 +476,7 @@ const Sidebar = () => {
 
         {/* Ajuda — fica fora da navegação: não é lugar que se visita no fluxo de
             trabalho, é a saída para quando algo trava. */}
-        <div className="relative mx-3 mb-3 rounded-2xl border border-fg/[0.07] bg-fg/[0.025] p-1.5">
+        <div className="relative mx-3 mb-3">
           {item("ajuda", <LifeBuoy size={18} />, "Ajuda e suporte")}
 
           {/* Instalar o app: some sozinho quando já está instalado ou quando o

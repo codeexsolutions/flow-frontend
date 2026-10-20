@@ -8,7 +8,8 @@ import type { ThemeId } from "./theme.catalog";
 export type ThemeMode = ThemeId;
 export type AccentId = "roxo" | "azul" | "verde" | "rosa" | "laranja" | "cinza" | "preto" | "teal" | "vinho" | "dourado";
 export type FontScale = "sm" | "md" | "lg";
-export type MotionPref = "auto" | "reduce";
+/** "full" anima sempre, mesmo com o sistema pedindo menos movimento. */
+export type MotionPref = "auto" | "reduce" | "full";
 /** "auto" delega para a detecção de hardware. */
 export type FxPref = FxLevel | "auto";
 

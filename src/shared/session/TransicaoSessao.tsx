@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotionConfig } from "framer-motion";
 
 import type { ModoTransicao } from "@/shared/session/transicao.store";
 
@@ -33,7 +33,7 @@ type Props = {
 };
 
 const TransicaoSessao = ({ nome, modo = "entrada", aoTerminar }: Props) => {
-  const reduzirMovimento = useReducedMotion();
+  const reduzirMovimento = useReducedMotionConfig();
 
   const entrada = modo === "entrada";
   const primeiroNome = (nome ?? "").trim().split(/\s+/)[0] || (entrada ? "de volta" : "");

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotionConfig } from "framer-motion";
 import {
   User, Percent, ShieldCheck, Check, Loader2, KeyRound, Power,
   Trash2, UserPlus, IdCard, Cake, Briefcase, AlertTriangle, Wallet,
@@ -69,7 +69,7 @@ type Props = {
 
 const FuncionarioForm = ({ funcionario, areas, ehRoot, podeCriarAcesso, onCancel, onMudou }: Props) => {
   const alert = useAlert();
-  const reduzir = useReducedMotion();
+  const reduzir = useReducedMotionConfig();
 
   const novo = !funcionario;
 

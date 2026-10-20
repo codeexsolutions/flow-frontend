@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotionConfig } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Sparkles, Wand2, Wrench, X } from "lucide-react";
 
@@ -53,7 +53,7 @@ const ROTULO: Record<TipoNovidade, { texto: string; classe: string; icone: React
 const Novidades = () => {
     const navigate = useNavigate();
     const mobile = useIsMobile();
-    const reduzir = useReducedMotion();
+    const reduzir = useReducedMotionConfig();
     const { user } = useAuth();
 
     const forcado = useNovidades((s) => s.aberto);
