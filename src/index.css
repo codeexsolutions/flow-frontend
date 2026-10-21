@@ -1256,22 +1256,35 @@ input[type="number"]::-webkit-outer-spin-button {
   z-index: 2;
 }
 
-/* ---------- Botão do carrinho (app do celular) ----------
+/* ---------- App do celular: moldura e carrinho ----------
  *
- * O carrinho do meio da barra precisa de uma cor que NUNCA seja a do
- * destaque: o destaque pinta a aba selecionada, e dois blocos da mesma cor
- * lado a lado apagam a leitura de "onde estou". Laranja contrasta com os
- * destaques frios; nos quentes (laranja, dourado, rosa, vinho) ele vira azul.
+ * `--carrinho` é a cor do botão do meio da barra. Ela NUNCA pode ser a do
+ * destaque (que pinta a aba selecionada), e com 16 destaques uma lista à mão
+ * sempre esquece algum — esqueceu coral e cobre. Quem decide é o
+ * `MobileLayout`, pelo matiz do destaque; este é só o valor de partida.
  */
 :root {
   --carrinho: 234 108 24;
 }
 
-:root[data-accent="laranja"],
-:root[data-accent="dourado"],
-:root[data-accent="rosa"],
-:root[data-accent="vinho"] {
-  --carrinho: 37 99 235;
+/*
+ * App instalado no iPhone: a moldura mede a TELA, não o `inset: 0`.
+ *
+ * Instalado, com a barra de status translúcida, o iOS entrega uma área fixa
+ * mais curta que a tela — o `bottom: 0` parava antes do fim e sobrava uma
+ * faixa morta embaixo da barra de abas. Sem barra de navegador no app
+ * instalado, `100vh` é a tela inteira. No Safari a regra não vale: lá o
+ * `inset: 0` é que acompanha a barra de endereço.
+ */
+:root[data-modo="app"] .m-moldura {
+  bottom: auto;
+  height: 100vh;
+}
+
+/* O que sobrar atrás da moldura tem a cor da barra, não a do fundo. */
+html.app-celular,
+html.app-celular body {
+  background-color: rgb(var(--surface));
 }
 
 /* ---------- Folha (bottom sheet) ---------- */

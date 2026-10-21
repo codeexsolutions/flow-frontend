@@ -10,6 +10,35 @@ import useSincronizacao from "@/shared/realtime/useSincronizacao";
 import TermosLgpdModal from "@/features/termos/TermosLgpdModal";
 import { useTermosLgpd } from "@/features/termos/useTermosLgpd";
 
+const LARANJA = "234 108 24";
+const AZUL = "37 99 235";
+
+/**
+ * A cor do carrinho, decidida pelo matiz do destaque (`"r g b"`).
+ *
+ * Destaque quente — vermelho, rosa, coral, laranja, cobre, dourado — leva o
+ * carrinho azul; qualquer outro (verde, azul, roxo, cinza) leva laranja. O
+ * corte é por matiz e não por nome porque o nome não diz a cor: "vinho",
+ * "cobre" e "lavanda" só se sabe olhando.
+ */
+const corDoCarrinho = (accent: string) => {
+  const [r, g, b] = accent.trim().split(/\s+/).map((n) => Number(n) / 255);
+  if ([r, g, b].some((n) => Number.isNaN(n))) return LARANJA;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+
+  /* Cinza e preto não têm matiz: qualquer cor contrasta, fica o laranja. */
+  if (delta < 0.12) return LARANJA;
+
+  let matiz = max === r ? ((g - b) / delta) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+  matiz = (matiz * 60 + 360) % 360;
+
+  const quente = matiz < 75 || matiz > 290;
+  return quente ? AZUL : LARANJA;
+};
+
 const ABAS = [
   { rota: "/", label: "Início", icone: Home },
   { rota: "/vendas", label: "Vendas", icone: BadgeDollarSign },
@@ -37,8 +66,22 @@ const MobileLayout = () => {
   /* Os pesos de fonte do celular — ver `html.app-celular` no `index.css`. Na
      raiz e não neste nó: as folhas abrem no `body`, fora desta moldura. */
   useEffect(() => {
-    document.documentElement.classList.add("app-celular");
-    return () => document.documentElement.classList.remove("app-celular");
+    const raiz = document.documentElement;
+    raiz.classList.add("app-celular");
+
+    /* A cor do carrinho sai do matiz do destaque, e é refeita quando o tema
+       troca — ver `--carrinho` no `index.css`. */
+    const pintarCarrinho = () => raiz.style.setProperty("--carrinho", corDoCarrinho(getComputedStyle(raiz).getPropertyValue("--accent")));
+    pintarCarrinho();
+
+    const observador = new MutationObserver(pintarCarrinho);
+    observador.observe(raiz, { attributes: true, attributeFilter: ["class", "data-accent", "data-theme"] });
+
+    return () => {
+      observador.disconnect();
+      raiz.classList.remove("app-celular");
+      raiz.style.removeProperty("--carrinho");
+    };
   }, []);
 
   /* As três listas do app se atualizam sozinhas quando outro aparelho mexe. */
@@ -53,13 +96,15 @@ const MobileLayout = () => {
   const ativo = (rota: string) => (rota === "/" ? pathname === "/" : pathname.startsWith(rota));
 
   return (
-    <div className="fixed inset-0 flex flex-col overflow-hidden bg-canvas text-ink">
+    <div className="m-moldura fixed inset-0 flex flex-col overflow-hidden bg-canvas text-ink">
       {/* A chave é só o caminho: abrir uma folha (`?venda=…`) não remonta a tela. */}
       <div key={pathname} className="flex min-h-0 flex-1 flex-col" style={{ animation: "m-fade .2s ease both" }}>
         <Outlet />
       </div>
 
-      <nav className="relative shrink-0 border-t border-fg/[0.07] bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
+      {/* Embaixo dos ícones fica a faixa do indicador de início, menos 12px: a
+          área segura inteira deixava a barra alta demais no iPhone. */}
+      <nav className="relative shrink-0 border-t border-fg/[0.07] bg-surface pb-[max(6px,calc(env(safe-area-inset-bottom)-12px))]">
         <div className="mx-auto grid h-[62px] max-w-md grid-cols-5 items-center px-2">
           {ABAS.slice(0, 2).map((a) => (
             <Aba key={a.rota} {...a} on={ativo(a.rota)} />
