@@ -31,7 +31,7 @@ import CrmService from "@/features/crm/services/crm.service";
 import { gerarBlobNota } from "@/shared/ui/DownloadButton";
 import { gerarPdfNota } from "@/shared/ui/downloadNota";
 
-import { Save, Trash2, QrCode, Loader2, FileText, Copy, Check, Image as ImageIcon } from "lucide-react";
+import { Save, Trash2, QrCode, Loader2, FileText, Copy, Check, ChevronDown, CalendarClock, Pencil, Image as ImageIcon } from "lucide-react";
 import { Skeleton, SkeletonInvoiceCard, SkeletonInvoiceHeader, SkeletonInvoiceRow, SkeletonSummary } from "@/shared/ui/skeleton";
 
 import { generatePixPayload, getQrCodeDataUrl } from "@/shared/utils/pix";
@@ -417,6 +417,8 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
      vencimentos. `null` = nota à vista, que é a maioria. */
   const [acordo, setAcordo] = useState<AcordoVenda | null>(null);
   const [carregandoAcordo, setCarregandoAcordo] = useState(!!idInicial);
+  /** Celular: o parcelamento fica recolhido dentro de "Pagamentos" até alguém pedir. */
+  const [prazoAberto, setPrazoAberto] = useState(false);
 
 
   /* ─── UI state ─── */
@@ -1661,17 +1663,32 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
 
             <div className="relative flex flex-col">
             {/* Cabeçalho */}
-            <div className="border-b border-fg/[0.05] p-6">
+            <div className="border-b border-fg/[0.05] p-4 md:p-6">
               {loadingPedido ? (
                 <SkeletonInvoiceHeader />
               ) : (
-                <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                  <HeaderInterprise />
-                  <div className="md:text-right">
-                    <h2 className="text-xl leading-none text-ink md:text-2xl">{modoOrcamento ? "ORÇAMENTO" : "Nota de Venda"}</h2>
-                    <p className="mt-1.5 text-sm text-mist">Data: {formatDate(pedido?.pedido?.dataPedido ?? new Date())}</p>
+                <>
+                  {/* Celular: a loja numa linha e o documento numa faixa —
+                      ver `compacto` em `HeaderInterprise`. */}
+                  <div className="md:hidden">
+                    <HeaderInterprise compacto />
+                    <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-fg/[0.04] px-3.5 py-2.5">
+                      <span className="text-[14px] text-ink">{modoOrcamento ? "Orçamento" : "Nota de Venda"}</span>
+                      <span className="text-right text-[12px] tabular-nums text-mist">
+                        {formatDate(pedido?.pedido?.dataPedido ?? new Date())}
+                        {id && <span className="ml-1.5 text-faint">#{id.slice(-6).toUpperCase()}</span>}
+                      </span>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="hidden md:flex md:flex-row md:items-end md:justify-between md:gap-3">
+                    <HeaderInterprise />
+                    <div className="md:text-right">
+                      <h2 className="text-xl leading-none text-ink md:text-2xl">{modoOrcamento ? "ORÇAMENTO" : "Nota de Venda"}</h2>
+                      <p className="mt-1.5 text-sm text-mist">Data: {formatDate(pedido?.pedido?.dataPedido ?? new Date())}</p>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
 
@@ -1986,9 +2003,15 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                         />
                       </div>
                       <div>
-                        <label className="mb-1 block text-[11px] text-mist">V. Unit</label>
+                        <label className="mb-1 flex items-center gap-1 text-[11px] text-accent-soft">
+                          V. Unit <Pencil size={10} aria-hidden />
+                        </label>
                         <div className="flex items-center gap-1.5">
-                          <MoneyInput value={item.valorVendaItem} onChange={(v) => atualizarLinha(item.itemPedidoId, { valorVendaItem: v })} className="h-10 w-full rounded-lg border border-fg/[0.06] bg-fg/[0.03] px-2 text-center tabular-nums text-ink outline-none" />
+                          {/* Um tom do destaque, de leve: só para dizer que o
+                              preço se negocia aqui. A quantidade ao lado também
+                              é campo, mas mudar o preço é o gesto que ninguém
+                              descobre sozinho. */}
+                          <MoneyInput value={item.valorVendaItem} onChange={(v) => atualizarLinha(item.itemPedidoId, { valorVendaItem: v })} className="h-10 w-full rounded-lg border border-accent/25 bg-accent/[0.07] px-2 text-center tabular-nums text-ink outline-none focus:border-accent/60" />
                           {item.valorVendaItem !== item.produto.valorProduto && <span className="text-[10px] text-mist line-through">{formatCurrency(item.produto.valorProduto)}</span>}
                         </div>
                       </div>
@@ -2106,7 +2129,10 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
 
                 {mostrarQr && (
                   pixPayload ? (
-                    <div className="flex flex-col gap-4 rounded-2xl border border-fg/[0.06] bg-fg/[0.02] p-4 sm:flex-row sm:items-center">
+                    /* No celular o QR fica no MEIO: é a tela que se vira para o
+                       cliente apontar a câmera, e encostado na borda ele ficava
+                       torto na mão de quem segura. Lado a lado a partir de `sm`. */
+                    <div className="flex flex-col items-center gap-4 rounded-2xl border border-fg/[0.06] bg-fg/[0.02] p-4 sm:flex-row sm:items-center">
                       <div className="shrink-0 overflow-hidden rounded-2xl border border-fg/[0.08] bg-white p-2.5">
                         {qrCodeNota ? (
                           <img src={qrCodeNota} alt="QR Code para pagamento via Pix" className="h-[144px] w-[144px] rounded-lg" />
@@ -2115,7 +2141,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                         )}
                       </div>
 
-                      <div className="min-w-0 flex-1">
+                      <div className="w-full min-w-0 flex-1 text-center sm:w-auto sm:text-left">
                         <p className="text-[11px] uppercase tracking-[0.08em] text-faint">Pagamento via Pix</p>
                         <p className="mt-0.5 text-sm text-ink">
                           Aponte a câmera para o QR ou copie o código abaixo
@@ -2131,7 +2157,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                           data-sem-foto
                           onClick={() => void copiarPix()}
                           title="Copiar o código Pix para mandar ao cliente"
-                          className="focus-ring mt-2 flex cursor-pointer items-center gap-1.5 rounded-lg border border-fg/[0.1] px-3 py-1.5 text-[11px] text-mist transition-colors hover:border-accent/40 hover:text-accent-soft"
+                          className="focus-ring mx-auto mt-2 flex cursor-pointer items-center gap-1.5 rounded-lg border border-fg/[0.1] px-3 py-1.5 text-[11px] text-mist sm:mx-0 transition-colors hover:border-accent/40 hover:text-accent-soft"
                         >
                           {pixCopiado ? <Check size={13} className="text-success" /> : <Copy size={13} />}
                           {pixCopiado ? "Copiado!" : "Copiar código Pix"}
@@ -2199,26 +2225,44 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                   )}
 
                   <RecebimentosNota pedidoId={id} versao={totalPago} onAlterado={recarregarNotaEPrazo} onOtimista={(d) => setValorPagoAnterior((v) => Math.max(0, v + d))} locais={recebimentosLocais} compacto />
-                </div>
-              </div>
-            )}
 
-            {/* Venda a prazo no celular.
-                A coluna de recebimento só existe a partir de `lg`; sem isto,
-                combinar vencimento e dar baixa em parcela seria coisa de
-                desktop — e boa parte das vendas a prazo é fechada no balcão,
-                no celular. `data-sem-foto` mantém tudo fora do PNG: é
-                ferramenta de quem atende, não parte do documento. */}
-            {!modoOrcamento && id && (
-              <div data-sem-foto className="px-5 pb-2 lg:hidden">
-                <PrazoNota
-                  pedidoId={id}
-                  pendente={pendente}
-                  clienteNome={pedido?.nomeCliente || nome}
-                  acordo={acordo}
-                  carregando={carregandoAcordo}
-                  onAtualizar={recarregarNotaEPrazo}
-                />
+                  {/*
+                   * Venda a prazo no celular — RECOLHIDA dentro de Pagamentos.
+                   *
+                   * Aberta direto na nota, o formulário de parcelas era a maior
+                   * coisa da tela e passava a impressão de que toda venda ia
+                   * ser parcelada. Parcelar é a exceção do balcão: fica atrás
+                   * de um toque, no lugar onde se decide o dinheiro. Com acordo
+                   * já combinado o rótulo avisa, para ninguém achar que sumiu.
+                   */}
+                  {id && (
+                    <div className="mt-3 border-t border-fg/[0.06] pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setPrazoAberto((v) => !v)}
+                        aria-expanded={prazoAberto}
+                        className="flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-1 text-left text-[13px] text-mist transition-colors active:bg-fg/[0.05]"
+                      >
+                        <CalendarClock size={16} className="shrink-0" />
+                        <span className="flex-1">{acordo ? "Parcelamento combinado" : "Parcelar / vender a prazo"}</span>
+                        <ChevronDown size={16} className={`shrink-0 transition-transform ${prazoAberto ? "rotate-180" : ""}`} />
+                      </button>
+
+                      {prazoAberto && (
+                        <div className="pt-2">
+                          <PrazoNota
+                            pedidoId={id}
+                            pendente={pendente}
+                            clienteNome={pedido?.nomeCliente || nome}
+                            acordo={acordo}
+                            carregando={carregandoAcordo}
+                            onAtualizar={recarregarNotaEPrazo}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -2233,12 +2277,12 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
         </div>
 
         {/* Footer */}
-        {/* No celular o total e os dois botões não cabiam lado a lado: "Pagamento"
-            com o valor pendente mais "Gerar Nota" estouravam os 390px. Aqui o
-            rodapé empilha — total em cima, botões dividindo a linha de baixo —
-            e a partir de `sm` volta a ser uma linha só. */}
+        {/* Total de um lado e "Salvar" do outro, numa linha só em qualquer
+            largura. O rodapé já empilhou no celular, quando ainda tinha o botão
+            "Pagamento" ao lado; sem ele, total e um botão cabem nos 390px, e
+            empilhar só gastava altura da nota. */}
         <footer
-          className="flex shrink-0 flex-col gap-3 border-t border-fg/[0.06] bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          className="flex shrink-0 flex-row items-center justify-between gap-3 border-t border-fg/[0.06] bg-surface px-4 py-3"
           style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
         >
           <div className="min-w-0">
@@ -2246,7 +2290,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
             {loadingPedido ? <Skeleton className="mt-1 h-7 w-32" /> : <span className="block truncate text-xl tabular-nums text-ink md:text-2xl">{formatCurrency(total)}</span>}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {/* Sem X aqui: o modal que envolve a nota já tem o próprio fechar
                 no topo, e dois botões de fechar na mesma tela só criavam a
                 dúvida de qual deles descarta a venda. Cancelar a nota mudou
@@ -2256,7 +2300,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
               <button
                 onClick={handleGerarOrcamento}
                 disabled={salvarDesabilitado || loadingPedido}
-                className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-warning px-5 text-sm text-white transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-40 sm:flex-none"
+                className="flex h-12 flex-none items-center justify-center gap-2 rounded-xl bg-warning px-5 text-sm text-white transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-40"
               >
                 <FileText size={18} />
                 {orcamentoAtual ? "Salvar orçamento" : "Gerar orçamento"}
@@ -2267,7 +2311,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
               <button
                 onClick={handleSalvar}
                 disabled={salvarDesabilitado || loadingPedido}
-                className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-accent px-5 text-sm text-white transition-all hover:bg-accent-soft active:scale-[0.98] disabled:opacity-40 sm:flex-none"
+                className="flex h-12 flex-none items-center justify-center gap-2 rounded-xl bg-accent px-6 text-sm text-white transition-all hover:bg-accent-soft active:scale-[0.98] disabled:opacity-40"
               >
                 <Save size={18} />
                 {!id && !criandoNota ? "Gerar Nota" : "Salvar"}

@@ -4,7 +4,18 @@ import { formatDocument } from "@/shared/utils/format";
 import { podeMostrarDocumento, rotuloDocumento } from "@/shared/utils/documento";
 import { maskPhone } from "@/shared/validation/masks";
 
-const HeaderInterprise = () => {
+type Props = {
+  /**
+   * Versão de celular: logo pequena e UMA linha de contato.
+   *
+   * A completa (logo de 128px e endereço em três linhas) é desenho de papel A4.
+   * Na tela de 390px ela empilhava e ocupava meia tela antes do primeiro
+   * item — quem abria a nota no balcão rolava para achar o que vendeu.
+   */
+  compacto?: boolean;
+};
+
+const HeaderInterprise = ({ compacto = false }: Props) => {
   const { enterprise } = useEnterprise();
 
   if (!enterprise) return null;
@@ -15,6 +26,37 @@ const HeaderInterprise = () => {
   /* CNPJ sempre sai; CPF só se a empresa tiver desligado a opção — que vem
      ligada de fábrica. Ver `shared/utils/documento`. */
   const documento = podeMostrarDocumento(enterprise.cpfCnpj, enterprise.ocultarCpfNota);
+
+  if (compacto) {
+    const linha = [endereco?.cidade && `${endereco.cidade}${endereco.uf ? `/${endereco.uf}` : ""}`, contato?.telefone && maskPhone(String(contato.telefone))].filter(Boolean).join(" · ");
+
+    return (
+      <div className="flex items-center gap-3">
+        <img
+          src={enterprise.urlLogo || "/logo.png"}
+          alt={enterprise.nomeFantasia ? `Logo de ${enterprise.nomeFantasia}` : "Logo da empresa"}
+          className="h-14 w-14 shrink-0 rounded-2xl object-contain"
+          onError={(ev) => {
+            const img = ev.currentTarget;
+            if (img.src.endsWith("/logo.png")) return;
+            img.src = "/logo.png";
+          }}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <h1 className="m-0 truncate text-[17px] leading-tight text-ink">{enterprise.nomeFantasia}</h1>
+            <BadgeCheck size={16} className="shrink-0 text-success" />
+          </div>
+          {linha && <p className="mt-0.5 truncate text-[12px] text-mist">{linha}</p>}
+          {documento && (
+            <p className="truncate text-[11px] text-faint">
+              {rotuloDocumento(enterprise.cpfCnpj)} {formatDocument(enterprise.cpfCnpj)}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-start gap-5">

@@ -1256,7 +1256,40 @@ input[type="number"]::-webkit-outer-spin-button {
   z-index: 2;
 }
 
+/* ---------- Botão do carrinho (app do celular) ----------
+ *
+ * O carrinho do meio da barra precisa de uma cor que NUNCA seja a do
+ * destaque: o destaque pinta a aba selecionada, e dois blocos da mesma cor
+ * lado a lado apagam a leitura de "onde estou". Laranja contrasta com os
+ * destaques frios; nos quentes (laranja, dourado, rosa, vinho) ele vira azul.
+ */
+:root {
+  --carrinho: 234 108 24;
+}
+
+:root[data-accent="laranja"],
+:root[data-accent="dourado"],
+:root[data-accent="rosa"],
+:root[data-accent="vinho"] {
+  --carrinho: 37 99 235;
+}
+
 /* ---------- Folha (bottom sheet) ---------- */
+@keyframes m-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes m-entra {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes m-pop {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: none; }
+}
+
 @keyframes cf-sheet {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
@@ -1370,6 +1403,31 @@ input[type="number"]::-webkit-outer-spin-button {
 *::after {
   font-weight: 400 !important;
   font-synthesis: none;
+}
+
+/*
+ * A exceção é o app do celular (`html.app-celular`, posto pelo
+ * `MobileLayout`). Em 390px, com a tela na mão e sob luz de balcão, a Inter
+ * em 400 some — os nomes da barra e os valores pareciam rabiscados. Lá o
+ * texto corrido sobe para 450 e os destaques voltam a ter peso de verdade.
+ * A especificidade maior que a do `*` é o que faz a regra valer.
+ */
+html.app-celular *,
+html.app-celular *::before,
+html.app-celular *::after {
+  font-weight: 450 !important;
+}
+
+html.app-celular .font-medium {
+  font-weight: 550 !important;
+}
+
+html.app-celular .font-semibold {
+  font-weight: 650 !important;
+}
+
+html.app-celular .font-bold {
+  font-weight: 750 !important;
 }
 
 code,
