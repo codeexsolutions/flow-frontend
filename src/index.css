@@ -74,9 +74,12 @@
      FLUTUA sobre o conteúdo, então sem essa reserva o último botão de
      cada tela (o "Cadastrar", o "Gerar orçamento") fica atrás dela.
      ────────────────────────────────────────────────────────────────── */
-  --dock-h: 56px;
-  --dock-lift: max(10px, calc(env(safe-area-inset-bottom) - 10px));
-  --dock-space: calc(var(--dock-h) + var(--dock-lift) + 14px);
+  --dock-h: 62px;
+  /* A barra agora encosta no chão (não flutua): embaixo dos ícones fica só a
+     faixa do indicador de início, menos 12px — a área segura inteira deixava
+     a barra alta demais no iPhone. */
+  --dock-lift: max(6px, calc(env(safe-area-inset-bottom) - 12px));
+  --dock-space: calc(var(--dock-h) + var(--dock-lift) + 12px);
 
   /* Uma família só no sistema inteiro: a Inter. A Sora dos títulos saiu —
      duas famílias e três pesos faziam cada tela parecer de um lugar. */
@@ -1357,15 +1360,31 @@ html.app-celular body {
 
   /* O que NÃO é moldura (título de tela, aviso de erro, botão solto) mantém o
      recuo — senão o texto encosta na borda do aparelho e fica ilegível. */
-  main main.overflow-y-auto > :not(.card):not(section) {
+  main main.overflow-y-auto > :not([class~="card"]):not(section) {
     padding-left: 0.875rem;
     padding-right: 0.875rem;
   }
 
   /* Cartão encostado na borda perde o raio e a borda dos LADOS, e vira faixa.
      O de cima e o de baixo ficam: são eles que separam uma faixa da outra. */
-  main main.overflow-y-auto > .card,
-  main main.overflow-y-auto > section > .card {
+  main main.overflow-y-auto > [class~="card"],
+  main main.overflow-y-auto > section > [class~="card"] {
+    border-left-width: 0;
+    border-right-width: 0;
+    border-radius: 0;
+  }
+
+  /* Os cartões são casados por atributo (`[class~="card"]`) e não por
+     `.card`: o Tailwind reescrevia o `:not(.card)` no CSS final como
+     `:not(.card-interactive)`, e o cartão da lista ganhava o recuo dos textos.
+
+     O cartão dentro de uma coluna de layout (`div.flex-col` sem moldura, como
+     em Vendas e no PDV) herdava o recuo de 14px da coluna e somava o próprio:
+     30px de cada lado antes do conteúdo. Ele sai do recuo e encosta também.
+     Só coluna: numa grade, cartões lado a lado precisam do vão. */
+  main main.overflow-y-auto > div.flex-col:not([class~="card"]) > [class~="card"] {
+    margin-left: -0.875rem;
+    margin-right: -0.875rem;
     border-left-width: 0;
     border-right-width: 0;
     border-radius: 0;
@@ -1374,7 +1393,7 @@ html.app-celular body {
   /* Grade de cartões (os números do topo) mantém o respiro lateral: sem ele os
      dois primeiros encostam nas bordas e o vão do meio some, e três cartões
      colados viram um bloco só. */
-  main main.overflow-y-auto > section:not(.card) {
+  main main.overflow-y-auto > section:not([class~="card"]) {
     padding-left: 0.875rem;
     padding-right: 0.875rem;
   }

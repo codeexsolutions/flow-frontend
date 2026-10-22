@@ -1498,7 +1498,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
       {/* `flex-1` em vez de `h-full`: a altura vem da corrente flex, não de uma
           porcentagem que depende do pai ter altura definida — dentro do `Sheet`
           do celular ela não tem, e o `100%` virava altura automática. */}
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl bg-surface ring-1 ring-fg/[0.06]">
+      <div className="flex min-h-0 flex-1 overflow-hidden bg-surface sm:rounded-2xl sm:ring-1 sm:ring-fg/[0.06]">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Toolbar */}
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-fg/[0.05] px-3 py-2.5">
@@ -1787,7 +1787,9 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                          sobra a imagem que existe — uma ou duas, sem buraco. */
                       if (!url) {
                         return (
-                          <div key={slot} data-sem-foto className="aspect-square">
+                          /* No celular o slot vazio é uma faixa baixa: dois
+                             quadrados vazios ocupavam meia tela antes dos itens. */
+                          <div key={slot} data-sem-foto className="h-16 sm:aspect-square sm:h-auto">
                             <UploadImagem
                               tipo="servico"
                               formato="miniatura"

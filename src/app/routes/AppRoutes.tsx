@@ -5,7 +5,6 @@ import useAuth from "@/features/auth/store/auth.store";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
 
 import Main from "@/app/layouts/MainLayout";
-import MobileRoutes from "@/mobile/MobileRoutes";
 import LoadingScreen from "@/shared/ui/LoadingScreen";
 import NotFoundPage from "@/shared/ui/NotFoundPage";
 import useTheme from "@/shared/theme/useTheme";
@@ -233,12 +232,6 @@ function AppRoutesContent({ isLogged, mobile }: { isLogged: boolean; mobile: boo
       path.startsWith("/vendas/a-receber");
 
     if (soDoDono) return <Navigate to="/" replace />;
-  }
-
-  /* No celular o sistema é OUTRO app, enxuto: vendas, clientes e estoque.
-     As telas públicas (login, cadastro, planos) continuam as mesmas. */
-  if (isLogged && mobile && !PUBLIC_PATHS.includes(path) && path !== "/bem-vindo") {
-    return <MobileRoutes />;
   }
 
   return (

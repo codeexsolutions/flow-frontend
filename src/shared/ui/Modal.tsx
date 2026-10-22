@@ -1,6 +1,9 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, X } from "lucide-react";
+
+import { useIsMobile } from "@/shared/hooks/useIsMobile";
 
 type ModalSize = "sm" | "md" | "lg" | "xl" | "full";
 
@@ -33,6 +36,7 @@ const HEIGHT_CLASS: Record<ModalSize, string> = {
 
 const Modal = memo(({ open, onClose, title, subtitle, accent = "rgb(var(--accent))", size = "md", maxWidth, children }: ModalProps) => {
   const [show, setShow] = useState(false);
+  const celular = useIsMobile();
 
   /** O gesto que fecha começou no fundo? Ver o comentário no `onPointerDown`. */
   const gestoComecouNoFundo = useRef(false);
@@ -55,7 +59,16 @@ const Modal = memo(({ open, onClose, title, subtitle, accent = "rgb(var(--accent
 
   const isFull = size === "full";
 
-  return (
+  /*
+   * Por portal, no `body`.
+   *
+   * Escrito no lugar, o modal herdava a moldura do `MainLayout` — que anima
+   * `transform` e por isso vira um contexto de empilhamento próprio. O
+   * `z-[200]` passava a valer só lá dentro, e a barra de abas do celular (que
+   * já mora no `body`) ficava POR CIMA da nota, cobrindo o total e o salvar.
+   * Só no celular: no computador não há barra, e o modal fica onde sempre esteve.
+   */
+  const janela = (
     <div
       /*
        * Fechar exige que o gesto INTEIRO tenha acontecido no fundo.
@@ -94,9 +107,24 @@ const Modal = memo(({ open, onClose, title, subtitle, accent = "rgb(var(--accent
  ${HEIGHT_CLASS[size]}
  ${show ? "translate-y-0 scale-100" : "translate-y-6 sm:translate-y-0 sm:scale-95"}`}
       >
-        <div className="h-[3px] flex-shrink-0" style={{ background: accent }} />
+        <div className={`h-[3px] flex-shrink-0 ${isFull ? "hidden sm:block" : ""}`} style={{ background: accent }} />
 
-        <div className="flex flex-shrink-0 items-center justify-between border-b border-fg/[0.08] px-4 py-3 sm:px-5 sm:py-4">
+        {/* Tela cheia no celular (a nota): o cabeçalho de app — voltar à
+            esquerda, onde o polegar alcança, e abaixo do relógio do iPhone. O X
+            no canto de cima nascia embaixo da barra de status. */}
+        {isFull && (
+          <div className="flex flex-shrink-0 items-center gap-1 border-b border-fg/[0.06] bg-surface px-2 pt-[env(safe-area-inset-top)] sm:hidden">
+            <button onClick={onClose} aria-label="Fechar" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink active:bg-fg/[0.08]">
+              <ArrowLeft size={22} />
+            </button>
+            <div className="flex h-14 min-w-0 flex-1 flex-col justify-center">
+              <p className="truncate text-[16px] font-semibold leading-tight text-ink">{title}</p>
+              {subtitle && <p className="truncate text-[12px] text-mist">{subtitle}</p>}
+            </div>
+          </div>
+        )}
+
+        <div className={`flex-shrink-0 items-center justify-between border-b border-fg/[0.08] px-4 py-3 sm:px-5 sm:py-4 ${isFull ? "hidden sm:flex" : "flex"}`}>
           <div className="min-w-0">
             <p className="truncate text-sm text-ink">{title}</p>
             {subtitle && <p className="mt-0.5 truncate text-xs text-mist">{subtitle}</p>}
@@ -115,20 +143,14 @@ const Modal = memo(({ open, onClose, title, subtitle, accent = "rgb(var(--accent
             (é o `min-height: auto` de todo item flex) e empurra o painel para
             além da tela — o que sobra some no `overflow-hidden` do painel. Com
             ele, conteúdo grande rola em vez de ser cortado. */}
-        {/*
-         * No celular a folha termina ACIMA da barra de abas.
-         *
-         * A barra é fixa no rodapé e ficava por cima do fim da folha: o botão
-         * de salvar — a única coisa que a pessoa veio fazer aqui — nascia
-         * encostado nela, e num aparelho com faixa de gestos ficava embaixo
-         * dela. O valor vem de `--dock-space`, o mesmo token que posiciona a
-         * dock e que o corpo das telas reserva: um número digitado aqui
-         * envelheceria na primeira vez que a barra mudasse de altura.
-         */}
-        <div className={`min-h-0 flex-1 overflow-y-auto ${isFull ? "" : "p-4 pb-[var(--dock-space)] sm:p-5"}`}>{children}</div>
+        {/* No celular a folha cobre a barra de abas (portal, `z-[200]`), então
+            embaixo só precisa da faixa do indicador de início. */}
+        <div className={`min-h-0 flex-1 overflow-y-auto ${isFull ? "flex flex-col pb-[env(safe-area-inset-bottom)] sm:pb-0" : "p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5"}`}>{children}</div>
       </div>
     </div>
   );
+
+  return celular ? createPortal(janela, document.body) : janela;
 });
 
 export { Modal };

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { formatCurrency } from "@/shared/utils/currency";
 import { usePainelCores } from "@/shared/ui/painelCores";
@@ -56,20 +56,109 @@ export const SeloIcone = ({ tone, size = 40, children }: { tone: Tom; size?: num
  * possível num cartão cuja única razão de existir é mostrar um número. Um
  * quinto cartão ainda sobrava sozinho numa terceira fileira.
  *
- * Rolando na horizontal, cada cartão recebe a largura de que precisa (72% da
- * tela), o número aparece inteiro, e o corte do próximo cartão na borda é o
- * que convida a arrastar. `snap-x` prende cada parada no começo do cartão.
+ * ---------------------------------------------------------------------------
+ * Carrossel infinito, um cartão no centro
+ * ---------------------------------------------------------------------------
+ * Cada cartão para no CENTRO (`snap-center`) e os vizinhos espiam cortados dos
+ * dois lados — é o que diz "arraste". Sem respiro nas pontas: a faixa não
+ * tem ponta. Os cartões vêm em três cópias e a rolagem começa na do meio;
+ * quando o dedo para numa cópia de fora, a faixa salta (sem animação) para o
+ * mesmo cartão na do meio, e dá para seguir arrastando para qualquer lado.
  *
- * `-mx-4 px-4` faz a faixa sangrar até as bordas: rolagem que começa e termina
- * no meio do vão parece conteúdo cortado, não conteúdo que anda.
+ * `-mx-3.5` desfaz o recuo da coluna no celular e a faixa sangra até as bordas.
  */
-export const KpiFaixa = ({ children, className = "" }: { children: ReactNode; className?: string }) => (
-  <div
-    className={`-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] [&>*]:w-[72vw] [&>*]:shrink-0 [&>*]:snap-start [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:overflow-visible sm:px-0 sm:[&>*]:w-auto ${className}`}
-  >
-    {children}
-  </div>
-);
+export const KpiFaixa = ({ children, className = "" }: { children: ReactNode; className?: string }) => {
+  const faixa = useRef<HTMLDivElement>(null);
+  const itens = Children.toArray(children).filter(isValidElement);
+  const total = itens.length;
+
+  const [celular, setCelular] = useState(() => window.matchMedia("(max-width: 639px)").matches);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const mudar = () => setCelular(mq.matches);
+    mq.addEventListener("change", mudar);
+    return () => mq.removeEventListener("change", mudar);
+  }, []);
+
+  const infinito = celular && total > 1;
+
+  useEffect(() => {
+    const el = faixa.current;
+    if (!el || !infinito) return;
+
+    const cartoes = () => Array.from(el.children) as HTMLElement[];
+
+    /* A largura de UMA cópia — o salto que leva de uma cópia à outra. */
+    const volta = () => {
+      const c = cartoes();
+      return c[total].offsetLeft - c[0].offsetLeft;
+    };
+
+    const centralizar = (c: HTMLElement) => c.offsetLeft + c.offsetWidth / 2 - el.clientWidth / 2;
+
+    /* Começa no primeiro cartão da cópia do meio. */
+    el.scrollLeft = centralizar(cartoes()[total]);
+
+    let quadro = 0;
+    let parado = 0;
+
+    /* O cartão mais perto do centro fica inteiro; os outros encolhem e apagam
+       na proporção da distância. Direto no estilo, a cada quadro — por estado
+       seria uma renderização por pixel arrastado. */
+    const pintar = () => {
+      quadro = 0;
+      const centro = el.scrollLeft + el.clientWidth / 2;
+
+      for (const c of cartoes()) {
+        const t = Math.min(Math.abs(c.offsetLeft + c.offsetWidth / 2 - centro) / c.offsetWidth, 1);
+        c.style.transform = `scale(${1 - t * 0.08})`;
+        c.style.opacity = String(1 - t * 0.45);
+      }
+    };
+
+    const reposicionar = () => {
+      const largura = volta();
+      if (el.scrollLeft < largura * 0.5) el.scrollLeft += largura;
+      else if (el.scrollLeft > largura * 1.5) el.scrollLeft -= largura;
+      pintar();
+    };
+
+    const rolou = () => {
+      if (!quadro) quadro = requestAnimationFrame(pintar);
+      /* O salto só depois que o dedo e o snap pararam: no meio do arraste ele
+         roubaria o gesto. */
+      window.clearTimeout(parado);
+      parado = window.setTimeout(reposicionar, 140);
+    };
+
+    pintar();
+    el.addEventListener("scroll", rolou, { passive: true });
+
+    return () => {
+      cancelAnimationFrame(quadro);
+      window.clearTimeout(parado);
+      el.removeEventListener("scroll", rolou);
+      for (const c of cartoes()) {
+        c.style.transform = "";
+        c.style.opacity = "";
+      }
+    };
+  }, [infinito, total]);
+
+  /* No celular, três cópias para o loop; a animação de entrada (`stagger`)
+     sai porque ela prende o `transform` e anularia o encolher dos vizinhos. */
+  const conteudo = infinito ? [0, 1, 2].flatMap((copia) => itens.map((it, i) => cloneElement(it, { key: `${copia}-${it.key ?? i}` }))) : children;
+
+  return (
+    <div
+      ref={faixa}
+      className={`-mx-3.5 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-0.5 [scrollbar-width:none] [&>*]:w-[80vw] [&>*]:shrink-0 [&>*]:snap-center max-sm:[&>*]:![animation:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:overflow-visible sm:[&>*]:w-auto ${className}`}
+    >
+      {conteudo}
+    </div>
+  );
+};
 
 export const Kpi = ({
   icon,

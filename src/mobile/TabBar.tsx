@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, useReducedMotionConfig } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, ShoppingCart, DollarSign, Package, Users, Wallet, BarChart3, MoreHorizontal, Settings, LogOut, UserCircle, Truck, Lock, Factory, MessageCircle, Bell, RefreshCw } from "lucide-react";
+import { Home, ShoppingCart, BadgeDollarSign, Package, Users, Wallet, BarChart3, MoreHorizontal, Settings, LogOut, UserCircle, Truck, Lock, Factory, MessageCircle, Bell, RefreshCw } from "lucide-react";
 
 import useAuth from "@/features/auth/store/auth.store";
 import { ehGestor } from "@/features/vendas/components/TabsVendas";
@@ -13,6 +13,37 @@ import { ABAS_SWIPE } from "@/shared/hooks/useSwipeAbas";
 import usePlano from "@/shared/plano/plano.store";
 import useNaoLidas from "@/features/crm/store/naoLidas.store";
 import { BUILD_ID, forcarAtualizacao } from "@/shared/pwa/versao";
+import { useIsMobile } from "@/shared/hooks/useIsMobile";
+
+const LARANJA = "234 108 24";
+const AZUL = "37 99 235";
+
+/**
+ * A cor do carrinho, decidida pelo matiz do destaque (`"r g b"`).
+ *
+ * O carrinho NUNCA pode ter a cor do destaque — é o destaque que pinta a aba
+ * selecionada, e dois blocos da mesma cor lado a lado apagam o "onde estou".
+ * Destaque quente (vermelho, rosa, coral, laranja, cobre, dourado) leva o
+ * carrinho azul; qualquer outro leva laranja. Por matiz e não por nome:
+ * "vinho", "cobre" e "lavanda" só se sabe olhando.
+ */
+const corDoCarrinho = (accent: string) => {
+  const [r, g, b] = accent.trim().split(/\s+/).map((n) => Number(n) / 255);
+  if ([r, g, b].some((n) => Number.isNaN(n))) return LARANJA;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+
+  /* Cinza e preto não têm matiz: qualquer cor contrasta, fica o laranja. */
+  if (delta < 0.12) return LARANJA;
+
+  let matiz = max === r ? ((g - b) / delta) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+  matiz = (matiz * 60 + 360) % 360;
+
+  const quente = matiz < 75 || matiz > 290;
+  return quente ? AZUL : LARANJA;
+};
 
 /**
  * `familia` só vem preenchida no primeiro item de cada grupo — é ela que
@@ -37,48 +68,30 @@ type Item = {
 };
 
 /**
- * Navegação do celular — cápsula de vidro líquido flutuando no rodapé.
+ * Navegação do celular — barra sólida encostada no rodapé.
  *
  * ---------------------------------------------------------------------------
  * O caminho até aqui, porque ele explica o desenho
  * ---------------------------------------------------------------------------
- * Já foram duas barras antes desta, e as duas erraram por motivos opostos:
- *
- *   1. **Pílula `w-fit` centralizada.** Bonita e inútil: sendo do tamanho do
- *      conteúdo, sobravam faixas mortas nos dois lados e os alvos ficavam
- *      apertados no meio, longe de onde o polegar cai.
- *   2. **Faixa colada na borda, largura inteira.** Resolveu os alvos e criou
- *      outro problema, este só visível no iPhone: com a área segura do
- *      aparelho DENTRO dela, sobravam 34px de vidro vazio embaixo dos ícones.
- *      A barra tinha 92px de altura para mostrar 58px de conteúdo, e a leitura
- *      no aparelho era exatamente esta — "a barra está alta demais".
- *
- * Esta terceira fica no meio: uma cápsula que flutua (como a do iOS 26), mas
- * que ocupa quase a largura toda (`max-w-md`, `px-3`) em vez de se encolher ao
- * conteúdo. Os alvos passam de 80px, e a área segura fica FORA dela — o vidro
- * termina onde os ícones terminam.
+ * A pílula `w-fit` deixava os alvos apertados no meio; a faixa larga com a
+ * área segura inteira dentro ficava alta demais no iPhone; a cápsula de vidro
+ * flutuante cobria o fim das telas e lia como enfeite. Esta é a do app próprio
+ * do celular trazida para o sistema completo: barra sólida, colada no chão, só
+ * a faixa do indicador de início (menos 12px) embaixo dos ícones.
  *
  * ---------------------------------------------------------------------------
  * O que sustenta o desenho
  * ---------------------------------------------------------------------------
  * - **Ela mora no `body`, por portal.** Não é detalhe de organização: é o que
- *   faz o `bottom` significar o chão do visor. Ver a nota longa em `dock`.
+ *   faz o `bottom` significar o chão do visor. Ver a nota em `dock`.
  * - **Os números moram no CSS** (`--dock-h`, `--dock-lift`, `--dock-space`, em
- *   `index.css`). A cápsula flutua SOBRE o conteúdo, então o rodapé das telas
- *   precisa reservar a altura dela — e foi justamente esse par que já
- *   divergiu uma vez, com a barra crescendo e o respiro ficando para trás.
- *   Agora é o mesmo token dos dois lados.
- * - **Toda aba mostra o nome.** O Instagram não mostra nenhum, e ali funciona:
- *   são cinco destinos abertos cinquenta vezes por dia. Aqui um carrinho e um
- *   cifrão lado a lado não dizem qual é "PDV" e qual é "Vendas" para quem
- *   entrou na segunda vez.
- * - **A pílula do item ativo desliza** (`layoutId`) em vez de piscar no
- *   destino. Um movimento lê como um lugar; dois piscas leem como um erro.
- * - **Só a cápsula recebe toque.** O envelope é `pointer-events-none`: as
- *   faixas ao lado dela mostram conteúdo, e conteúdo que se vê e não se toca é
- *   pior do que conteúdo escondido.
+ *   `index.css`). A barra é `fixed`, então o rodapé das telas precisa reservar
+ *   a altura dela — mesmo token dos dois lados.
+ * - **Toda aba mostra o nome**, menos o carrinho do meio: um cifrão e um
+ *   bonequinho não dizem "Vendas" e "Clientes" para quem entrou na segunda vez.
+ * - **O bloco da aba ativa desliza** (`layoutId`) em vez de piscar no destino.
  * - **Arrastar a tela troca de aba.** A ordem das abas mora em `ABAS_SWIPE`
- *   (em `useSwipeAbas`) e é lida daqui — uma fonte só para o gesto e a dock.
+ *   (em `useSwipeAbas`) e é lida daqui — uma fonte só para o gesto e a barra.
  */
 const TabBar = () => {
   const { pathname } = useLocation();
@@ -107,6 +120,29 @@ const TabBar = () => {
     if (gestor) buscarEquipe();
   }, [gestor, buscarEquipe]);
 
+  /* Só no celular: os pesos de fonte mais firmes (`html.app-celular` no
+     `index.css`) e a cor do carrinho, refeita quando o tema troca. */
+  const celular = useIsMobile();
+
+  useEffect(() => {
+    if (!celular) return;
+
+    const raiz = document.documentElement;
+    raiz.classList.add("app-celular");
+
+    const pintarCarrinho = () => raiz.style.setProperty("--carrinho", corDoCarrinho(getComputedStyle(raiz).getPropertyValue("--accent")));
+    pintarCarrinho();
+
+    const observador = new MutationObserver(pintarCarrinho);
+    observador.observe(raiz, { attributes: true, attributeFilter: ["class", "data-accent", "data-theme"] });
+
+    return () => {
+      observador.disconnect();
+      raiz.classList.remove("app-celular");
+      raiz.style.removeProperty("--carrinho");
+    };
+  }, [celular]);
+
   /*
    * A barra é a mesma para todos: o funcionário opera a loja inteira.
    *
@@ -115,10 +151,11 @@ const TabBar = () => {
    * para outro. Aqui ficam só o rótulo e o ícone de cada rota.
    */
   const APARENCIA: Record<string, { label: string; icon: React.ReactNode }> = {
-    "/": { label: "Início", icon: <LayoutDashboard size={18} /> },
-    "/pdv": { label: "PDV", icon: <ShoppingCart size={18} /> },
+    "/": { label: "Início", icon: <Home size={18} /> },
+    "/pdv": { label: "Nova venda", icon: <ShoppingCart size={18} /> },
     /* O panorama e a lista viraram a mesma tela — ver `VendasPage`. */
-    "/vendas": { label: gestor ? "Vendas" : "Minhas vendas", icon: <DollarSign size={18} /> },
+    "/vendas": { label: gestor ? "Vendas" : "Minhas", icon: <BadgeDollarSign size={18} /> },
+    "/clientes": { label: "Clientes", icon: <Users size={18} /> },
   };
 
   const principais: Item[] = ABAS_SWIPE.map((rota) => ({ rota, ...APARENCIA[rota] }));
@@ -157,8 +194,6 @@ const TabBar = () => {
        prometeria uma tela que o upgrade não entregaria sozinho. */
     ...(gestor && planoTemEquipe(equipe) ? [{ rota: "/funcionarios", label: "Funcionários", icon: <UserCircle size={18} />, recurso: "funcionarios" }] : []),
 
-    { rota: "/clientes", label: "Clientes", icon: <Users size={18} />, familia: "Atendimento" },
-
     /*
      * WhatsApp no celular não é conveniência: é ONDE a loja responde.
      *
@@ -168,7 +203,7 @@ const TabBar = () => {
      * em que o trabalho chega sozinho, e a folha "Mais" já é o segundo toque:
      * sem o número, é preciso abrir para descobrir que não havia nada.
      */
-    { rota: "/whatsapp", label: "WhatsApp", icon: <MessageCircle size={18} />, selo: "Teste", contagem: naoLidas },
+    { rota: "/whatsapp", label: "WhatsApp", icon: <MessageCircle size={18} />, selo: "Teste", contagem: naoLidas, familia: "Atendimento" },
 
     // Correios voltou para "em breve" enquanto o módulo é finalizado. Fica na
     // folha, apagado: some do menu e ninguém descobre que existe. O selo é
@@ -189,8 +224,6 @@ const TabBar = () => {
     navigate(rota);
   };
 
-  const mola = reduzir ? { duration: 0 } : ({ type: "spring", stiffness: 440, damping: 36 } as const);
-
   /*
    * A dock vai para o `body` por portal, e não fica onde está escrita.
    *
@@ -209,109 +242,50 @@ const TabBar = () => {
    * início ou aberta no Safari, dá no mesmo.
    */
   const dock = (
-    <div
-      /*
-       * O envelope não recebe toque (`pointer-events-none`); só a cápsula
-       * recebe. Sendo uma pílula que não ocupa a largura toda, as faixas ao
-       * lado dela mostram conteúdo — e conteúdo que se vê e não se toca é pior
-       * do que conteúdo escondido, porque a pessoa tenta.
-       */
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] px-3 md:hidden"
+    /*
+     * Barra encostada no chão, largura inteira, fundo sólido — não flutua.
+     *
+     * A cápsula de vidro deixava o fim das telas atrás dela e lia como enfeite
+     * por cima do sistema; a barra é parte da moldura. Continua no `body` por
+     * portal pelo mesmo motivo de antes: o `MainLayout` anima `scale`, e
+     * `position: fixed` dentro de ancestral transformado não mede o visor.
+     *
+     * Cinco alvos: Início, Vendas, o carrinho (PDV) no meio — onde o polegar
+     * cai —, Clientes e Mais. O carrinho não tem rótulo e usa `--carrinho`, que
+     * nunca coincide com o destaque que marca a aba selecionada.
+     */
+    <motion.nav
+      initial={{ y: 90 }}
+      animate={{ y: 0 }}
+      transition={reduzir ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }}
+      className="fixed inset-x-0 bottom-0 z-[100] border-t border-fg/[0.07] bg-surface md:hidden"
       style={{ paddingBottom: "var(--dock-lift)" }}
     >
-      <motion.nav
-        initial={{ y: 90, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={reduzir ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }}
-        /*
-         * `max-w-md` e centralizada: num aparelho de 390px ela ocupa quase a
-         * largura inteira (os alvos continuam com mais de 80px), e num tablet
-         * estreito ela para de crescer em vez de virar uma régua de ponta a
-         * ponta com quatro ícones perdidos no meio.
-         *
-         * O raio é quase metade da altura — é o que faz a forma ler como
-         * cápsula, e não como cartão de cantos arredondados.
-         */
-        className="glass-dock pointer-events-auto mx-auto flex w-full max-w-md items-stretch justify-around gap-1 rounded-[26px] px-1.5"
-        style={{ height: "var(--dock-h)" }}
-      >
-        {principais.map((it) => {
-          const on = ativo(it.rota);
-
-          return (
-            <motion.button
+      <div className="mx-auto grid max-w-md grid-cols-5 items-center px-2" style={{ height: "var(--dock-h)" }}>
+        {principais.map((it) =>
+          it.rota === "/pdv" ? (
+            <button
               key={it.rota}
               type="button"
-              layout
               onClick={() => ir(it.rota)}
               aria-label={it.label}
-              aria-current={on ? "page" : undefined}
-              whileTap={reduzir ? undefined : { scale: 0.94 }}
-              transition={mola}
-              /*
-               * `flex-1`: cada aba fica com a mesma fatia da cápsula. Com
-               * largura de conteúdo sobrariam vãos mortos entre alvos de 48px,
-               * e o dedo erra justamente nas bordas.
-               */
-              className={`focus-ring relative flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-[20px] transition-colors ${on ? "text-accent-soft" : "text-faint"}`}
+              aria-current={ativo(it.rota) ? "page" : undefined}
+              className="focus-ring relative z-10 flex justify-center rounded-full"
             >
-              {/* A pílula é um irmão posicionado, não o fundo do botão: assim
-                  ela desliza entre os itens em vez de piscar no destino. */}
-              {on && (
-                <motion.span
-                  layoutId="dock-ativo"
-                  transition={mola}
-                  /* Fundo lavado com um fio de luz em cima — a mesma leitura
-                     de vidro da cápsula, uma camada acima dela. */
-                  className="absolute inset-x-1 inset-y-1 rounded-[18px] bg-accent/[0.14] shadow-[inset_0_1px_0_rgb(var(--glass-highlight)/0.18)]"
-                />
-              )}
+              <span
+                className={`grid h-[52px] w-[52px] place-items-center rounded-full bg-[rgb(var(--carrinho))] text-white shadow-[0_8px_20px_-6px_rgb(var(--carrinho)/0.75)] transition-all active:scale-95 ${ativo(it.rota) ? "scale-105 ring-4 ring-[rgb(var(--carrinho)/0.22)]" : ""}`}
+              >
+                <ShoppingCart size={24} strokeWidth={2.3} />
+              </span>
+            </button>
+          ) : (
+            <Aba key={it.rota} label={it.label} icon={it.icon} on={ativo(it.rota)} onClick={() => ir(it.rota)} reduzir={!!reduzir} />
+          ),
+        )}
 
-              {/* 20px, sobrescrevendo o `size={18}` do item por CSS.
-                  A lista de rotas é a MESMA da folha "Mais": trocar o `size`
-                  lá aumentaria também os ícones de dentro da folha, que já
-                  estão no tamanho certo para uma lista de texto. */}
-              <span className="relative shrink-0 [&_svg]:h-[20px] [&_svg]:w-[20px]">{it.icon}</span>
-
-              {/*
-               * O nome de TODAS as abas, sempre, embaixo do ícone.
-               *
-               * O Instagram não tem rótulo nenhum, e aqui isso não serve: lá
-               * são cinco destinos que a pessoa abre cinquenta vezes por dia.
-               * Aqui um carrinho e um cifrão lado a lado não dizem qual é
-               * "PDV" e qual é "Vendas" para quem entrou na segunda vez.
-               */}
-              <span className="relative whitespace-nowrap text-[10px] leading-none tracking-tight">{it.label}</span>
-            </motion.button>
-          );
-        })}
-
-        <motion.button
-          type="button"
-          layout
-          onClick={() => setMaisAberto(true)}
-          aria-label="Mais opções"
-          aria-expanded={maisAberto}
-          whileTap={reduzir ? undefined : { scale: 0.94 }}
-          transition={mola}
-          className={`focus-ring relative flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-[20px] transition-colors ${maisAberto ? "text-accent-soft" : "text-faint"}`}
-        >
-          {maisAberto && (
-            <motion.span
-              initial={{ opacity: 0, scale: 0.75 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: "spring", stiffness: 480, damping: 30 }}
-              className="absolute inset-x-1 inset-y-1 rounded-[18px] bg-accent/[0.14] shadow-[inset_0_1px_0_rgb(var(--glass-highlight)/0.18)]"
-            />
-          )}
-
-          <motion.span className="relative" animate={reduzir ? {} : { rotate: maisAberto ? 90 : 0 }} transition={{ type: "spring", stiffness: 420, damping: 28 }}>
-            <MoreHorizontal size={20} />
-          </motion.span>
-          <span className="relative whitespace-nowrap text-[10px] leading-none tracking-tight">Mais</span>
-        </motion.button>
-      </motion.nav>
-    </div>
+        <Aba label="Mais" icon={<MoreHorizontal size={18} />} on={maisAberto} onClick={() => setMaisAberto(true)} reduzir={!!reduzir} expandido={maisAberto} />
+      </div>
+    </motion.nav>
   );
 
   return (
@@ -422,6 +396,51 @@ const TabBar = () => {
         </div>
       </Sheet>
     </>
+  );
+};
+
+/**
+ * A aba ativa é um bloco inteiro preenchido — ícone e nome juntos —, não só o
+ * ícone aceso. O bloco é UM só (`layoutId`) e desliza de uma aba para a outra:
+ * o movimento mostra de onde se saiu e para onde se foi. Passa por trás do
+ * carrinho no caminho, por isso o carrinho fica acima (`z-10`).
+ *
+ * O "Mais" fica fora do `layoutId`: ele abre uma folha, não é um lugar — o
+ * bloco aparece nele sem sair da aba em que a pessoa está.
+ */
+const Aba = ({ label, icon, on, onClick, reduzir, expandido }: { label: string; icon: React.ReactNode; on: boolean; onClick: () => void; reduzir: boolean; expandido?: boolean }) => {
+  const ehMais = expandido !== undefined;
+  const bloco = "absolute inset-0 rounded-2xl bg-accent shadow-[0_6px_16px_-8px_rgb(var(--accent)/0.8)]";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ehMais ? "Mais opções" : label}
+      aria-current={on && !ehMais ? "page" : undefined}
+      aria-expanded={ehMais ? expandido : undefined}
+      className="focus-ring flex h-full items-center justify-center rounded-2xl px-0.5"
+    >
+      <span className={`relative flex h-[52px] w-full max-w-[72px] flex-col items-center justify-center gap-1 rounded-2xl transition-colors duration-200 ${on ? "text-white" : "text-mist active:bg-fg/[0.06]"}`}>
+        {on &&
+          (ehMais ? (
+            <motion.span initial={reduzir ? false : { opacity: 0, scale: 0.75 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 480, damping: 30 }} className={bloco} />
+          ) : (
+            <motion.span layoutId="dock-ativo" transition={reduzir ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 38 }} className={bloco} />
+          ))}
+
+        {/* 21px, sobrescrevendo o `size={18}` do item por CSS: a lista de
+            rotas é a mesma da folha "Mais", onde 18 é o tamanho certo. */}
+        <motion.span
+          className="relative [&_svg]:h-[21px] [&_svg]:w-[21px]"
+          animate={reduzir ? {} : ehMais ? { rotate: expandido ? 90 : 0 } : on ? { y: [0, -3, 0], scale: [1, 1.12, 1] } : { y: 0, scale: 1 }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+        >
+          {icon}
+        </motion.span>
+        <span className={`relative whitespace-nowrap text-[11px] leading-none tracking-tight ${on ? "font-semibold" : "font-medium"}`}>{label}</span>
+      </span>
+    </button>
   );
 };
 

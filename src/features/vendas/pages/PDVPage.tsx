@@ -43,6 +43,7 @@ import { estaAberto as estaAberta, totalDoPedido, type ItemPedidoType, type Pedi
 import { formatTime as horaVenda, formatDate as dataBr, diaExtenso, isSameDay as noMesmoDia } from "@/shared/utils/date";
 import { getInitials as iniciais, formatDocument, formatNumber } from "@/shared/utils/format";
 import { Selo, type TomSelo } from "@/shared/ui/StatusBadge";
+import { useIsMobile } from "@/shared/hooks/useIsMobile";
 
 // Só o essencial: quem é o cliente e (se existir) qual pedido.
 /* `clienteId` opcional: orçamento é montado para nome livre, sem cadastro. */
@@ -245,7 +246,11 @@ const PontoDeVenda = () => {
    */
   const [aba, setAba] = useState<"vendas" | "orcamentos" | "configuracoes">("vendas");
 
-  const podeFiscal = usePlano((s) => s.recurso("fiscal"));
+  /* No celular a aba Fiscal sai: a configuração fiscal (NCM, CFOP, série) é
+     tarefa de computador, e no balcão ela só disputava espaço com Vendas e
+     Orçamentos. */
+  const celular = useIsMobile();
+  const podeFiscal = usePlano((s) => s.recurso("fiscal")) && !celular;
 
   const location = useLocation();
 
@@ -895,14 +900,35 @@ const PontoDeVenda = () => {
             </div>
 
             {/*
-             * No celular as quatro portas de criar ROLAM numa fileira só.
+             * No celular as quatro portas de criar são QUADRADINHOS: ícone em
+             * cima, nome embaixo, os quatro numa fileira que cabe inteira.
              *
-             * Elas quebravam em duas fileiras encostadas à direita, e o balcão
-             * começava com dois centímetros de botão antes da primeira venda.
-             * Numa fileira que rola, "Nova venda" — a que se usa o dia inteiro
-             * — fica visível e as outras três ficam a um arrasto.
+             * Antes eram os botões do computador rolando de lado, e só "Nova
+             * venda" e metade de "Novo cliente" apareciam — as outras ficavam a
+             * um arrasto que ninguém fazia. "Nova venda" vem primeiro e na cor
+             * do destaque; orçamento mantém o amarelo, pelo mesmo motivo do
+             * computador: não confundir com venda na pressa.
              */}
-            <div className="-mx-4 flex w-[calc(100%+2rem)] items-center gap-2 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 sm:mx-0 sm:w-auto sm:flex-wrap sm:justify-end sm:overflow-visible sm:px-0 sm:pb-0">
+            <div className="grid w-full grid-cols-4 gap-2 sm:hidden">
+              {[
+                { rotulo: "Nova venda", icone: <Plus size={18} />, tom: "border-accent/40 bg-accent/[0.14] text-accent-soft", acao: () => setNovaVendaOpen(true) },
+                { rotulo: "Cliente", icone: <UserPlus size={18} />, tom: "border-fg/[0.08] bg-fg/[0.04] text-ink", acao: () => setNovoClienteOpen(true) },
+                { rotulo: "Produto", icone: <PackagePlus size={18} />, tom: "border-fg/[0.08] bg-fg/[0.04] text-ink", acao: () => setNovoProdutoOpen(true) },
+                { rotulo: "Orçamento", icone: <FileText size={18} />, tom: "border-warning/40 bg-warning/[0.12] text-warning", acao: () => setOrcamentoOpen(true) },
+              ].map((b) => (
+                <button
+                  key={b.rotulo}
+                  type="button"
+                  onClick={b.acao}
+                  className={`focus-ring flex h-[58px] flex-col items-center justify-center gap-1 rounded-xl border transition-transform active:scale-95 ${b.tom}`}
+                >
+                  {b.icone}
+                  <span className="text-[10.5px] leading-none">{b.rotulo}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="hidden items-center gap-2 sm:flex sm:flex-wrap sm:justify-end">
               <GhostAction icon={<UserPlus size={15} />} onClick={() => setNovoClienteOpen(true)}>
                 Novo cliente
               </GhostAction>
@@ -956,7 +982,7 @@ const PontoDeVenda = () => {
                 value={busca}
                 onChange={setBusca}
                 placeholder={aba === "vendas" ? "Buscar venda por cliente…" : "Buscar orçamento por cliente ou código…"}
-                className="w-[240px] shrink-0"
+                className="min-w-0 flex-1 sm:w-[240px] sm:flex-none sm:shrink-0"
               />
             )}
 

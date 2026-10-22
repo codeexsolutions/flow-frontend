@@ -9,7 +9,7 @@ import { tocarNavegacao } from "@/shared/session/somSessao";
  * Exportada porque a dock e o gesto precisam concordar: se a ordem divergir, o
  * dedo vai para um lado e a pílula para outro.
  */
-export const ABAS_SWIPE = ["/", "/pdv", "/vendas"];
+export const ABAS_SWIPE = ["/", "/vendas", "/pdv", "/clientes"];
 
 const DISTANCIA_MINIMA = 64;
 const TEMPO_MAXIMO = 700;

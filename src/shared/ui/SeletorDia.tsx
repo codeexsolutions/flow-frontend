@@ -82,15 +82,30 @@ const SeletorDia = ({ valor, onChange, max }: Props) => {
         onClick={() => setAberto((a) => !a)}
         aria-expanded={aberto}
         aria-haspopup="dialog"
-        className="focus-ring flex min-w-[186px] cursor-pointer items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-[12.5px] text-ink transition-colors hover:bg-fg/[0.06]"
+        className="focus-ring flex cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[12.5px] sm:min-w-[186px] sm:gap-2 sm:px-3 text-ink transition-colors hover:bg-fg/[0.06]"
       >
         <CalendarDays className="h-3.5 w-3.5 shrink-0 text-accent-soft" />
-        <span className="truncate first-letter:uppercase">{diaExtenso(selecionado)}</span>
+        <span className="hidden truncate first-letter:uppercase sm:inline">{diaExtenso(selecionado)}</span>
+        {/* No celular o dia por extenso não cabe ao lado da busca: "Hoje",
+            "Ontem" ou a data curta. */}
+        <span className="whitespace-nowrap tabular-nums sm:hidden">
+          {mesmoDia(selecionado, hoje) ? "Hoje" : mesmoDia(selecionado, somarDias(hoje, -1)) ? "Ontem" : selecionado.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+        </span>
       </button>
 
       <button type="button" aria-label="Próximo dia" className={seta} disabled={!podeAvancar} onClick={() => onChange(somarDias(selecionado, 1))}>
         <ChevronRight className="h-4 w-4" />
       </button>
+
+      {/* No celular o calendário abre no meio da tela, sobre um fundo escuro:
+          ancorado ao botão ele saía pela borda esquerda. */}
+      {aberto && (
+        <div
+          className="fixed inset-0 z-[290] bg-black/40 sm:hidden"
+          onMouseDown={() => setAberto(false)}
+          aria-hidden
+        />
+      )}
 
       {aberto && (
         <div
@@ -98,7 +113,7 @@ const SeletorDia = ({ valor, onChange, max }: Props) => {
           aria-label="Escolher dia"
           /* `right-0`: o seletor mora à direita do cabeçalho da tabela, e um
              popover ancorado à esquerda sairia da tela em 1280px. */
-          className="absolute right-0 top-[calc(100%+8px)] z-30 rounded-2xl border border-fg/[0.1] bg-surface shadow-e3"
+          className="z-[300] rounded-2xl border border-fg/[0.1] bg-surface shadow-e3 max-sm:fixed max-sm:left-1/2 max-sm:top-1/2 max-sm:-translate-x-1/2 max-sm:-translate-y-1/2 sm:absolute sm:right-0 sm:top-[calc(100%+8px)] sm:z-30"
         >
           <Calendario
             valor={selecionado}
