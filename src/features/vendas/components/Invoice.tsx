@@ -49,6 +49,7 @@ import RecebimentosNota from "@/features/financeiro/components/RecebimentosNota"
 import type { RecebimentoNota } from "@/features/financeiro/services/financeiro.service";
 import ContaService, { type AcordoVenda } from "@/features/financeiro/services/conta.service";
 import NotaResumo from "@/features/vendas/components/NotaResumo";
+import PagamentoNaNota from "@/features/vendas/components/PagamentoNaNota";
 import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
 import BotaoCupomFiscal from "@/features/fiscal/components/BotaoCupomFiscal";
 import { aguardar, enfileirar, novoId } from "@/shared/fila/filaEnvio";
@@ -2180,6 +2181,11 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
                 )}
               </div>
             )}
+
+            {/* Formas de pagamento e dados bancários da empresa — editáveis
+                daqui mesmo. No orçamento sempre; na venda, só enquanto há o
+                que pagar (mesma regra do `NotaResumo`). */}
+            <PagamentoNaNota imprimir={modoOrcamento || (pendente > 0 && pedido?.pedido?.pedidoStatus !== "CANCELADO")} />
 
             {/* ───────────── Os recebimentos, no celular e no tablet ─────────────
                 A coluna de pagamento (`PainelPagamento`) só existe a partir de
