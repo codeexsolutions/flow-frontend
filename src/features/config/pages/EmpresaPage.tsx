@@ -34,6 +34,8 @@ type EnterpriseLike = {
   ocultarCpfNota?: boolean;
   /** O QR do Pix com que a nota nasce — ver `notaMostrarQr` no domínio. */
   notaMostrarQr?: boolean;
+  /** Formas de pagamento e dados bancários impressos na nota e no orçamento. */
+  notaPagamento?: string;
   producaoAutomatica?: boolean;
   producaoPlanilhaId?: string | null;
   contato?: { email?: string; celular?: string | number; telefone?: string | number; whatsapp?: string | number };
@@ -77,6 +79,8 @@ const EmpresaPage = () => {
   const ent = (enterprise ?? {}) as EnterpriseLike;
   const alert = useAlert();
   const [tab, setTab] = useState<TabId>("identificacao");
+  /* Rascunho do texto de pagamento: grava ao sair do campo, não a cada tecla. */
+  const [pagamento, setPagamento] = useState<string | null>(null);
 
   /* Plano ainda não carregado esconde a aba paga: melhor ela aparecer um
      instante depois do que piscar e sumir para quem não a tem. */
@@ -314,6 +318,30 @@ const EmpresaPage = () => {
                 </span>
               </span>
             </label>
+
+            {/* Formas de pagamento e dados bancários — saem na nota de venda
+                (enquanto há saldo) e no orçamento. Grava ao sair do campo. */}
+            <div className="mt-3 rounded-xl border border-fg/[0.08] p-3">
+              <label htmlFor="nota-pagamento" className="block text-[13px] text-ink">Formas de pagamento na nota</label>
+              <span className="mt-0.5 block text-[11.5px] leading-relaxed text-faint">
+                Pix, cartão, dinheiro, banco, agência e conta. Sai no orçamento e na nota de venda. Deixe vazio para não imprimir.
+              </span>
+              <textarea
+                id="nota-pagamento"
+                rows={4}
+                maxLength={2000}
+                value={pagamento ?? ent.notaPagamento ?? ""}
+                onChange={(e) => setPagamento(e.target.value)}
+                onBlur={() => {
+                  if (!ent.id || pagamento === null || pagamento === (ent.notaPagamento ?? "")) return;
+                  updateEnterprise(ent.id, { notaPagamento: pagamento })
+                    .then(() => setPagamento(null))
+                    .catch((err) => alert.error(getErrorTitle(err), extractErrorMessage(err, "Não foi possível salvar.")));
+                }}
+                placeholder={"Pix, cartão (com acréscimo da maquininha) e dinheiro\nBanco do Brasil · Ag. 0000-0 · C/C 00000-0\nFavorecido: Minha Empresa LTDA"}
+                className="focus-ring mt-2 w-full resize-y rounded-lg border border-fg/[0.08] bg-fg/[0.03] p-2.5 text-[13px] text-ink placeholder:text-faint"
+              />
+            </div>
 
             {ehCpf(ent.cpfCnpj) && (
               <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-fg/[0.08] p-3">

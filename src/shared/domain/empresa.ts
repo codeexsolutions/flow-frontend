@@ -32,6 +32,11 @@ interface EnterpriseType {
    */
   notaMostrarQr?: boolean;
   /**
+   * Formas de pagamento e dados bancários (Pix, cartão, agência e conta)
+   * impressos na nota de venda e no orçamento. Vazio = o bloco não sai.
+   */
+  notaPagamento?: string;
+  /**
    * Qual planilha recebe as vendas.
    *
    * `null` não é "desligado", é "não escolhi": nesse caso o servidor usa a

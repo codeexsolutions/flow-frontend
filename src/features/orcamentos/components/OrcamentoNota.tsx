@@ -2,6 +2,7 @@ import type { LegacyRef } from "react";
 
 import HeaderInterprise from "@/shared/ui/HeaderInterprise";
 import FundoNota from "@/shared/ui/FundoNota";
+import PagamentoNota from "@/shared/ui/PagamentoNota";
 import { formatCurrency } from "@/shared/utils/currency";
 import { formatDate, formatDateTime, toDate } from "@/shared/utils/date";
 import { maskPhone } from "@/shared/validation/masks";
@@ -14,8 +15,9 @@ import type { Orcamento } from "@/features/orcamentos/services/orcamento.service
  *
  * Mesma linguagem visual da nota de venda (quem recebe reconhece que veio do
  * mesmo sistema), mas com a diferença que importa: diz **ORÇAMENTO** e não
- * "Nota de Venda". Nada de pagamento/Pix aqui — orçamento é proposta, não
- * cobrança.
+ * "Nota de Venda". Nada de Pix aqui — orçamento é proposta, não cobrança. As
+ * formas de pagamento e os dados bancários da empresa entram, sim: é a
+ * primeira pergunta de quem recebe a proposta e precisa aprová-la.
  *
  * A identificação segue o MESMO desenho da `NotaResumo`: lista empilhada, com
  * rótulo pequeno, valor legível e uma linha fina de apoio embaixo. Antes era
@@ -223,6 +225,8 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
           </div>
         </div>
       </div>
+
+      <PagamentoNota texto={enterprise?.notaPagamento} />
       </div>
     </div>
   );

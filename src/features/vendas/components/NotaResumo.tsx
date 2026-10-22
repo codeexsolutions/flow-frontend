@@ -2,6 +2,7 @@ import type { LegacyRef } from "react";
 
 import HeaderInterprise from "@/shared/ui/HeaderInterprise";
 import FundoNota from "@/shared/ui/FundoNota";
+import PagamentoNota from "@/shared/ui/PagamentoNota";
 import { formatCurrency } from "@/shared/utils/currency";
 import { formatDate } from "@/shared/utils/date";
 import { formatDocument } from "@/shared/utils/format";
@@ -322,6 +323,11 @@ const NotaResumo = ({ venda: v, pix, refNota }: Props) => {
           </div>
         </div>
       )}
+
+      {/* Formas de pagamento e dados bancários da empresa. Mesma regra do Pix:
+          só quando ainda há o que pagar — numa nota quitada ou cancelada,
+          "como pagar" é ruído. */}
+      {!cancelada && pendente > 0 && <PagamentoNota texto={enterprise?.notaPagamento} />}
       </div>
     </div>
   );
