@@ -64,6 +64,14 @@ type InvoiceProps = {
   nome?: string;
   onSaved?: () => void;
   /**
+   * Salvar (alterar ou criar) chama `onSaved` e a nota fecha.
+   *
+   * No computador a nota fica aberta depois de salvar — receber, imprimir,
+   * mexer de novo. No celular ela ocupa a tela inteira, e quem salvou quer
+   * voltar para a lista: é lá que o app pede isto.
+   */
+  fecharAoSalvar?: boolean;
+  /**
    * A conversa de onde esta nota nasceu.
    *
    * Presente, a nota ganha o gesto que faltava: assim que ela é gerada, o
@@ -259,7 +267,7 @@ const AcaoDaNota = ({ rotulo, children }: { rotulo: string; children: ReactNode 
   </div>
 );
 
-const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = false, itensIniciais, orcamentoId, contatoInicial, validadeInicial, converterOrcamentoId, conversaId, orcamentoBase }: InvoiceProps) => {
+const Invoice = ({ id: idInicial, clienteId, nome, onSaved, fecharAoSalvar = false, modoOrcamento = false, itensIniciais, orcamentoId, contatoInicial, validadeInicial, converterOrcamentoId, conversaId, orcamentoBase }: InvoiceProps) => {
   const alert = useAlert();
   const notaRef = useRef<HTMLDivElement>(null);
 
@@ -1178,6 +1186,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
          mexer de novo. A lista se atualiza quando a nota for fechada. */
       alert.success("Nota alterada!", "As alterações foram salvas com sucesso.");
       cobrancaGravada.current = cobrancaDefinida;
+      if (fecharAoSalvar) onSaved?.();
 
       try {
         await aguardar(tarefa);
@@ -1223,6 +1232,7 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, modoOrcamento = fals
       /* Nasceu dentro de uma conversa: o documento tem para onde ir — e só
          agora, gravado, ele é o documento de verdade. */
       if (conversaId) setPerguntarEnvio(true);
+      else if (fecharAoSalvar) onSaved?.();
     } catch (err) {
       /* Recusada: a tela volta a ser o rascunho, com o motivo à vista. */
       notaRecusada.current = true;

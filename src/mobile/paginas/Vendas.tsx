@@ -106,13 +106,14 @@ const Vendas = () => {
       {lista.length > visiveis.length && <p className="mt-3 text-center text-[12px] text-faint">Mostrando as 80 mais recentes. Use a busca para achar outras.</p>}
 
       {/* A nota completa, a mesma do computador: itens, pagamento, Pix, ver e
-          baixar. Salvar ou cancelar fecha e recarrega a lista. */}
+          baixar. Salvar, cancelar ou apagar fecha e recarrega a lista. */}
       <TelaCheia aberta={!!abertaId} aoFechar={fechar} titulo="Venda" subtitulo={aberta?.nomeCliente}>
         {abertaId && (
           <Invoice
             id={abertaId}
             clienteId={aberta?.clienteId}
             nome={aberta?.nomeCliente}
+            fecharAoSalvar
             onSaved={() => {
               fechar();
               void fetchVendas(true);
