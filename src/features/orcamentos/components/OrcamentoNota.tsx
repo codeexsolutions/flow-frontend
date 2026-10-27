@@ -1,4 +1,4 @@
-import type { LegacyRef } from "react";
+import { useEffect, useState, type LegacyRef } from "react";
 
 import HeaderInterprise from "@/shared/ui/HeaderInterprise";
 import FundoNota from "@/shared/ui/FundoNota";
@@ -7,6 +7,7 @@ import { formatCurrency } from "@/shared/utils/currency";
 import { formatDate, formatDateTime, toDate } from "@/shared/utils/date";
 import { maskPhone } from "@/shared/validation/masks";
 import useEnterprise from "@/features/empresa/store/enterprise.store";
+import PixService, { type ConfigPix } from "@/features/config/services/pix.service";
 
 import type { Orcamento } from "@/features/orcamentos/services/orcamento.service";
 
@@ -15,9 +16,10 @@ import type { Orcamento } from "@/features/orcamentos/services/orcamento.service
  *
  * Mesma linguagem visual da nota de venda (quem recebe reconhece que veio do
  * mesmo sistema), mas com a diferença que importa: diz **ORÇAMENTO** e não
- * "Nota de Venda". Nada de Pix aqui — orçamento é proposta, não cobrança. As
- * formas de pagamento e os dados bancários da empresa entram, sim: é a
- * primeira pergunta de quem recebe a proposta e precisa aprová-la.
+ * "Nota de Venda". Nada de QR do Pix aqui — orçamento é proposta, não
+ * cobrança. As formas de pagamento, os dados bancários e a chave Pix (escrita)
+ * entram, sim: é a primeira pergunta de quem recebe a proposta e precisa
+ * aprová-la.
  *
  * A identificação segue o MESMO desenho da `NotaResumo`: lista empilhada, com
  * rótulo pequeno, valor legível e uma linha fina de apoio embaixo. Antes era
@@ -64,6 +66,17 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
 
   const telefone = o.clienteContato ? maskPhone(String(o.clienteContato)) : "";
   const enterprise = useEnterprise((s) => s.enterprise);
+
+  /* A chave Pix por extenso, junto das formas de pagamento — sem QR. */
+  const [pix, setPix] = useState<ConfigPix | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    PixService.consultarEmCache().then((c) => vivo && setPix(c));
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   /* Os mesmos rótulos e valores do resumo da nota. */
   const lblResumo = "block text-[11px] uppercase tracking-[0.08em] text-faint";
@@ -226,7 +239,7 @@ const OrcamentoNota = ({ orcamento: o, refNota }: Props) => {
         </div>
       </div>
 
-      <PagamentoNota texto={enterprise?.notaPagamento} />
+      <PagamentoNota texto={enterprise?.notaPagamento} pix={pix} />
       </div>
     </div>
   );

@@ -11,6 +11,11 @@ export type ConfigPix = {
 
 const VAZIA: ConfigPix = { chave: "", tipoChave: "cpf", beneficiario: "", cidade: "" };
 
+/* Uma consulta só por sessão para quem só LÊ a chave (o orçamento impresso
+   aparece em lista, prévia e download — um GET por render era desperdício).
+   Gravar zera, para o próximo papel já sair com a chave nova. */
+let emCache: Promise<ConfigPix> | null = null;
+
 /**
  * Chave Pix da empresa.
  *
@@ -35,8 +40,14 @@ const PixService = {
     }
   },
 
+  consultarEmCache(): Promise<ConfigPix> {
+    emCache ??= PixService.consultar();
+    return emCache;
+  },
+
   async salvar(dados: ConfigPix): Promise<void> {
     await sysgrafix.put("/pix", dados);
+    emCache = null;
   },
 };
 
