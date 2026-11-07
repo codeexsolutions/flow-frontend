@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   ChevronLeft, Building2, Loader2, QrCode, Check, Copy, Sparkles, ArrowRight,
@@ -319,6 +319,72 @@ const CheckoutPage = ({ embutido = false }: { embutido?: boolean }) => {
   const recarregar = () => {
     setCarregando(true);
     carregar();
+  };
+
+  /*
+   * `?pagar=<id>` abre o Pix daquela fatura assim que a tela carrega.
+   *
+   * É a porta do lembrete diário (`LembreteFatura`): quem clicou em "Pagar
+   * agora" quer o QR na frente, não a lista para achar a fatura de novo. O
+   * parâmetro sai da URL depois de usado — recarregar a página não pode
+   * reabrir o Pix sozinho.
+   */
+  const [parametros, setParametros] = useSearchParams();
+  const pagarJaUsado = useRef(false);
+
+  useEffect(() => {
+    const alvo = parametros.get("pagar");
+
+    if (!alvo || pagarJaUsado.current || !assinatura) return;
+
+    pagarJaUsado.current = true;
+
+    const proximos = new URLSearchParams(parametros);
+    proximos.delete("pagar");
+    setParametros(proximos, { replace: true });
+
+    const fatura = assinatura.faturas.find((f) => f.id === alvo);
+
+    if (fatura && ehPagavel(fatura)) void abrirPagamento(fatura);
+  }, [assinatura, parametros]);
+
+  /* ---- Débito automático no cartão (Mercado Pago, todo dia 10) ---- */
+  const [processandoDebito, setProcessandoDebito] = useState(false);
+
+  /** Leva ao Mercado Pago para autorizar o cartão. A volta é pelo `back_url`. */
+  const ativarDebito = async () => {
+    setProcessandoDebito(true);
+
+    try {
+      window.location.href = await AssinaturaService.ativarPagamentoAutomatico();
+    } catch (e) {
+      const err = e as { response?: { data?: { message?: string } }; message?: string };
+      alert.error("Não foi possível ativar", err?.response?.data?.message ?? err?.message ?? "Tente de novo em instantes.");
+      setProcessandoDebito(false);
+    }
+  };
+
+  const cancelarDebito = async () => {
+    const ok = await alert.confirm(
+      "Desligar o débito automático?",
+      "O cartão deixa de ser cobrado. As próximas mensalidades chegam para pagar por Pix, com vencimento no dia 10.",
+      { confirmText: "Desligar" },
+    );
+
+    if (!ok) return;
+
+    setProcessandoDebito(true);
+
+    try {
+      await AssinaturaService.cancelarPagamentoAutomatico();
+      setAssinatura(await AssinaturaService.minha());
+      alert.success("Débito automático desligado", "As próximas faturas chegam para pagar por Pix.");
+    } catch (e) {
+      const err = e as { response?: { data?: { message?: string } }; message?: string };
+      alert.error("Não foi possível desligar", err?.response?.data?.message ?? err?.message ?? "Tente de novo em instantes.");
+    } finally {
+      setProcessandoDebito(false);
+    }
   };
 
   /**
@@ -644,6 +710,57 @@ const CheckoutPage = ({ embutido = false }: { embutido?: boolean }) => {
               <div className="card glass-sheen p-5">
                 <p className="text-[11px] uppercase tracking-[1.2px] text-faint">Plano atual</p>
                 <p className="mt-2 text-[13px] text-faint">Nenhum plano definido. Fale com o suporte.</p>
+              </div>
+            )}
+
+            {/* ---- Débito automático no cartão ---- */}
+            {/*
+              O cartão é cobrado todo dia 10 — o mesmo vencimento do resto da
+              base. O botão só leva ao Mercado Pago; quem confirma que ficou
+              ativo é o webhook, então "ativo" só aparece depois que o MP
+              autorizou de verdade.
+            */}
+            {automaticoDisponivel && plano && (
+              <div className="card glass-sheen flex flex-col gap-3 p-5">
+                <p className="text-[11px] uppercase tracking-[1.2px] text-faint">Débito automático</p>
+
+                {automatico?.ativo ? (
+                  <>
+                    <p className="flex items-center gap-2 text-[13px] text-ink">
+                      <CircleCheck size={15} className="shrink-0 text-success" /> Ativo no cartão
+                    </p>
+                    <p className="text-[12px] leading-relaxed text-mist">
+                      Cobramos {formatCurrencyFromCents(plano.precoCentavos)} todo dia 10
+                      {automatico.proximaCobranca ? ` — próxima em ${formatDate(automatico.proximaCobranca)}` : ""}.
+                    </p>
+                    <button
+                      onClick={cancelarDebito}
+                      disabled={processandoDebito}
+                      className="focus-ring w-fit cursor-pointer text-[12px] text-faint underline-offset-2 transition hover:text-mist hover:underline"
+                    >
+                      Desligar débito automático
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[12.5px] leading-relaxed text-mist">
+                      Cadastre o cartão uma vez e pronto: a mensalidade é cobrada sozinha <span className="text-ink">todo dia 10</span>, sem Pix nem comprovante.
+                    </p>
+                    <button
+                      onClick={ativarDebito}
+                      disabled={processandoDebito}
+                      className="focus-ring flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-[13px] text-white transition hover:brightness-110 disabled:opacity-60"
+                    >
+                      {processandoDebito ? <Loader2 size={15} className="animate-spin" /> : <WalletMinimal size={15} />}
+                      Ativar débito no cartão
+                    </button>
+                    {faturasAbertas.length > 0 && (
+                      <p className="text-[11px] leading-relaxed text-faint">
+                        Seu acesso é liberado assim que o cartão for autorizado, e a fatura em aberto é cobrada nele no dia 10.
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             )}
 

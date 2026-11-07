@@ -1,7 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotionConfig } from "framer-motion";
 import type { ReactNode } from "react";
-import { Package, Users, DollarSign, Settings, LogOut, ShoppingCart, BarChart3, LayoutDashboard, UserCog, Wallet, LifeBuoy, Lock, MessageCircle, Factory, Bell } from "lucide-react";
+import {
+  Package, Users, DollarSign, Settings, LogOut, ShoppingCart, BarChart3, LayoutDashboard, UserCog, Wallet,
+  LifeBuoy, Lock, MessageCircle, Factory, Moon, Sun, Pin, PinOff,
+} from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import useAuth from "@/features/auth/store/auth.store";
@@ -15,70 +18,43 @@ import usePlano from "@/shared/plano/plano.store";
 import BotaoInstalar from "@/shared/pwa/BotaoInstalar";
 import useNaoLidas from "@/features/crm/store/naoLidas.store";
 import { useSincronizacao } from "@/shared/realtime/useSincronizacao";
+import useThemeStore from "@/shared/theme/theme.store";
+import { temaPorId } from "@/shared/theme/theme.catalog";
 
 /**
- * O menu do sistema — uma lista só, sem painel que troca.
+ * O menu do sistema — no desenho do CodeEx Optmize.
  *
  * ---------------------------------------------------------------------------
- * O que saiu daqui: as abas
+ * Ela recolhe sozinha
  * ---------------------------------------------------------------------------
- * A sidebar tinha três abas (Gerenciamento, Logística, Atendimento) e um
- * painel que trocava de conteúdo conforme a escolhida. Custava caro e resolvia
- * pouco:
+ * No computador a barra fica RECOLHIDA, com 76px — só os ícones. Quando o
+ * mouse entra (ou o foco, pelo teclado) ela abre para 288px POR CIMA da tela,
+ * sem empurrar nada; quando o mouse sai, ela recolhe. Quem guarda o espaço é
+ * o invólucro de 76px — por isso o conteúdo não pula quando ela abre.
  *
- *   • METADE DO MENU FICAVA ESCONDIDA. Ir do estoque para o financeiro eram
- *     dois cliques — um para trocar de aba, outro no item —, e o primeiro
- *     exigia lembrar em qual aba o destino morava. Quem não lembrava
- *     procurava nas três.
- *   • O SELETOR CUSTAVA O ESPAÇO DE SEIS ITENS. Três colunas com ícone em
- *     cima do rótulo, mais a borda e o respiro, ocupavam ~86 px para exibir
- *     zero destinos.
- *   • DUAS DELAS TINHAM UM ITEM ÚTIL CADA. Logística era Estoque + Correios
- *     ("em breve"); Atendimento era Clientes (repetido de Gerenciamento) +
- *     WhatsApp (sem tela). Uma aba para um item é uma gaveta com uma folha
- *     dentro.
+ * Os ícones nunca se mexem: ficam sempre na mesma coluna à esquerda, e o que
+ * some é o texto, apagando enquanto a barra o corta.
  *
- * O sistema inteiro são dez destinos. Dez cabem numa lista, e uma lista
- * responde "onde está X?" sem obrigar a abrir gaveta.
+ * Quem prefere o menu aberto o tempo todo fixa no alfinete do topo. A escolha
+ * fica no aparelho (`localStorage`), não na conta: é sobre o tamanho da tela
+ * de cada um, não sobre a pessoa.
  *
  * ---------------------------------------------------------------------------
- * O que saiu depois: a faixa de atalhos
+ * O resto que vale saber
  * ---------------------------------------------------------------------------
- * No lugar das abas ficou uma faixa com dois botões grandes — Início e PDV,
- * ícone em cima do rótulo, dois quadrados ocupando a largura do menu. A ideia
- * era destacar o que se abre dez vezes por dia, mas o preço apareceu no uso:
- * ~70 px de altura para DOIS destinos, uma segunda gramática de navegação
- * (quadrado preenchido) convivendo com a da lista (linha com ícone à
- * esquerda), e o olho tendo que procurar em dois lugares diferentes de que
- * jeito o sistema mostra "você está aqui".
- *
- * Agora eles são os dois primeiros ITENS da lista, num bloco próprio no alto.
- * Continuam sendo os primeiros que a vista encontra — o alto do menu já é o
- * destaque —, custam a altura de duas linhas e acendem igual a todo o resto.
- *
- * ---------------------------------------------------------------------------
- * Os grupos são só um título
- * ---------------------------------------------------------------------------
- * O resto da lista é separado por assunto — Gestão e Atendimento —, com
- * palavras do balcão e não siglas (ERP, CRM).
- *
- * Entregas (Correios) saiu do menu: a tela continua existindo pela URL, mas
- * deixou de ocupar um bloco inteiro para um item só.
- *
- * Eles já foram sanfonas que abriam e fechavam. Saíram: com os três sempre
- * abertos desde que o WhatsApp entrou em Atendimento, a seta e o clique no
- * título eram um controle que ninguém usava, mais um enfeite em cada grupo e
- * mais uma coisa que podia esconder o lugar onde a pessoa está. O menu inteiro
- * cabe na tela; o título agora só nomeia.
- *
- * ---------------------------------------------------------------------------
- * Onde você está, de longe
- * ---------------------------------------------------------------------------
- * O item da tela aberta é PREENCHIDO na cor de destaque, com o texto em
- * branco. Era um véu de 10% da cor sobre o fundo de vidro — legível de perto,
- * mas que sumia na visão periférica e em metade dos temas. Preenchido, o menu
- * responde "onde estou?" sem precisar ser lido.
+ *   • Uma lista só, sem abas nem sanfonas: o sistema são dez destinos e dez
+ *     cabem numa coluna. Início e PDV no alto, depois Gestão e Atendimento.
+ *   • O item aberto é PREENCHIDO na cor do tema: responde "onde estou?" de
+ *     longe, inclusive com a barra recolhida (vira o quadrado do ícone).
+ *   • Módulo fora do plano continua visível, com cadeado — quem não vê o
+ *     item nunca descobre que o upgrade o destrava. Não recebe clique.
  */
+
+/** Larguras da barra. A recolhida casa com a coluna dos ícones. */
+const LARGURA_RECOLHIDA = 76;
+const LARGURA_ABERTA = 288;
+
+const CHAVE_FIXA = "flow.menu.fixo";
 
 /* -------------------------------------------------------------------------- */
 
@@ -98,14 +74,7 @@ const Sidebar = () => {
   /** Módulo que o plano não cobre continua no menu, com cadeado. */
   const temRecurso = usePlano((s) => s.recurso);
 
-  /*
-   * As mensagens de cliente esperando resposta — o número ao lado de WhatsApp.
-   *
-   * A caixa de entrada é a única tela em que o trabalho CHEGA sozinho, e o
-   * menu era o último lugar a saber: sem o selo, descobrir que alguém escreveu
-   * exigia abrir o WhatsApp de tempos em tempos. Uma vez na abertura e depois
-   * só quando o tempo real avisa — a mesma escuta que a caixa de entrada usa.
-   */
+  /* As mensagens de cliente esperando resposta — o número no WhatsApp. */
   const naoLidas = useNaoLidas((s) => s.total);
   const buscarNaoLidas = useNaoLidas((s) => s.buscar);
 
@@ -117,8 +86,7 @@ const Sidebar = () => {
     void buscarNaoLidas();
   });
 
-  /* Só o gestor pergunta: a API recusa para vendedor, e uma chamada que sempre
-     falha em toda navegação é ruído no log e na rede. */
+  /* Só o gestor pergunta: a API recusa para vendedor. */
   const equipe = useEquipeStore((s) => s.equipe);
   const buscarEquipe = useEquipeStore((s) => s.buscar);
 
@@ -126,11 +94,65 @@ const Sidebar = () => {
     if (gestor) buscarEquipe();
   }, [gestor, buscarEquipe]);
 
-  /**
-   * Rotas que são filhas de outra no menu. Sem esta lista, estar em
-   * `/vendas/orcamentos` acenderia "Vendas" **e** "Orçamentos" ao mesmo tempo,
-   * porque Vendas casa por prefixo.
+  /* ----------------------------- Recolher ----------------------------- */
+
+  const [fixa, setFixa] = useState(() => localStorage.getItem(CHAVE_FIXA) === "1");
+  const [expandida, setExpandida] = useState(false);
+  const saida = useRef<number | undefined>(undefined);
+  const barra = useRef<HTMLElement>(null);
+
+  const alternarFixa = () => {
+    setFixa((atual) => {
+      localStorage.setItem(CHAVE_FIXA, atual ? "0" : "1");
+      return !atual;
+    });
+  };
+
+  const abrir = () => {
+    window.clearTimeout(saida.current);
+    setExpandida(true);
+  };
+
+  /*
+   * A saída espera um instante: passar rente à borda não pode fazer a barra
+   * piscar. E o foco só a segura aberta quando veio do TECLADO — o clique num
+   * item também deixa o foco nele, e aí a barra ficaria aberta depois de o
+   * mouse sair.
    */
+  const recolher = () => {
+    window.clearTimeout(saida.current);
+    saida.current = window.setTimeout(() => {
+      const foco = document.activeElement;
+      const comMouse = barra.current?.matches(":hover");
+      const focoDoTeclado = !!foco && !!barra.current?.contains(foco) && foco.matches(":focus-visible");
+
+      if (!comMouse && !focoDoTeclado) setExpandida(false);
+    }, 180);
+  };
+
+  useEffect(() => () => window.clearTimeout(saida.current), []);
+
+  const recolhida = !fixa && !expandida;
+
+  /** O texto que apaga quando a barra recolhe — sobra o ícone. */
+  const some = `whitespace-nowrap transition-opacity duration-200 ${recolhida ? "pointer-events-none opacity-0" : "opacity-100"}`;
+
+  /* ------------------------------ Tema ------------------------------ */
+
+  const modo = useThemeStore((s) => s.mode);
+  const setMode = useThemeStore((s) => s.setMode);
+  /* Lido do catálogo, e não da classe `.dark` do <html>: o efeito que aplica
+     a classe roda DEPOIS deste componente, e a leitura sairia um tema atrasada.
+     No modo "sistema" vale o que o aparelho está mostrando. */
+  const escuro = modo === "sistema"
+    ? window.matchMedia("(prefers-color-scheme: dark)").matches
+    : temaPorId(modo).dark;
+
+  const alternarTema = () => setMode(escuro ? "claro" : "escuro");
+
+  /* ----------------------------- Navegação ----------------------------- */
+
+  /** Filhas com item próprio não acendem o pai (`/vendas/orcamentos`). */
   const FILHAS_COM_ITEM_PROPRIO = ["/vendas/orcamentos"];
 
   const isActive = (route: string) => {
@@ -141,7 +163,6 @@ const Sidebar = () => {
     if (pathname === alvo) return true;
     if (!pathname.startsWith(`${alvo}/`)) return false;
 
-    // O pai não acende quando a filha tem item próprio no menu.
     return !FILHAS_COM_ITEM_PROPRIO.some((f) => f !== alvo && pathname.startsWith(f));
   };
 
@@ -158,50 +179,39 @@ const Sidebar = () => {
     Promise.resolve(logout()).catch(() => {});
   };
 
+  /* ------------------------------- Peças ------------------------------- */
+
+  const ITEM = "group focus-ring relative flex min-h-[46px] w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-[15px] transition-colors duration-200";
+
   /**
-   * `bloqueado` é diferente de `disabled`, mas os dois são inertes.
+   * Uma linha do menu.
    *
-   * "Em breve" é tela que ainda não existe. "Plano" é módulo que existe e não
-   * foi contratado. A distinção continua valendo no rótulo — são notícias
-   * diferentes e a segunda tem conserto —, mas nenhum dos dois recebe clique.
+   * O nome vai também no `title`: com a barra recolhida, o balão do mouse é o
+   * único lugar onde ele aparece.
    *
-   * Chegar a uma oferta é o clique de quem procurou a oferta. Quem clica em
-   * "Correios" quer despachar uma encomenda, e receber uma tela de venda no
-   * lugar é uma troca que a pessoa não pediu; feita todo dia, no mesmo item,
-   * vira ruído no menu. O cadeado já diz o que precisa ser dito, e o `title`
-   * explica no hover — sem cobrar nada por isso.
-   *
-   * A tela de oferta (`RecursoDoPlano`) continua de pé para quem chega pela
-   * URL, pelo celular ou por link salvo. O que deixou de existir é o convite
-   * disfarçado de destino.
-   */
-  /**
-   * `selo` é o rótulo pequeno ao lado do nome — hoje só o "Teste" do WhatsApp.
-   *
-   * Diferente do "Breve" e do cadeado de plano: aqueles dizem que a tela NÃO
-   * abre. Este diz que ela abre e ainda está sendo acertada, que é uma
-   * informação que o lojista precisa ANTES de apostar o atendimento dele nela.
+   * `bloqueado` (fora do plano) e `disabled` (em breve) são inertes. O cadeado
+   * fica preso no canto do ÍCONE, e não no fim da linha, para continuar
+   * visível com a barra recolhida.
    */
   const item = (route: string, icon: ReactNode, label: string, disabled = false, bloqueado = false, contagem = 0, selo?: string) => {
-    if (bloqueado && !disabled) {
+    if (bloqueado || disabled) {
       return (
         <div
-          className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-mist opacity-55"
-          title={`${label} não está incluído no seu plano. Veja as opções em Configurações › Faturas.`}
+          className={`${ITEM} cursor-not-allowed text-mist ${disabled ? "opacity-45" : "opacity-55"}`}
+          title={disabled ? `${label} está em breve` : `${label} não está incluído no seu plano. Veja as opções em Configurações › Faturas.`}
         >
-          <span className="flex w-6 shrink-0 justify-center text-faint">{icon}</span>
-          <span className="min-w-0 flex-1 truncate">{label}</span>
-          <Lock size={11} className="shrink-0 text-accent-soft" />
-        </div>
-      );
-    }
-
-    if (disabled) {
-      return (
-        <div className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-mist opacity-45" title={`${label} está em breve`}>
-          <span className="flex w-6 shrink-0 justify-center text-faint">{icon}</span>
-          <span className="min-w-0 flex-1 truncate">{label}</span>
-          <span className="shrink-0 rounded-full border border-fg/[0.08] bg-fg/[0.03] px-1.5 py-0.5 text-[8.5px] uppercase tracking-wider text-faint">Breve</span>
+          <span className="relative flex w-6 shrink-0 justify-center text-faint">
+            {icon}
+            {bloqueado && !disabled && (
+              <span className="absolute -bottom-1 -right-1.5 grid h-3.5 w-3.5 place-items-center rounded-full bg-surface ring-1 ring-fg/10">
+                <Lock size={8} className="text-accent-soft" />
+              </span>
+            )}
+          </span>
+          <span className={`min-w-0 flex-1 truncate ${some}`}>{label}</span>
+          {disabled && (
+            <span className={`shrink-0 rounded-full border border-fg/[0.08] bg-fg/[0.03] px-1.5 py-0.5 text-[8.5px] uppercase tracking-wider text-faint ${some}`}>Breve</span>
+          )}
         </div>
       );
     }
@@ -213,44 +223,42 @@ const Sidebar = () => {
         type="button"
         onClick={() => goto(route)}
         aria-current={active ? "page" : undefined}
-        className={`group focus-ring relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[15px] transition-colors duration-200 ${
-          active ? "text-white" : "text-mist hover:bg-fg/[0.06] hover:text-ink"
-        }`}
+        title={label}
+        className={`${ITEM} ${active ? "text-white" : "text-mist hover:bg-fg/[0.06] hover:text-ink"}`}
       >
         {/*
-         * O fundo preenchido do item aberto.
-         *
-         * Sem `layoutId`, de propósito: a pílula deslizante distorcia, porque
-         * a sidebar vive num contêiner que o `MainLayout` anima com `scale` e
-         * o framer mede o layout na escala errada. Um surgimento firme no
-         * próprio item comunica o mesmo e nunca quebra.
+         * O fundo preenchido do item aberto. Sem `layoutId`: a pílula
+         * deslizante distorcia dentro do contêiner que o `MainLayout` escala.
          */}
         {active && (
           <motion.span
             aria-hidden
-            /* A cor sólida do tema com um reflexo branco por cima — e não um
-               degradê até o `accent-strong`, que no tema escuro é MAIS claro e
-               deixava o texto branco sem contraste no fim da pílula. */
             className="absolute inset-0 rounded-xl bg-accent"
             style={{
-              backgroundImage: "linear-gradient(90deg, rgb(255 255 255 / 0.14), transparent 70%)",
-              boxShadow: "inset 0 1px 0 rgb(255 255 255 / 0.18), 0 8px 24px -10px rgb(var(--accent) / 0.75)",
+              backgroundImage: "linear-gradient(90deg, rgb(255 255 255 / 0.16), transparent 70%)",
+              boxShadow: "inset 0 1px 0 rgb(255 255 255 / 0.2), 0 10px 26px -10px rgb(var(--accent) / 0.85)",
             }}
-            initial={reduzir ? false : { opacity: 0, scale: 0.97 }}
+            initial={reduzir ? false : { opacity: 0, scale: 0.94 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
           />
         )}
 
-        <span className={`relative flex w-6 shrink-0 justify-center transition-colors duration-200 ${active ? "text-white" : "text-faint group-hover:text-accent-soft"}`}>{icon}</span>
+        <span className={`relative flex w-6 shrink-0 justify-center transition-colors duration-200 ${active ? "text-white" : "text-faint group-hover:text-accent-soft"}`}>
+          {icon}
 
-        <span className="relative min-w-0 flex-1 truncate">{label}</span>
+          {/* Com a barra recolhida o número some junto do texto — sobra um
+              ponto no ícone, para o aviso não desaparecer de vez. */}
+          {contagem > 0 && recolhida && (
+            <span aria-hidden className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-danger ring-2 ring-surface" />
+          )}
+        </span>
 
-        {/* O selo vem ANTES do contador: "Teste" é sobre a tela, o número é
-            sobre o que está esperando lá dentro. */}
+        <span className={`relative min-w-0 flex-1 truncate ${some}`}>{label}</span>
+
         {selo && (
           <span
-            className={`relative shrink-0 rounded-full border px-2 py-0.5 text-[9.5px] uppercase tracking-wider ${
+            className={`relative shrink-0 rounded-full border px-2 py-0.5 text-[9.5px] uppercase tracking-wider ${some} ${
               active ? "border-white/30 bg-white/15 text-white" : "border-accent/25 bg-accent/[0.10] text-accent-soft"
             }`}
           >
@@ -258,17 +266,13 @@ const Sidebar = () => {
           </span>
         )}
 
-        {/* O que está esperando: um sininho e o número, parados — e só quando
-            há algo, porque um zero permanente ensina o olho a ignorar o lugar
-            onde o aviso apareceria. A cor é a do TEMA (`--danger`). */}
         {contagem > 0 && (
           <span
             aria-label={`${contagem} ${contagem === 1 ? "mensagem não lida" : "mensagens não lidas"}`}
-            className={`relative flex h-5 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] tabular-nums ${
+            className={`relative flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] tabular-nums ${some} ${
               active ? "bg-white text-danger" : "border border-danger/30 bg-danger/[0.14] text-danger"
             }`}
           >
-            <Bell size={9} className="shrink-0" />
             {contagem > 99 ? "99+" : contagem}
           </span>
         )}
@@ -277,79 +281,81 @@ const Sidebar = () => {
   };
 
   /**
-   * Um grupo do menu.
-   *
-   * Já foi uma caixa com moldura e fundo próprio. Saiu: três caixas
-   * empilhadas, mais a da Ajuda, deixavam o menu com cara de formulário, e o
-   * título com o traço até a borda já separa um assunto do outro.
-   *
-   * `explicacao` fica no `title`: a frase inteira ajuda quem procura onde
-   * mora um assunto, e no hover ela não custa linha nenhuma do menu.
+   * Um grupo: o título em cor de destaque com um traço que apaga. Recolhida,
+   * o título vira só um traço curto no meio da coluna — separa sem ocupar.
    */
   const bloco = (filhos: ReactNode, cabecalho?: { nome: string; explicacao: string }) => (
     <div>
       {cabecalho && (
-        <p title={cabecalho.explicacao} className="flex items-center gap-2 px-3 pb-2 pt-2 text-[12px] uppercase tracking-[0.12em] text-accent-soft">
-          {cabecalho.nome}
-          <span aria-hidden className="h-px flex-1 bg-gradient-to-r from-fg/[0.1] to-transparent" />
-        </p>
+        <div className="relative h-8" title={cabecalho.explicacao}>
+          <p className={`flex h-full items-center gap-2 px-3.5 text-[11.5px] uppercase tracking-[0.14em] text-accent-soft ${some}`}>
+            {cabecalho.nome}
+            <span aria-hidden className="h-px flex-1 bg-gradient-to-r from-fg/[0.12] to-transparent" />
+          </p>
+          <span
+            aria-hidden
+            className={`absolute left-[14px] top-1/2 h-px w-6 bg-fg/[0.14] transition-opacity duration-200 ${recolhida ? "opacity-100" : "opacity-0"}`}
+          />
+        </div>
       )}
-      <div className="space-y-0.5">{filhos}</div>
+      <div className="space-y-1">{filhos}</div>
     </div>
   );
 
+  /* ------------------------------ Render ------------------------------ */
+
   return (
-    <>
-      {/* `relative` é obrigatório: o brilho do topo é `absolute` e, sem um
-          ancestral posicionado, ele se prende à viewport e cobre a tela toda. */}
+    /* O invólucro guarda o espaço da barra recolhida (ou da aberta, quando
+       fixa). A barra mesmo é `absolute` dentro dele, e por isso abre por cima
+       do conteúdo em vez de empurrá-lo. */
+    <div
+      className="relative z-40 hidden shrink-0 transition-[width] duration-200 md:block"
+      style={{ width: fixa ? LARGURA_ABERTA : LARGURA_RECOLHIDA }}
+    >
       <aside
-        className="glass-strong relative hidden w-72 flex-shrink-0 flex-col overflow-hidden border-y-0 border-l-0 border-r md:flex"
-        style={{ borderColor: "rgb(var(--glass-border) / calc(var(--glass-border-alpha) + 0.03))" }}
+        ref={barra}
+        onMouseEnter={abrir}
+        onMouseLeave={recolher}
+        onFocus={(e) => { if (e.target.matches(":focus-visible")) abrir(); }}
+        onBlur={recolher}
+        className="absolute inset-y-0 left-0 flex flex-col overflow-hidden border-r bg-surface transition-[width,box-shadow] duration-200"
+        style={{
+          width: recolhida ? LARGURA_RECOLHIDA : LARGURA_ABERTA,
+          borderColor: "rgb(var(--glass-border) / calc(var(--glass-border-alpha) + 0.03))",
+          /* Aberta por cima da tela, a sombra diz que está por cima. Fixa,
+             ela é parte do layout e não precisa de sombra. */
+          boxShadow: !recolhida && !fixa ? "18px 0 44px -18px rgb(0 0 0 / 0.5)" : "none",
+        }}
       >
-        {/* Fio de luz na borda direita — separa o menu do conteúdo com a cor do
-            tema, em vez de uma linha cinza que some no vidro. */}
+        {/* Fio de luz na borda direita, na cor do tema, apagando para baixo. */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-y-0 right-0 w-px"
-          style={{ background: "linear-gradient(to bottom, rgb(var(--accent) / 0.55), rgb(var(--accent) / 0.12) 45%, transparent)" }}
+          style={{ background: "linear-gradient(to bottom, rgb(var(--accent) / 0.6), rgb(var(--accent) / 0.12) 45%, transparent)" }}
         />
 
-        {/* Malha de pontos — o mesmo fundo de "instrumento" do painel do
-            Início, apagando para baixo para não pesar atrás da lista. */}
+        {/* Malha de pontos, apagando para baixo. */}
         <div
           aria-hidden
           className="hud-grade pointer-events-none absolute inset-0 opacity-70"
-          style={{ maskImage: "linear-gradient(to bottom, black, transparent 75%)", WebkitMaskImage: "linear-gradient(to bottom, black, transparent 75%)" }}
+          style={{ maskImage: "linear-gradient(to bottom, black, transparent 70%)", WebkitMaskImage: "linear-gradient(to bottom, black, transparent 70%)" }}
         />
 
-        {/* Brilho ambiente no topo */}
+        {/* Brilho do tema no alto. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-44"
+          className="pointer-events-none absolute inset-x-0 top-0 h-48"
           style={{
             opacity: "var(--fx-aurora, 1)",
-            background: "radial-gradient(ellipse 70% 100% at 50% 0%, rgb(var(--accent) / 0.18), transparent 70%)",
+            background: "radial-gradient(ellipse 80% 100% at 30% 0%, rgb(var(--accent) / 0.2), transparent 70%)",
           }}
         />
 
-        {/*
-         * Marca da empresa — o logo, o nome e o que esta tela é.
-         *
-         * O nome sozinho ao lado do logo dizia DE QUEM é o sistema e nada
-         * sobre o que está aberto: a mesma marca aparece no PDV do balcão, no
-         * acompanhamento que o cliente abre pelo link e na tela de login. A
-         * segunda linha nomeia o lugar — é o cabeçalho de um painel, e quem
-         * abre precisa saber que entrou na administração da loja, não numa
-         * das telas públicas que levam a mesma marca.
-         *
-         * Ela acompanha quem está logado: o vendedor não administra nada, e
-         * chamar de "administrativo" a tela dele prometeria um poder que a
-         * própria lista abaixo não dá.
-         */}
-        <div className="relative flex items-center gap-3.5 px-5 pb-3 pt-5">
+        {/* ---------------- A marca ---------------- */}
+        <div className="relative flex shrink-0 items-center gap-3.5 px-[14px] pb-3 pt-5">
           <div className="relative h-12 w-12 shrink-0">
-            <div aria-hidden className="absolute -inset-1 rounded-xl bg-accent/40 blur-md" style={{ opacity: "calc(0.7 * var(--fx-glow, 1))" }} />
-            <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-surface-raised to-surface ring-1 ring-accent/30">
+            <div aria-hidden className="absolute -inset-1 rounded-2xl bg-accent/40 blur-md" style={{ opacity: "calc(0.7 * var(--fx-glow, 1))" }} />
+            <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-surface-raised to-surface ring-1 ring-accent/35">
               {companyImage ? (
                 <img
                   src={companyImage}
@@ -360,182 +366,139 @@ const Sidebar = () => {
                   }}
                 />
               ) : (
-                <span className="text-[19px] text-accent-soft">{companyInitial}</span>
+                <span className="text-[19px] font-medium text-accent-soft">{companyInitial}</span>
               )}
             </div>
           </div>
 
-          <div className="min-w-0 flex-1">
+          <div className={`min-w-0 flex-1 ${some}`}>
             <p className="truncate text-[17px] leading-tight tracking-tight text-ink">{enterprise?.nomeFantasia || "Sua Empresa"}</p>
             <p className="mt-1 truncate text-[10.5px] uppercase leading-tight tracking-[0.14em] text-accent-soft/80">
               {gestor ? "Painel administrativo" : "Painel do vendedor"}
             </p>
           </div>
+
+          <button
+            type="button"
+            onClick={alternarFixa}
+            title={fixa ? "Recolher o menu" : "Manter o menu aberto"}
+            aria-label={fixa ? "Recolher o menu" : "Manter o menu aberto"}
+            aria-pressed={fixa}
+            className={`focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-fg/[0.08] ${fixa ? "text-accent-soft" : "text-faint hover:text-ink"} ${some}`}
+          >
+            {fixa ? <PinOff size={15} /> : <Pin size={15} />}
+          </button>
         </div>
 
-        {/*
-         * A lista inteira, sem gaveta.
-         *
-         * `overflow-y-auto` continua aqui para a tela baixa e para o dia em
-         * que aparecer o décimo primeiro destino — mas com as sanfonas ele
-         * quase nunca entra em ação: fechadas, os grupos custam
-         * uma linha cada.
-         */}
-        <nav className="relative flex-1 space-y-3 overflow-y-auto px-3 py-4">
-          {/*
-           * O bloco do dia a dia — sem cabeçalho de grupo.
-           *
-           * São os dois destinos que se abrem toda hora, e nomeá-los custaria
-           * uma linha para dizer o óbvio de duas: "Início" e "PDV" não
-           * pertencem a um domínio do produto, são o começo do expediente. O
-           * traço abaixo os separa dos grupos sem gastar altura com título.
-           */}
+        {/* ---------------- A lista ---------------- */}
+        <nav className="relative flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-3 py-4">
           {bloco(
             <>
-              {item("", <LayoutDashboard size={18} />, "Início")}
-              {/* "PDV" fica: não é jargão de software, é o nome que o lojista já
-                  usa, e é como a tela se chama no tour e na barra do celular. */}
-              {item("pdv", <ShoppingCart size={18} />, "PDV")}
+              {item("", <LayoutDashboard size={20} />, "Início")}
+              {item("pdv", <ShoppingCart size={20} />, "PDV")}
             </>,
           )}
 
           {bloco(
             <>
-              {/* "e serviços" no rótulo: é a mesma tela de sempre, mas quem
-                  presta serviço cadastra serviço nela, e sem isso metade dos
-                  clientes procurava um menu que não existe. */}
-              {item("estoque", <Package size={18} />, "Estoque/Serviços")}
-
-              {/*
-               * Dois itens, dois assuntos.
-               *
-               * Eram um só ("Financeiro"), porque vendas e dinheiro eram a
-               * mesma tela em cinco abas — e o menu mandava para uma tela cujo
-               * título era outro. Agora a divisão é a que o lojista já faz de
-               * cabeça: o que EU VENDI (panorama e notas, juntos) e o DINHEIRO
-               * DA EMPRESA (caixa, a pagar, a receber, juntos).
-               *
-               * O vendedor fica só com o primeiro, e ele se chama "Minhas
-               * vendas": a lista dele já traz só as próprias notas.
-               */}
-              {item("vendas", <DollarSign size={16} />, gestor ? "Vendas" : "Minhas vendas")}
-              {gestor && item("financeiro", <Wallet size={18} />, "Financeiro", false, !temRecurso("financeiro"))}
-              {item("relatorios", <BarChart3 size={18} />, "Relatórios", false, !temRecurso("relatorios"))}
-
-              {/*
-               * Produção reúne o que era Planilhas mais o quadro de etapas.
-               *
-               * É UM item, e não uma gaveta com as duas telas dentro: a
-               * navegação entre Produções e Kanban mora na barra da própria
-               * tabela, junto do conteúdo que ela troca (ver `AbasProducao`).
-               *
-               * Fica com o cadeado abaixo do Professional porque é lá que o
-               * módulo entra — e o cadeado, não a ausência, é de propósito:
-               * quem não vê o item nunca descobre que o upgrade destrava um
-               * controle de produção, e essa é a razão de subir de plano.
-               */}
-              {item("producao", <Factory size={18} />, "Produção", false, !temRecurso("producao"))}
-
-
-              {/* Equipe só existe em plano que comporta mais de um usuário:
-                  mostrar para quem tem uma vaga só seria oferecer porta que
-                  não abre. `planoTemEquipe` vale por CIMA da trava de plano —
-                  um plano que inclui o módulo mas só permite um login não tem
-                  equipe para gerenciar, e a tela apareceria vazia. */}
-              {gestor && planoTemEquipe(equipe) && item("funcionarios", <UserCog size={18} />, "Funcionários", false, !temRecurso("funcionarios"))}
+              {item("estoque", <Package size={20} />, "Estoque/Serviços")}
+              {item("vendas", <DollarSign size={20} />, gestor ? "Vendas" : "Minhas vendas")}
+              {gestor && item("financeiro", <Wallet size={20} />, "Financeiro", false, !temRecurso("financeiro"))}
+              {item("relatorios", <BarChart3 size={20} />, "Relatórios", false, !temRecurso("relatorios"))}
+              {item("producao", <Factory size={20} />, "Produção", false, !temRecurso("producao"))}
+              {/* Equipe só existe em plano com mais de um usuário. */}
+              {gestor && planoTemEquipe(equipe) && item("funcionarios", <UserCog size={20} />, "Funcionários", false, !temRecurso("funcionarios"))}
             </>,
-          { nome: "Gestão", explicacao: "A empresa por dentro: o que você tem em estoque, quanto entra e sai de dinheiro, o que sai da oficina, quem trabalha com você e o que os números dizem." },
+            { nome: "Gestão", explicacao: "A empresa por dentro: o que você tem em estoque, quanto entra e sai de dinheiro, o que sai da oficina, quem trabalha com você e o que os números dizem." },
           )}
 
           {bloco(
             <>
-              {/* Clientes aparecia duas vezes no menu antigo, uma em cada aba,
-                  para não cobrar troca de gaveta no destino mais visitado do
-                  sistema. Sem gavetas, uma vez basta. */}
-              {item("clientes", <Users size={18} />, "Clientes")}
-              {/* Deixou de ser "Em breve": a caixa de entrada, o funil e a
-                  conexão do número da loja moram em `/whatsapp` (ver `CrmPage`). */}
-              {item("whatsapp", <MessageCircle size={18} />, "WhatsApp", false, false, naoLidas, "Teste")}
-              {/*
-                O Chatbot NÃO entra nesta versão.
-                
-                O WhatsApp sai em teste, e resposta automática é a parte que não
-                pode sair assim: o que ela escreve chega ao cliente da loja sem
-                ninguém ver, em nome da loja. Errar no funil é um cartão na raia
-                errada; errar aqui é a loja prometendo prazo que não cumpre.
-                
-                O código da tela continua no repositório (`ChatbotPage`), e a
-                rota `/chatbot` leva ao WhatsApp para não quebrar link salvo —
-                ver `AppRoutes`. Quando o robô for liberado, é devolver esta
-                linha e a rota.
-              */}
+              {item("clientes", <Users size={20} />, "Clientes")}
+              {/* O Chatbot não entra nesta versão — ver `ChatbotPage` e `AppRoutes`. */}
+              {item("whatsapp", <MessageCircle size={20} />, "WhatsApp", false, false, naoLidas, "Teste")}
             </>,
-          { nome: "Atendimento", explicacao: "As pessoas do outro lado do balcão: quem compra de você, o histórico de cada uma e os canais para falar com elas." },
+            { nome: "Atendimento", explicacao: "As pessoas do outro lado do balcão: quem compra de você, o histórico de cada uma e os canais para falar com elas." },
           )}
         </nav>
 
-        {/* Ajuda — fica fora da navegação: não é lugar que se visita no fluxo de
-            trabalho, é a saída para quando algo trava. */}
-        <div className="relative mx-3 mb-3">
-          {item("ajuda", <LifeBuoy size={18} />, "Ajuda e suporte")}
+        {/* ---------------- Tema, ajuda e instalar ---------------- */}
+        <div className="relative mx-3 mb-3 shrink-0 space-y-1">
+          {/* Claro ou escuro num clique. Os outros temas (Sépia, Oceano...)
+              continuam em Configurações › Aparência. */}
+          <button
+            type="button"
+            onClick={alternarTema}
+            title={escuro ? "Mudar para o tema claro" : "Mudar para o tema escuro"}
+            className={`${ITEM} text-mist hover:bg-fg/[0.06] hover:text-ink`}
+          >
+            <span className="relative flex w-6 shrink-0 justify-center text-faint transition-colors group-hover:text-accent-soft">
+              {escuro ? <Moon size={20} /> : <Sun size={20} />}
+            </span>
+            <span className={`min-w-0 flex-1 truncate ${some}`}>{escuro ? "Tema escuro" : "Tema claro"}</span>
+            <span aria-hidden className={`flex shrink-0 gap-0.5 rounded-lg border border-fg/[0.08] p-0.5 ${some}`}>
+              <span className={`grid h-6 w-6 place-items-center rounded-md ${escuro ? "text-faint" : "bg-fg/[0.08] text-accent-soft"}`}>
+                <Sun size={13} />
+              </span>
+              <span className={`grid h-6 w-6 place-items-center rounded-md ${escuro ? "bg-fg/[0.08] text-accent-soft" : "text-faint"}`}>
+                <Moon size={13} />
+              </span>
+            </span>
+          </button>
 
-          {/* Instalar o app: some sozinho quando já está instalado ou quando o
-              navegador não instala PWA — ver `BotaoInstalar`. */}
-          <BotaoInstalar variante="menu" />
+          {item("ajuda", <LifeBuoy size={20} />, "Ajuda e suporte")}
+
+          {/* Some sozinho quando já está instalado — ver `BotaoInstalar`. */}
+          <BotaoInstalar variante="menu" rotuloClassName={some} />
         </div>
 
-        {/*
-         * Rodapé: quem está usando, e as duas coisas que se faz com isso.
-         *
-         * Eram dois blocos empilhados — um cartão de usuário e uma faixa com
-         * logo, versão e "Sair" — somando ~130 px no pé da sidebar, e o "Sair"
-         * ficava a dois blocos de distância do avatar de quem sai. Numa linha
-         * só, com configurações e sair como ícones ao lado do nome, custa ~50.
-         *
-         * A versão do sistema saiu daqui: era a única linha do menu que não
-         * levava a lugar nenhum. Ela e o "buscar atualização" foram para
-         * Configurações › Meu perfil › Conta, que é onde se procura o que é
-         * sobre a instalação e não sobre o trabalho.
-         */}
-        <div className="relative border-t border-fg/[0.07] p-2.5">
+        {/* ---------------- Quem está usando ---------------- */}
+        <div className="relative shrink-0 border-t border-fg/[0.07] p-2.5">
           <div className="flex items-center gap-2.5 rounded-2xl border border-fg/[0.07] bg-fg/[0.03] p-2">
             {user?.image ? (
-              <img src={user.image} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-fg/10" />
+              <img src={user.image} alt="" title={user?.nome} className="h-10 w-10 shrink-0 rounded-xl object-cover ring-1 ring-fg/10" />
             ) : (
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-soft to-accent text-[13px] text-white ring-1 ring-fg/10">{userInitials}</div>
+              <div
+                title={user?.nome}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-accent-soft to-accent text-[13px] text-white ring-1 ring-fg/10"
+              >
+                {userInitials}
+              </div>
             )}
 
-            <div className="min-w-0 flex-1">
+            <div className={`min-w-0 flex-1 ${some}`}>
               <p className="truncate text-[14px] leading-tight text-ink">{user?.nome || "Usuário"}</p>
               <p className="mt-0.5 truncate text-[12px] leading-tight text-faint">{user?.cargo || "Conectado"}</p>
             </div>
 
-            {/* Mural da equipe — só gestor recebe (a API responde 403 ao vendedor). */}
-            {gestor && <SinoNotificacoes />}
+            <div className={`flex shrink-0 items-center ${some}`}>
+              {/* Mural da equipe — só gestor recebe (a API responde 403 ao vendedor). */}
+              {gestor && <SinoNotificacoes />}
 
-            <button
-              type="button"
-              onClick={() => goto("/configuracoes")}
-              aria-label="Configurações"
-              title="Configurações"
-              className={`focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-all duration-200 hover:rotate-45 hover:bg-fg/[0.08] ${isActive("configuracoes") ? "text-accent-soft" : "text-faint hover:text-accent-soft"}`}
-            >
-              <Settings size={18} />
-            </button>
+              <button
+                type="button"
+                onClick={() => goto("/configuracoes")}
+                aria-label="Configurações"
+                title="Configurações"
+                className={`focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-all duration-200 hover:rotate-45 hover:bg-fg/[0.08] ${isActive("configuracoes") ? "text-accent-soft" : "text-faint hover:text-accent-soft"}`}
+              >
+                <Settings size={18} />
+              </button>
 
-            <button
-              type="button"
-              onClick={handleLogout}
-              aria-label="Sair"
-              title="Sair"
-              className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-faint transition-colors hover:bg-danger/10 hover:text-danger"
-            >
-              <LogOut size={18} />
-            </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                aria-label="Sair"
+                title="Sair"
+                className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-faint transition-colors hover:bg-danger/10 hover:text-danger"
+              >
+                <LogOut size={18} />
+              </button>
+            </div>
           </div>
         </div>
       </aside>
-    </>
+    </div>
   );
 };
 

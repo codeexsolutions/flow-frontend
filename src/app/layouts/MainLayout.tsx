@@ -5,6 +5,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import useTransicao from "@/shared/session/transicao.store";
 import TourInicial from "@/features/tour/TourInicial";
 import Novidades from "@/features/novidades/Novidades";
+import LembreteFatura from "@/features/assinatura/components/LembreteFatura";
 
 import TermosLgpdModal from "@/features/termos/TermosLgpdModal";
 import { useTermosLgpd } from "@/features/termos/useTermosLgpd";
@@ -78,6 +79,9 @@ const Main = () => {
               está vendo o sistema pela primeira vez não tem "antes" para comparar —
               ver a nota em `Novidades`. */}
           <Novidades />
+          {/* A mensalidade em aberto, uma vez por dia — só depois do tour e das
+              novidades, para as janelas não se empilharem (ver `LembreteFatura`). */}
+          <LembreteFatura />
         </>
       )}
     </motion.div>

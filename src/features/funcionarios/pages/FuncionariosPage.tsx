@@ -1,35 +1,38 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Users, ShieldCheck, UserPlus, Crown, AlertTriangle,
-  UserCog, Trash2, Percent, Clock, ListFilter, Receipt, SlidersHorizontal, LayoutDashboard,
+  Users, ShieldCheck, UserPlus, AlertTriangle,
+  UserCog, Clock, ListFilter, SlidersHorizontal, LayoutDashboard,
 } from "lucide-react";
 
-import { TabelaCard, TabelaHead, TabelaRow, TabelaVazia, type Coluna } from "@/shared/ui/DataTable";
+import { TabelaCard, TabelaVazia } from "@/shared/ui/DataTable";
 import { AbasTabela } from "@/shared/ui/AbasTabela";
 import { Modal } from "@/shared/ui/Modal";
 import { useAlert } from "@/shared/ui/Alert";
 import Select from "@/shared/ui/Select";
 import BuscaSugestoes from "@/shared/ui/BuscaSugestoes";
-import { SkeletonTableRows, SkeletonIdentityCell, Skeleton, SkeletonKpis, SkeletonGrafico } from "@/shared/ui/skeleton";
+import { Skeleton, SkeletonKpis, SkeletonGrafico } from "@/shared/ui/skeleton";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import useAuth from "@/features/auth/store/auth.store";
 import FuncionarioService from "@/features/funcionarios/services/funcionario.service";
 import FuncionarioForm from "@/features/funcionarios/components/FuncionarioForm";
 import ReciboSalarioModal from "@/features/funcionarios/components/ReciboSalarioModal";
 import FuncionariosVisaoGeral from "@/features/funcionarios/components/FuncionariosVisaoGeral";
+import FuncionarioCard, { FuncionarioCardFantasma } from "@/features/funcionarios/components/FuncionarioCard";
 import PontoConfigPainel from "@/features/ponto/components/PontoConfigPainel";
 import useEquipeStore from "@/features/funcionarios/store/equipe.store";
 import { PageScreen } from "@/shared/ui/PageShell";
-import { Selo } from "@/shared/ui/StatusBadge";
 import type { Equipe, Funcionario } from "@/shared/domain/funcionario";
-import { formatNumber } from "@/shared/utils/format";
-import { maskCpfCnpj } from "@/shared/validation/masks";
 
-const COLS = "grid-cols-[1.5fr_150px_130px_96px]";
-
-/** Altura de uma linha da tabela — o esqueleto precisa dela para não saltar. */
-const ALTURA_LINHA = 56;
+/**
+ * A grade da equipe.
+ *
+ * Quadrados em vez de linhas: a equipe de uma loja é pequena (cinco, dez
+ * pessoas) e se reconhece pelo rosto, não por coluna. `auto-fill` com largura
+ * mínima deixa a grade decidir quantos cabem — um no celular, quatro num
+ * monitor largo — sem breakpoint escrito à mão.
+ */
+const GRADE = "grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4 p-4";
 
 type Situacao = "todas" | "trabalhando" | "desligados";
 /** Visão geral (os números da equipe), a lista e as regras do ponto. */
@@ -57,37 +60,6 @@ const PONTOS: { valor: FiltroPonto; label: string }[] = [
 ];
 
 /**
- * O acesso ao sistema, na linha da lista.
- *
- * Três estados, e os três precisam de nome — "sem acesso" NÃO é um defeito:
- * é o caso da costureira e do entregador, que a migration 046 veio permitir.
- * Mostrá-lo como um vazio faria parecer cadastro pela metade.
- */
-function AcessoBadge({ f }: { f: Funcionario }) {
-  const acesso = f.acesso;
-
-  if (!acesso) return <span className="text-[11.5px] text-faint">Sem acesso</span>;
-
-  if (acesso.root) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] text-accent-soft ring-1 ring-accent/25">
-        <Crown size={11} /> Master
-      </span>
-    );
-  }
-
-  return acesso.permissao === "ADMIN" ? (
-    <span className="inline-flex items-center gap-1 rounded-full bg-accent/[0.1] px-2 py-0.5 text-[11px] text-accent-soft ring-1 ring-accent/20">
-      <ShieldCheck size={11} /> Admin
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 rounded-full bg-fg/[0.06] px-2 py-0.5 text-[11px] text-mist ring-1 ring-fg/[0.08]">
-      Vendedor
-    </span>
-  );
-}
-
-/**
  * O esqueleto da tela, no formato do conteúdo real.
  *
  * Substitui o spinner centralizado que estava aqui. O spinner troca uma espera
@@ -111,17 +83,10 @@ const ControlesFantasma = () => (
   </>
 );
 
-const LinhasFantasma = ({ count }: { count: number }) => (
-  <SkeletonTableRows count={count} cols={COLS} rowHeight={ALTURA_LINHA}>
-    <SkeletonIdentityCell />
-    <div className="h-4 w-20 rounded-full bg-fg/[0.05]" />
-    <div className="h-3 w-16 rounded bg-fg/[0.05]" />
-    <div className="h-3 w-12 rounded bg-fg/[0.05]" />
-    <div className="ml-auto flex gap-1">
-      <div className="h-7 w-7 rounded-lg bg-fg/[0.05]" />
-      <div className="h-7 w-7 rounded-lg bg-fg/[0.05]" />
-    </div>
-  </SkeletonTableRows>
+const CardsFantasma = ({ count }: { count: number }) => (
+  <div className={GRADE}>
+    {Array.from({ length: count }, (_, i) => <FuncionarioCardFantasma key={i} />)}
+  </div>
 );
 
 const FuncionariosPage = () => {
@@ -340,91 +305,6 @@ const FuncionariosPage = () => {
     }
   };
 
-  /* ----------------------------- Colunas ----------------------------- */
-
-  const colunas: Coluna<Funcionario>[] = [
-    {
-      id: "nome",
-      header: "Funcionário",
-      cell: (f) => (
-        <span className="flex min-w-0 flex-col">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate text-ink">{f.nome}</span>
-            {/* Desligado continua na lista: o histórico de ponto e as vendas
-                dele seguem valendo, e sumir com a linha esconderia isso. */}
-            {!f.ativo && <Selo tom="neutro">Desligado</Selo>}
-          </span>
-          <span className="truncate text-[11px] text-faint">
-            {f.cargo || "Sem cargo"}
-            {f.cpf ? ` · ${maskCpfCnpj(f.cpf)}` : ""}
-          </span>
-        </span>
-      ),
-    },
-    {
-      id: "acesso",
-      header: "Acesso",
-      cell: (f) => (
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <AcessoBadge f={f} />
-          {f.acesso && (
-            <span className="truncate text-[10.5px] text-faint">
-              {f.acesso.status === "ATIVO" ? f.acesso.email : "desativado"}
-            </span>
-          )}
-        </span>
-      ),
-    },
-    {
-      id: "comissao",
-      header: "Comissão",
-      cell: (f) =>
-        f.ganhaComissao ? (
-          <span className="flex items-center gap-1.5 text-[12px] text-mist">
-            <Percent size={12} className="shrink-0 text-muted" />
-            <span className="tabular-nums">
-              {f.comissaoPercentual != null ? `${formatNumber(f.comissaoPercentual)}%` : "a definir"}
-            </span>
-          </span>
-        ) : (
-          <span className="text-[11.5px] text-faint">Não</span>
-        ),
-    },
-    {
-      id: "acoes",
-      header: "Ações",
-      align: "right",
-      cell: (f) => (
-        <span className="flex items-center justify-end gap-1">
-          {/* O recibo abre da LISTA porque emitir folha é trabalho de lote:
-              fim do mês, a equipe inteira, um depois do outro. Obrigar a
-              entrar na página de cada pessoa e voltar transformaria seis
-              recibos em dezoito cliques. */}
-          <button
-            type="button"
-            onClick={() => setRecibo(f)}
-            title="Emitir recibo de salário"
-            className="focus-ring flex h-7 w-7 items-center justify-center rounded-lg border border-fg/[0.08] text-mist transition hover:bg-fg/[0.05] hover:text-ink"
-          >
-            <Receipt size={13} />
-          </button>
-
-          {/* O usuário master não sai da equipe: sobraria empresa sem dono. */}
-          {!f.acesso?.root && (
-            <button
-              type="button"
-              onClick={() => void excluir(f)}
-              title="Remover da equipe"
-              className="focus-ring flex h-7 w-7 items-center justify-center rounded-lg border border-fg/[0.08] text-mist transition hover:bg-danger/10 hover:text-danger"
-            >
-              <Trash2 size={13} />
-            </button>
-          )}
-        </span>
-      ),
-    },
-  ];
-
   /* ------------------------------ Render ------------------------------ */
 
   // Vendedor não abre esta aba — a API responde 403 e a mensagem vem dela.
@@ -558,7 +438,7 @@ const FuncionariosPage = () => {
           /* Sem largura mínima na aba de configurações: os 720px existem para a
              grade de colunas da tabela, e imporiam rolagem lateral a um painel
              que cabe na tela. */
-          minWidth={naEquipe ? 720 : 0}
+          minWidth={0}
           /* No celular os painéis empurram o cartão em vez de rolar dentro
              dele — mesmo arranjo de Clientes. */
           corpoLivre={aba === "visao-geral"}
@@ -580,10 +460,8 @@ const FuncionariosPage = () => {
             </div>
           ) : (
           <>
-          <TabelaHead colunas={colunas} cols={COLS} />
-
           {carregando ? (
-            <LinhasFantasma count={8} />
+            <CardsFantasma count={8} />
           ) : filtrados.length === 0 ? (
             /* Dois vazios diferentes: "não achei com esse filtro" e "não há
                ninguém cadastrado" pedem ações opostas — limpar a busca ou
@@ -603,15 +481,17 @@ const FuncionariosPage = () => {
               />
             )
           ) : (
-            filtrados.map((f) => (
-              <TabelaRow
-                key={f.id}
-                colunas={colunas}
-                cols={COLS}
-                row={f}
-                onClick={() => navigate(`/funcionarios/${f.id}`)}
-              />
-            ))
+            <div className={GRADE}>
+              {filtrados.map((f) => (
+                <FuncionarioCard
+                  key={f.id}
+                  f={f}
+                  onAbrir={() => navigate(`/funcionarios/${f.id}`)}
+                  onRecibo={() => setRecibo(f)}
+                  onExcluir={() => void excluir(f)}
+                />
+              ))}
+            </div>
           )}
           </>
           )}
