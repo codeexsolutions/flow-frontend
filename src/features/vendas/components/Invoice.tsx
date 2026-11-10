@@ -66,9 +66,11 @@ type InvoiceProps = {
   /**
    * Salvar (alterar ou criar) chama `onSaved` e a nota fecha.
    *
-   * No computador a nota fica aberta depois de salvar — receber, imprimir,
-   * mexer de novo. No celular ela ocupa a tela inteira, e quem salvou quer
-   * voltar para a lista: é lá que o app pede isto.
+   * Ligado por padrão, no computador e no celular: quem salvou quer voltar
+   * para a lista. A alteração fecha no clique (a fila grava por baixo); a
+   * criação fecha quando o servidor confirma — se ele recusar (falta de
+   * estoque, por exemplo), a nota continua aberta com o motivo à vista.
+   * Passe `false` para manter a nota aberta depois de salvar.
    */
   fecharAoSalvar?: boolean;
   /**
@@ -267,7 +269,7 @@ const AcaoDaNota = ({ rotulo, children }: { rotulo: string; children: ReactNode 
   </div>
 );
 
-const Invoice = ({ id: idInicial, clienteId, nome, onSaved, fecharAoSalvar = false, modoOrcamento = false, itensIniciais, orcamentoId, contatoInicial, validadeInicial, converterOrcamentoId, conversaId, orcamentoBase }: InvoiceProps) => {
+const Invoice = ({ id: idInicial, clienteId, nome, onSaved, fecharAoSalvar = true, modoOrcamento = false, itensIniciais, orcamentoId, contatoInicial, validadeInicial, converterOrcamentoId, conversaId, orcamentoBase }: InvoiceProps) => {
   const alert = useAlert();
   const notaRef = useRef<HTMLDivElement>(null);
 
@@ -403,6 +405,8 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, fecharAoSalvar = fal
   const [itensGravados, setItensGravados] = useState<string | null>(null);
   /* Trava de clique duplo sem trocar o botão por um "Salvando...". */
   const salvandoAgora = useRef(false);
+  /* Loading do botão "Salvar"/"Gerar Nota" — ver `handleSalvar`. */
+  const [salvando, setSalvando] = useState(false);
 
   /* ─── Dados ─── */
   const [products, setProducts] = useState<ProductType[]>(() => catalogoGuardado());
@@ -1173,34 +1177,72 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, fecharAoSalvar = fal
     }));
     const quem = pedido?.nomeCliente || nome || "cliente";
 
+    /*
+     * Loading de verdade no botão.
+     *
+     * Antes a tela fechava no clique e a lista recarregava ANTES de a fila
+     * gravar — voltava com a nota antiga e só um F5 mostrava a certa. Agora o
+     * botão espera a gravação (no mínimo `LOADING_MINIMO`, para o clique ter
+     * peso) e só então fecha e recarrega. Sem internet a fila não responde
+     * nunca: passado `LOADING_TETO`, a tela segue e a fila grava por baixo.
+     */
+    const LOADING_MINIMO = 900;
+    const LOADING_TETO = 8000;
+    const inicio = Date.now();
+    const esperar = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
+    const esperarGravacao = async (tarefa: string) => {
+      const gravacao = aguardar(tarefa).then(
+        () => ({ ok: true as const }),
+        (err: unknown) => ({ ok: false as const, err }),
+      );
+      const resultado = await Promise.race([gravacao, esperar(LOADING_TETO).then(() => null)]);
+      await esperar(LOADING_MINIMO - (Date.now() - inicio));
+      return { resultado, gravacao };
+    };
+
     if (id) {
-      /* Alteração: confirma e fecha já; a fila grava. */
+      salvandoAgora.current = true;
+      setSalvando(true);
+
       const alteracao: AlteracaoNaFila = { pedidoId: id, clienteId, itens: linhas, imagensServico, mostrarQr, valorQr: cobrancaDefinida };
       const tarefa = enfileirar("nota.alterar", alteracao, `A alteração da nota de ${quem}`);
       const gravadosAntes = itensGravados;
 
-      /* Salvo, destrava o pagamento — já, como o resto da tela. */
-      setItensGravados(assinaturaDosItens(itens));
+      const { resultado, gravacao } = await esperarGravacao(tarefa);
 
-      /* Não fecha: quem salvou continua na nota — receber, imprimir,
-         mexer de novo. A lista se atualiza quando a nota for fechada. */
-      alert.success("Nota alterada!", "As alterações foram salvas com sucesso.");
+      salvandoAgora.current = false;
+      setSalvando(false);
+
+      if (resultado && !resultado.ok) {
+        /* Recusada: a nota continua aberta, com o motivo à vista. */
+        avisarRecusa(resultado.err);
+        return;
+      }
+
+      setItensGravados(assinaturaDosItens(itens));
       cobrancaGravada.current = cobrancaDefinida;
+      alert.success(
+        "Nota alterada!",
+        resultado ? "As alterações foram salvas com sucesso." : "Sem conexão agora — a alteração será enviada assim que a internet voltar.",
+      );
       if (fecharAoSalvar) onSaved?.();
 
-      try {
-        await aguardar(tarefa);
-      } catch (err) {
-        setItensGravados(gravadosAntes);
-        avisarRecusa(err);
+      /* Passou do teto (sem internet): uma recusa tardia ainda vira aviso. */
+      if (!resultado) {
+        const tardio = await gravacao;
+        if (!tardio.ok) {
+          setItensGravados(gravadosAntes);
+          avisarRecusa(tardio.err);
+        }
       }
 
       return;
     }
 
     /*
-     * Criação: a nota aparece pronta e o pagamento abre JÁ. A nota criada não
-     * fecha a tela — quem paga "depois de salvar" precisa dela aberta.
+     * Criação: a nota aparece pronta e, confirmada pelo servidor, fecha
+     * (`fecharAoSalvar`, o padrão). Fechar antes da confirmação perderia o
+     * rascunho se a nota fosse recusada.
      */
     salvandoAgora.current = true;
     notaRecusada.current = false;
@@ -1217,13 +1259,28 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, fecharAoSalvar = fal
     const tarefa = enfileirar("nota.criar", nota, `A venda de ${quem}`);
 
     notaNova.current = { id: nota.id, tarefa };
-    setItensGravados(assinaturaDosItens(itens));
-    setCriandoNota(true);
-    setFocarPagamento(true);
-    alert.success("Nota criada!", "A venda foi registrada. Agora registre o pagamento.");
+    setSalvando(true);
+
+    const { resultado, gravacao } = await esperarGravacao(tarefa);
+    setSalvando(false);
+
+    if (!resultado || resultado.ok) {
+      setItensGravados(assinaturaDosItens(itens));
+      setCriandoNota(true);
+      setFocarPagamento(true);
+      alert.success(
+        "Nota criada!",
+        !resultado
+          ? "Sem conexão agora — a venda será enviada assim que a internet voltar."
+          : fecharAoSalvar && !conversaId
+            ? "A venda foi registrada."
+            : "A venda foi registrada. Agora registre o pagamento.",
+      );
+    }
 
     try {
-      await aguardar(tarefa);
+      const final = resultado ?? (await gravacao);
+      if (!final.ok) throw final.err;
 
       /* Gravado junto da nota: daqui em diante o campo salva sozinho. */
       cobrancaGravada.current = cobrancaDefinida;
@@ -2324,15 +2381,15 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, fecharAoSalvar = fal
                 {orcamentoAtual ? "Salvar orçamento" : "Gerar orçamento"}
               </button>
             ) : (
-              /* Sem "Salvando...": a nota já aparece salva no clique e a
-                 gravação corre por baixo — ver `handleSalvar`. */
+              /* "Salvando..." até a fila confirmar — ver `handleSalvar`. */
               <button
                 onClick={handleSalvar}
-                disabled={salvarDesabilitado || loadingPedido}
-                className="flex h-12 flex-none items-center justify-center gap-2 rounded-xl bg-accent px-6 text-sm text-white transition-all hover:bg-accent-soft active:scale-[0.98] disabled:opacity-40"
+                disabled={salvarDesabilitado || loadingPedido || salvando}
+                aria-busy={salvando}
+                className="flex h-12 flex-none items-center justify-center gap-2 rounded-xl bg-accent px-6 text-sm text-white transition-all hover:bg-accent-soft active:scale-[0.98] disabled:opacity-40 aria-busy:opacity-80"
               >
-                <Save size={18} />
-                {!id && !criandoNota ? "Gerar Nota" : "Salvar"}
+                {salvando ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                {salvando ? (!id && !criandoNota ? "Gerando..." : "Salvando...") : !id && !criandoNota ? "Gerar Nota" : "Salvar"}
               </button>
             )}
           </div>

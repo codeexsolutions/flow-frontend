@@ -1076,8 +1076,18 @@ const PontoDeVenda = () => {
                         {/* O quanto já entrou, e não o rótulo repetido do selo
                             ao lado: "parcial" a gente lê na situação; o que a
                             linha não dizia era QUANTO falta. */}
-                        <span className={`text-right text-[13px] tabular-nums ${statusPag === "PAGA" ? "text-success" : statusPag === "PARCIAL" ? "text-accent-soft" : "text-faint"}`}>
-                          {formatCurrency(pagoVenda)}
+                        {/* No cartão do celular, a forma de pagamento vai ao
+                            lado do valor pago — no desktop a coluna é estreita
+                            e segue só com o valor. */}
+                        <span className="flex min-w-0 items-center gap-2 sm:justify-end">
+                          <span className={`text-right text-[13px] tabular-nums ${statusPag === "PAGA" ? "text-success" : statusPag === "PARCIAL" ? "text-accent-soft" : "text-faint"}`}>
+                            {formatCurrency(pagoVenda)}
+                          </span>
+                          {pagoVenda > 0 && venda.pedido.formaPagamento && (
+                            <span className="truncate rounded-md border border-fg/[0.08] bg-fg/[0.04] px-1.5 py-0.5 text-[11px] text-mist sm:hidden">
+                              {venda.pedido.formaPagamento}
+                            </span>
+                          )}
                         </span>
 
                         <span />
