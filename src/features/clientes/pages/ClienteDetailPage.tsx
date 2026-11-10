@@ -654,7 +654,7 @@ const ClienteDetalhe = () => {
 
       {/* Nota do pedido, igual à do PDV */}
       <Modal open={!!pedidoAberto} onClose={fecharPedido} title="Pedido" subtitle={pedidoAberto?.nome} size="full">
-        {pedidoAberto && <Invoice id={pedidoAberto.id} clienteId={pedidoAberto.clienteId} nome={pedidoAberto.nome} />}
+        {pedidoAberto && <Invoice id={pedidoAberto.id} clienteId={pedidoAberto.clienteId} nome={pedidoAberto.nome} onSaved={fecharPedido} />}
       </Modal>
     </PageScreen>
   );

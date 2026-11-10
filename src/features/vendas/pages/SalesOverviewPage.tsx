@@ -382,7 +382,7 @@ const SalesOverviewPage = ({ periodo = PERIODO_TUDO }: Props) => {
       </div>
 
       <Modal open={!!notaAberta} onClose={fecharNota} title="Venda" subtitle={notaAberta?.nome} size="full">
-        {notaAberta && <Invoice id={notaAberta.id} clienteId={notaAberta.clienteId} nome={notaAberta.nome} />}
+        {notaAberta && <Invoice id={notaAberta.id} clienteId={notaAberta.clienteId} nome={notaAberta.nome} onSaved={fecharNota} />}
       </Modal>
     </div>
   );
