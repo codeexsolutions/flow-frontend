@@ -247,7 +247,7 @@ const ExtratoFaturas = ({
                       <Situacao status={f.status} />
                     </span>
 
-                    <span className="text-right text-[13px] tabular-nums text-ink">{formatCurrencyFromCents(f.valorCentavos)}</span>
+                    <ValorFatura fatura={f} className="text-right text-[13px]" />
 
                     <div className="flex items-center justify-end gap-1.5">
                       {ehPagavel(f) && <BotaoPagar fatura={f} onPagar={onPagar} />}
@@ -291,7 +291,7 @@ const ExtratoFaturas = ({
                           : `Vence em ${formatDate(f.vencimento)} · ${prazo.texto}`}
                     </p>
                   </div>
-                  <p className="shrink-0 text-[13.5px] tabular-nums text-ink">{formatCurrencyFromCents(f.valorCentavos)}</p>
+                  <ValorFatura fatura={f} className="shrink-0 text-right text-[13.5px]" />
                 </div>
 
                 <div className="mt-2.5 flex items-center justify-between gap-2">
@@ -318,3 +318,26 @@ const ExtratoFaturas = ({
 };
 
 export default ExtratoFaturas;
+
+/**
+ * O valor da fatura — com o original riscado em cima quando houve desconto.
+ * O "de / por" é o jeito como o desconto se lê de relance numa lista.
+ */
+function ValorFatura({ fatura, className = "" }: { fatura: Fatura; className?: string }) {
+  const desconto = fatura.descontoCentavos ?? 0;
+
+  return (
+    <span className={`flex flex-col leading-tight tabular-nums text-ink ${className}`}>
+      {desconto > 0 && (
+        <span
+          className="text-[10.5px] text-faint line-through"
+          title={fatura.descontoMotivo ? `Desconto: ${fatura.descontoMotivo}` : "Valor antes do desconto"}
+        >
+          {formatCurrencyFromCents(fatura.valorCentavos + desconto)}
+        </span>
+      )}
+      <span>{formatCurrencyFromCents(fatura.valorCentavos)}</span>
+      {desconto > 0 && <span className="text-[10px] text-success">– {formatCurrencyFromCents(desconto)} de desconto</span>}
+    </span>
+  );
+}

@@ -93,7 +93,11 @@ export type Fatura = {
   id: string;
   competencia: string;
   descricao: string | null;
+  /** O valor a pagar — já líquido do desconto. */
   valorCentavos: number;
+  /** Desconto concedido. O original é `valorCentavos + descontoCentavos`. Opcional: API antiga não manda. */
+  descontoCentavos?: number;
+  descontoMotivo?: string | null;
   vencimento: string;
   status: StatusFatura;
   metodoPagamento: string;
