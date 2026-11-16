@@ -3,7 +3,8 @@ import OrcamentoService from "@/features/orcamentos/services/orcamento.service";
 import ProductService from "@/features/estoque/services/product.service";
 import NoteService from "@/features/vendas/services/note.service";
 import type ProductType from "@/shared/domain/produto";
-import { registrarExecutor } from "@/shared/fila/filaEnvio";
+import useVendaStore from "@/features/vendas/store/venda.store";
+import { aoConcluir, registrarExecutor } from "@/shared/fila/filaEnvio";
 
 /**
  * O que a fila de envio sabe fazer com uma VENDA — ver `shared/fila/filaEnvio`.
@@ -128,4 +129,23 @@ registrarExecutor<AlteracaoNaFila>("nota.alterar", async (nota) => {
 
 registrarExecutor<PagamentoNaFila>("nota.pagar", async (p) => {
   await FinanceiroService.registrarPagamentoNota(p.pedidoId, p.valor, p.formaPagamento, p.id);
+});
+
+/*
+ * A nota chegou ao servidor: a lista de vendas relê.
+ *
+ * A tela da nota espera a gravação só até um teto (internet lenta) e fecha —
+ * a lista recarregada nesse instante ainda vinha com a versão antiga, e ficava
+ * assim até um F5. Agora, quando a gravação de fato termina, a lista se
+ * atualiza sozinha. Agrupado: dez tarefas seguidas viram uma leitura só.
+ */
+let releitura: ReturnType<typeof setTimeout> | null = null;
+
+aoConcluir((tarefa) => {
+  if (!tarefa.tipo.startsWith("nota.")) return;
+  if (releitura) clearTimeout(releitura);
+  releitura = setTimeout(() => {
+    releitura = null;
+    void useVendaStore.getState().fetchVendas(true);
+  }, 400);
 });

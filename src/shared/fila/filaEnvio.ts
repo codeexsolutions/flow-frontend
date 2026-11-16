@@ -98,6 +98,28 @@ const esperando = new Map<string, { resolver: () => void; rejeitar: (erro: unkno
 
 const ouvintesDeRecusa = new Set<(r: Recusa) => void>();
 
+const ouvintesDeConclusao = new Set<(t: Tarefa) => void>();
+
+/**
+ * Avisa quando uma tarefa CHEGA ao servidor — mesmo que a tela que a criou já
+ * tenha fechado. É o que deixa a lista em dia quando a gravação demorou mais
+ * que a espera da nota (ver `filaVendas`): antes a lista recarregava antes da
+ * gravação e só um F5 mostrava a nota certa.
+ */
+export const aoConcluir = (ouvinte: (t: Tarefa) => void) => {
+  ouvintesDeConclusao.add(ouvinte);
+  return () => {
+    ouvintesDeConclusao.delete(ouvinte);
+  };
+};
+
+/** Tarefas ainda não enviadas de um tipo — a nota reaberta antes do envio usa. */
+export const pendentes = <T>(tipo: string): T[] =>
+  useFilaEnvio
+    .getState()
+    .tarefas.filter((t) => t.tipo === tipo && t.empresa === empresaAtual())
+    .map((t) => t.dados as T);
+
 /** Avisos de recusa que ninguém nesta tela está esperando — ver `AvisosDaFila`. */
 export const aoRecusar = (ouvinte: (r: Recusa) => void) => {
   ouvintesDeRecusa.add(ouvinte);
@@ -143,11 +165,41 @@ export const aguardar = (idTarefa: string): Promise<void> =>
  * "não" — e repetir daria o mesmo "não".
  */
 const ehFalhaDeConexao = (erro: unknown): boolean => {
+  if (erro instanceof TempoEsgotado) return true;
   if (!axios.isAxiosError(erro)) return false;
   if (!erro.response) return true;
 
   return [401, 408, 429, 502, 503, 504].includes(erro.response.status);
 };
+
+/**
+ * Teto de uma tarefa.
+ *
+ * Sem ele, uma requisição que nunca respondia (conexão "pendurada" no 4G, o
+ * servidor reiniciando no meio) deixava `processando` preso em `true` para
+ * sempre: NADA mais da fila saía — nem a nota, nem o pagamento, nem as
+ * próximas — até alguém dar F5. Era o "não salvou, só depois de atualizar".
+ * Passado o teto, a tarefa conta como falha de conexão e é repetida (repetir
+ * é seguro: ver o cabeçalho deste arquivo).
+ */
+const TETO_TAREFA = 30_000;
+
+class TempoEsgotado extends Error {}
+
+const comTeto = (promessa: Promise<void>) =>
+  new Promise<void>((resolver, rejeitar) => {
+    const relogio = setTimeout(() => rejeitar(new TempoEsgotado("A gravação demorou demais.")), TETO_TAREFA);
+    promessa.then(
+      () => {
+        clearTimeout(relogio);
+        resolver();
+      },
+      (erro) => {
+        clearTimeout(relogio);
+        rejeitar(erro);
+      },
+    );
+  });
 
 let processando = false;
 let proxima: ReturnType<typeof setTimeout> | null = null;
@@ -161,6 +213,13 @@ const concluir = (tarefa: Tarefa) => {
   atualizar((ts) => ts.filter((t) => t.id !== tarefa.id));
   esperando.get(tarefa.id)?.forEach((e) => e.resolver());
   esperando.delete(tarefa.id);
+  ouvintesDeConclusao.forEach((o) => {
+    try {
+      o(tarefa);
+    } catch {
+      /* Um ouvinte com defeito não pode travar a fila. */
+    }
+  });
 };
 
 const recusar = (tarefa: Tarefa, erro: unknown) => {
@@ -226,7 +285,7 @@ export const processar = async () => {
       }
 
       try {
-        await executor(tarefa.dados as never);
+        await comTeto(executor(tarefa.dados as never));
         concluir(tarefa);
         useFilaEnvio.setState({ semConexao: false });
       } catch (erro) {

@@ -160,7 +160,12 @@ export default defineConfig(({ mode }) => {
               handler: "NetworkFirst",
               options: {
                 cacheName: "api-leitura",
-                networkTimeoutSeconds: 5,
+                // Sem `networkTimeoutSeconds` de propósito. Com 5s, qualquer
+                // leitura mais lenta que isso (lista grande, 4G ruim) voltava
+                // DO CACHE — a nota recém-salva aparecia com os dados antigos
+                // e só um F5 mostrava a certa. Sem rede de verdade o fetch
+                // falha na hora e o cache entra igual; com rede lenta, espera
+                // a resposta certa (a lista já abre com a cópia local).
                 expiration: { maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 },
                 cacheableResponse: { statuses: [0, 200] },
               },

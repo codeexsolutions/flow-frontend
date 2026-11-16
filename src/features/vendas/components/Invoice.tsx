@@ -52,7 +52,7 @@ import NotaResumo from "@/features/vendas/components/NotaResumo";
 import PagamentoNaNota from "@/features/vendas/components/PagamentoNaNota";
 import OrcamentoNota from "@/features/orcamentos/components/OrcamentoNota";
 import BotaoCupomFiscal from "@/features/fiscal/components/BotaoCupomFiscal";
-import { aguardar, enfileirar, novoId } from "@/shared/fila/filaEnvio";
+import { aguardar, enfileirar, novoId, pendentes } from "@/shared/fila/filaEnvio";
 import { catalogoGuardado, guardarCatalogo, registrarUso } from "@/features/vendas/services/catalogoLocal";
 import type { AlteracaoNaFila, LinhaNaFila, NotaNaFila, PagamentoNaFila } from "@/features/vendas/services/filaVendas";
 
@@ -522,16 +522,49 @@ const Invoice = ({ id: idInicial, clienteId, nome, onSaved, fecharAoSalvar = tru
         }
         setPedido(pedidoData);
         setValorPagoAnterior(Number(pedidoData.pedido.valorPago ?? 0));
-        setImagensServico(pedidoData.pedido.imagensServico ?? []);
-        setMostrarQr(pedidoData.pedido.mostrarQr !== false);
-        setCobrancaLivre(paraCampoCobranca(pedidoData.pedido.valorQr));
-        cobrancaGravada.current = pedidoData.pedido.valorQr ?? null;
 
         const itensOriginais = pedidoData.pedido.itensPedido ?? [];
-        const carregados = itensOriginais.map((item: ItemPedidoType) => ({ ...item }));
+        const doServidor = itensOriginais.map((item: ItemPedidoType) => ({ ...item }));
+
+        /*
+         * Alteração desta nota que ainda está NA FILA.
+         *
+         * Salvar com internet lenta fecha a nota antes de a gravação chegar
+         * (ver `handleSalvar`). Reaberta nesse meio-tempo, a nota vinha do
+         * servidor com a versão ANTIGA — e salvar de novo sobrescrevia a
+         * alteração que estava a caminho. Agora a tela abre com o que foi
+         * salvo por último; os itens gravados continuam os do servidor, então
+         * o pagamento espera a alteração chegar, como deve.
+         */
+        const naFila = pendentes<AlteracaoNaFila>("nota.alterar").filter((a) => a.pedidoId === id).pop();
+
+        const imagens = naFila ? naFila.imagensServico : pedidoData.pedido.imagensServico ?? [];
+        const qr = naFila ? naFila.mostrarQr : pedidoData.pedido.mostrarQr !== false;
+        const valorQr = naFila ? naFila.valorQr : pedidoData.pedido.valorQr ?? null;
+
+        setImagensServico(imagens);
+        setMostrarQr(qr);
+        setCobrancaLivre(paraCampoCobranca(valorQr));
+        cobrancaGravada.current = pedidoData.pedido.valorQr ?? null;
+
+        const carregados: ItemPedidoType[] = naFila
+          ? naFila.itens.map((l) => {
+              const igual = doServidor.find((it) => String(it.produto.produtoId) === l.produtoId && (it.variacaoId ?? null) === (l.variacaoId ?? null));
+              return {
+                itemPedidoId: igual?.itemPedidoId ?? gerarUID(),
+                quantidadeItem: l.quantidade,
+                valorVendaItem: l.valorVenda,
+                variacaoId: l.variacaoId,
+                variacaoDescricao: igual?.variacaoDescricao,
+                produto: { ...(igual?.produto ?? {}), nomeProduto: l.nomeProduto, produtoId: l.produtoId, valorProduto: l.valorVenda },
+              } as ItemPedidoType;
+            })
+          : doServidor;
 
         setItens(carregados);
-        setItensGravados(assinaturaDosItens(carregados));
+        setItensGravados(assinaturaDosItens(doServidor));
+
+        if (naFila) alert.toast("info", "Alteração ainda sendo enviada", "A nota mostra o que você salvou por último.", { position: "bottom-right", timer: 3500 });
       })
       .catch((err) => alert.error(getErrorTitle(err), extractErrorMessage(err, "Erro ao carregar o pedido.")))
       .finally(() => setLoadingPedido(false));

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, Trash2 } from "lucide-react";
 
 import sysgrafix from "@/shared/api/sysgrafix";
@@ -50,10 +50,93 @@ type Props = {
   tom?: "tema" | "papel";
 };
 
+/*
+ * Colar imagem (Ctrl+V).
+ *
+ * Um ÚNICO ouvinte de `paste` no documento para todas as caixas montadas — com
+ * duas caixas na tela (as fotos da OS), dois ouvintes disputariam a mesma
+ * imagem. Quem recebe:
+ *   1. a caixa sob o mouse, ou a que tem o foco;
+ *   2. senão, as caixas VAZIAS, na ordem da tela (várias imagens coladas de
+ *      uma vez preenchem uma caixa cada);
+ *   3. senão, se só existe uma caixa, ela troca a imagem.
+ *
+ * Colar texto num campo continua sendo colar texto: se o alvo é editável e a
+ * área de transferência tem texto (copiar de Word/navegador traz os dois), o
+ * paste é do campo.
+ */
+type Alvo = {
+  raiz: () => HTMLElement | null;
+  ativo: () => boolean;
+  vazio: () => boolean;
+  receber: (arquivo: File) => void;
+};
+
+const alvos = new Set<Alvo>();
+
+const imagensDoClipboard = (dados: DataTransfer | null): File[] => {
+  if (!dados) return [];
+  const arquivos: File[] = [];
+  for (const item of Array.from(dados.items ?? [])) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      const f = item.getAsFile();
+      if (f) arquivos.push(f);
+    }
+  }
+  return arquivos;
+};
+
+const ehEditavel = (el: EventTarget | null) => {
+  const h = el as HTMLElement | null;
+  if (!h) return false;
+  return h.isContentEditable || h.tagName === "INPUT" || h.tagName === "TEXTAREA" || h.tagName === "SELECT";
+};
+
+const aoColar = (e: ClipboardEvent) => {
+  const arquivos = imagensDoClipboard(e.clipboardData);
+  if (arquivos.length === 0) return;
+  if (ehEditavel(e.target) && e.clipboardData?.types.includes("text/plain")) return;
+
+  /* Só caixas visíveis — uma aba escondida não pode engolir a imagem. */
+  const visiveis = Array.from(alvos)
+    .filter((a) => {
+      const r = a.raiz();
+      return !!r && r.isConnected && r.getClientRects().length > 0;
+    })
+    .sort((a, b) => {
+      const ra = a.raiz()!, rb = b.raiz()!;
+      return ra.compareDocumentPosition(rb) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+    });
+  if (visiveis.length === 0) return;
+
+  const ativo = visiveis.find((a) => a.ativo());
+  let destino: Alvo[];
+  if (ativo) destino = [ativo];
+  else {
+    const vazios = visiveis.filter((a) => a.vazio());
+    destino = vazios.length > 0 ? vazios : visiveis.length === 1 ? visiveis : [];
+  }
+  if (destino.length === 0) return;
+
+  e.preventDefault();
+  destino.slice(0, arquivos.length).forEach((a, i) => a.receber(arquivos[i]));
+};
+
+const registrar = (alvo: Alvo) => {
+  if (alvos.size === 0) document.addEventListener("paste", aoColar);
+  alvos.add(alvo);
+  return () => {
+    alvos.delete(alvo);
+    if (alvos.size === 0) document.removeEventListener("paste", aoColar);
+  };
+};
+
 const UploadImagem = ({ tipo, valor, onChange, rotulo = "Imagem", formato = "quadrado", tom = "tema" }: Props) => {
   const entrada = useRef<HTMLInputElement>(null);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
+  const raiz = useRef<HTMLDivElement>(null);
+  const sobMouse = useRef(false);
 
   const enviar = async (arquivo: File) => {
     setErro("");
@@ -82,6 +165,23 @@ const UploadImagem = ({ tipo, valor, onChange, rotulo = "Imagem", formato = "qua
     }
   };
 
+  /* Refs para o ouvinte global ler sempre o valor atual sem re-registrar. */
+  const estado = useRef({ valor, enviando, enviar });
+  estado.current = { valor, enviando, enviar };
+
+  useEffect(() => registrar({
+    raiz: () => raiz.current,
+    ativo: () => sobMouse.current || !!raiz.current?.contains(document.activeElement),
+    vazio: () => !estado.current.valor && !estado.current.enviando,
+    receber: (arquivo) => { if (!estado.current.enviando) void estado.current.enviar(arquivo); },
+  }), []);
+
+  const ouvirMouse = {
+    ref: raiz,
+    onMouseEnter: () => { sobMouse.current = true; },
+    onMouseLeave: () => { sobMouse.current = false; },
+  };
+
   const molde = formato === "largo" ? "aspect-[16/6] w-full" : formato === "miniatura" ? "h-full w-full" : "h-24 w-24";
   const miniatura = formato === "miniatura";
   const noPapel = tom === "papel";
@@ -95,13 +195,13 @@ const UploadImagem = ({ tipo, valor, onChange, rotulo = "Imagem", formato = "qua
      ao lado. Quem a usa já deu a ela uma coluna do formulário. */
   if (miniatura) {
     return (
-      <div className="flex h-full min-h-[104px] flex-col gap-1.5">
+      <div {...ouvirMouse} className="flex h-full min-h-[104px] flex-col gap-1.5">
         <div className="relative min-h-0 flex-1">
           <button
             type="button"
             onClick={() => entrada.current?.click()}
             disabled={enviando}
-            title={valor ? "Trocar a foto" : "Escolher uma foto"}
+            title={valor ? "Trocar a foto (ou cole com Ctrl+V)" : "Escolher uma foto (ou cole com Ctrl+V)"}
             className={`focus-ring group relative h-full w-full overflow-hidden rounded-xl border border-dashed transition-colors disabled:opacity-60 ${pele}`}
           >
             {valor ? (
@@ -110,6 +210,7 @@ const UploadImagem = ({ tipo, valor, onChange, rotulo = "Imagem", formato = "qua
               <span className={`flex h-full w-full flex-col items-center justify-center gap-1.5 ${noPapel ? "text-neutral-400" : "text-faint"}`}>
                 <ImagePlus size={20} />
                 <span className="text-[11px]">Escolher</span>
+                <span className="hidden text-[10px] opacity-70 sm:block">ou Ctrl+V</span>
               </span>
             )}
 
@@ -153,7 +254,7 @@ const UploadImagem = ({ tipo, valor, onChange, rotulo = "Imagem", formato = "qua
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div {...ouvirMouse} className="flex flex-col gap-2">
       <label className="text-[11px] uppercase tracking-[0.08em] text-faint">{rotulo}</label>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -207,6 +308,7 @@ const UploadImagem = ({ tipo, valor, onChange, rotulo = "Imagem", formato = "qua
               O "de 4,2 MB para 180 kB" era informação sobre o SISTEMA, não
               sobre a imagem: quem sobe a logo quer ver a logo. A conversão
               para WebP continua acontecendo — calada. */}
+          <p className="text-[10.5px] text-faint">ou cole uma imagem com Ctrl+V</p>
           {erro && <p className="text-[11px] text-danger">{erro}</p>}
         </div>
       </div>
